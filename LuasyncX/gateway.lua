@@ -9,8 +9,8 @@
 -- whitelist.lua จะเช็ค map นี้ก่อนยิงไป backend เสมอ ถ้าเจอ placeId ใน map
 -- จะใช้ scriptUrl นี้เลย (ไม่ต้องพึ่ง /api/script/:placeId จาก backend)
 local PLACE_MAP = {
-    -- ["77908479907662"] = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/Never",
-    -- ["17766863403"] = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/Beady",
+     ["77908479907662"] = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/Never",
+     ["17766863403"] = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/Beady",
 }
 
 local CFG = {
