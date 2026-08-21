@@ -7,7 +7,7 @@
 local CFG = {
     whitelistUrl = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/LuasyncX/whitelist.lua",
     -- DJB2 hex hash of whitelist.lua, uppercase. Leave "" to run unpinned.
-    -- Run once with it blank, copy the printed hash here to lock the
+    -- Run once with it blank, copy the printed hash here to lock theึ
     -- gateway to only that exact whitelist.lua build.
     whitelistHash = "13A2D3A2",
     maxRetries    = 3,
@@ -56,19 +56,41 @@ local function _normalizeRes(res)
     return body
 end
 
+-- เรียก _httpFns[i] แบบมี timeout ของตัวเอง ไม่แชร์ budget กับตัวอื่น
+-- ฟังก์ชันที่ global ไม่มีอยู่ (nil) จะ short-circuit คืนค่าใน tick แรกอยู่แล้ว
+-- ดังนั้นตัวที่กิน timeout จริง ๆ มีแค่ executor ที่ "มีอยู่จริง" แต่ request ค้าง
+local function _tryFn(fn, opts, timeout)
+    local done, ok, res = false, false, nil
+    local co = task.spawn(function()
+        local o, r = _r_pcall(fn, opts)
+        ok, res = o, r
+        done = true
+    end)
+    local ticks, max = 0, math.max(1, math.floor(timeout * 20))
+    while not done and ticks < max do
+        task.wait(0.05)
+        ticks = ticks + 1
+    end
+    if not done then
+        pcall(task.cancel, co)
+        return false, nil
+    end
+    return ok, res
+end
+
 local _cacheIdx
 local function httpGet(url, timeout)
     local opts = { Url = url, Method = "GET", Timeout = timeout, timeout = timeout }
 
     if _cacheIdx then
-        local ok, res = _r_pcall(_httpFns[_cacheIdx], opts)
+        local ok, res = _tryFn(_httpFns[_cacheIdx], opts, timeout)
         local body = ok and _normalizeRes(res)
         if body then return true, body end
         if not ok then _cacheIdx = nil end
     end
 
     for i = 1, #_httpFns do
-        local ok, res = _r_pcall(_httpFns[i], opts)
+        local ok, res = _tryFn(_httpFns[i], opts, timeout)
         local body = ok and _normalizeRes(res)
         if body then _cacheIdx = i; return true, body end
     end
