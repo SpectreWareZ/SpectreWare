@@ -7,9 +7,9 @@
 local CFG = {
     whitelistUrl = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/LuasyncX/whitelist.lua",
     -- DJB2 hex hash of whitelist.lua, uppercase. Leave "" to run unpinned.
-    -- Run once with it blank, copy the printed hash here to lock theึ
+    -- Run once with it blank, copy the printed hash here to lock the
     -- gateway to only that exact whitelist.lua build.
-    whitelistHash = "13A2D3A2",
+    whitelistHash = "8D6CD605",
     maxRetries    = 3,
     retryBackoff  = 1,
     timeout       = 8,
