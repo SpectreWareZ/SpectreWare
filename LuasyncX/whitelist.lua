@@ -33,7 +33,7 @@ local CFG = {
     -- that in here. Any future change to the pastefy content (hijack, edit,
     -- deletion/replacement) will then fail closed instead of silently
     -- loadstring-ing whatever is at that URL.
-    notifLibHash        = "",
+    notifLibHash        = "BBF66989",
 }
 
 local CLIENT_HEADERS = { ["X-Client-Key"] = CFG.clientKey }
