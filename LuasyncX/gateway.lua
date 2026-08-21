@@ -4,12 +4,21 @@
 -- ║  (the real LuaSyncX client) via multi-executor HTTP.  ║
 -- ╚══════════════════════════════════════════════════════╝
 
+-- ── PlaceId → scriptUrl map ───────────────────────────────────────────────
+-- ใส่ PlaceId (string) → URL ของสคริปต์สำหรับเกมนั้น ๆ ตรงนี้
+-- whitelist.lua จะเช็ค map นี้ก่อนยิงไป backend เสมอ ถ้าเจอ placeId ใน map
+-- จะใช้ scriptUrl นี้เลย (ไม่ต้องพึ่ง /api/script/:placeId จาก backend)
+local PLACE_MAP = {
+    -- ["77908479907662"] = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/Never",
+    -- ["17766863403"] = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/Beady",
+}
+
 local CFG = {
     whitelistUrl = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/LuasyncX/whitelist.lua",
     -- DJB2 hex hash of whitelist.lua, uppercase. Leave "" to run unpinned.
     -- Run once with it blank, copy the printed hash here to lock the
     -- gateway to only that exact whitelist.lua build.
-    whitelistHash = "1F447465",
+    whitelistHash = "45476A8A",
     maxRetries    = 3,
     retryBackoff  = 1,
     timeout       = 8,
@@ -147,6 +156,11 @@ src = nil
 if not fn then
     warn("[ SpectreWare Gateway ]: Compile error — " .. tostring(compErr))
     return
+end
+
+local _gOk = pcall(function() getgenv()._SW_PLACE_MAP = PLACE_MAP end)
+if not _gOk then
+    warn("[ SpectreWare Gateway ]: getgenv() unavailable — PLACE_MAP override disabled")
 end
 
 local runOk, runErr = pcall(fn)
