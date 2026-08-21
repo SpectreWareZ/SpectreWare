@@ -38,6 +38,19 @@ local CFG = {
 
 local CLIENT_HEADERS = { ["X-Client-Key"] = CFG.clientKey }
 
+-- ── PlaceId → scriptUrl override (set by gateway.lua) ────────────────────────
+-- gateway.lua ยิง getgenv()._SW_PLACE_MAP = { [placeId] = scriptUrl, ... } ให้ก่อนรันไฟล์นี้
+-- ถ้าเจอ placeId ใน map นี้ จะใช้ค่านี้แทนการยิง /api/script/:placeId ไปที่ backend
+local function _lookupPlaceScript(placeId)
+    local ok, map = _r_pcall(getgenv)
+    if not ok or type(map) ~= "table" then return nil end
+    local m = map._SW_PLACE_MAP
+    if type(m) ~= "table" then return nil end
+    local url = m[tostring(placeId)]
+    if type(url) == "string" and url ~= "" then return url end
+    return nil
+end
+
 -- ── Whitelist tables ─────────────────────────────────────────────────────────
 local WL = {
     DEVS  = {},
@@ -1199,12 +1212,14 @@ local _mainOk = xpcall(function()
         task.wait(0.5)
         print("[ LuaSyncX ]: Authenticating to Server...")
         local _authStart2 = os.clock()
-        local _scriptUrl = ""
-        local _apiOk, _apiRaw = safeGetTimeout(CFG.API .. "/api/script/" .. tostring(game.PlaceId), 8, CLIENT_HEADERS)
-        if _apiOk and _apiRaw and _apiRaw ~= "" then
-            local _jOk, _jd = _r_pcall(HS.JSONDecode, HS, _apiRaw)
-            if _jOk and _r_type(_jd) == "table" and _r_type(_jd.data) == "table" then
-                _scriptUrl = tostring(_jd.data.scriptUrl or "")
+        local _scriptUrl = _lookupPlaceScript(game.PlaceId) or ""
+        if _scriptUrl == "" then
+            local _apiOk, _apiRaw = safeGetTimeout(CFG.API .. "/api/script/" .. tostring(game.PlaceId), 8, CLIENT_HEADERS)
+            if _apiOk and _apiRaw and _apiRaw ~= "" then
+                local _jOk, _jd = _r_pcall(HS.JSONDecode, HS, _apiRaw)
+                if _jOk and _r_type(_jd) == "table" and _r_type(_jd.data) == "table" then
+                    _scriptUrl = tostring(_jd.data.scriptUrl or "")
+                end
             end
         end
         if _scriptUrl == "" then
@@ -1409,7 +1424,7 @@ local _mainOk = xpcall(function()
         log("Script decrypted ✓", "success")
         task.wait(0.3)
     else
-        local SCRIPT = data.scriptUrl
+        local SCRIPT = _lookupPlaceScript(game.PlaceId) or data.scriptUrl
         if not SCRIPT or SCRIPT == "" then
             log("API did not return scriptUrl for PlaceId " .. tostring(game.PlaceId), "error")
             getgenv()[_GK.running] = nil
