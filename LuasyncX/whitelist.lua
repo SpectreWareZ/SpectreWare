@@ -27,13 +27,6 @@ local CFG = {
     apiSessionTimeout   = 10,
     discordUrl          = "https://discord.gg/KJHk8c2Q65",
     notifLibUrl         = "https://pastefy.app/cuC5jl01/raw",
-    -- DJB2 hex hash of the current notiflib source, uppercase. Leave "" to
-    -- run unpinned (old behaviour). Get the real value by running once with
-    -- it blank — the loader will warn()-print the computed hash — then paste
-    -- that in here. Any future change to the pastefy content (hijack, edit,
-    -- deletion/replacement) will then fail closed instead of silently
-    -- loadstring-ing whatever is at that URL.
-    notifLibHash        = "BBF66989",
 }
 
 local CLIENT_HEADERS = { ["X-Client-Key"] = CFG.clientKey }
@@ -465,25 +458,23 @@ local function safeGetTimeout(url, timeout, headers)
 end
 
 -- ── Notification library (async) ─────────────────────────────────────────────
--- Pinned by hash: the notiflib is fetched from an external URL Claude doesn't
--- control the origin of. Without pinning, anyone who hijacks/edits/replaces
--- that pastefy page gets loadstring'd code execution in every client. With
--- CFG.notifLibHash set, a mismatch aborts the load instead of running it.
+-- Integrity-checked against a hardcoded DJB2 hash of the pinned notiflib
+-- source (mirrors the scriptHash/DJB2 check used later for the main script).
+-- IMPORTANT: whenever CFG.notifLibUrl's content is intentionally changed,
+-- this constant must be recomputed and updated, or every load will be
+-- refused with a hash-mismatch warning.
+local EXPECTED_NOTIFLIB_HASH = "D74E5FFE" -- DJB2 of current pastefy.app/cuC5jl01/raw content
+
 task.spawn(function()
     local _nlOk, _nlSrc = safeGet(CFG.notifLibUrl)
     if not _nlOk or not _nlSrc or _nlSrc == "" then
         warn("LuaSyncX: notiflib fetch failed"); return
     end
-    if CFG.notifLibHash ~= "" then
-        local gotHash = _djb2(_nlSrc)
-        if gotHash ~= CFG.notifLibHash:upper() then
-            warn("LuaSyncX: notiflib hash mismatch — refusing to run untrusted code " ..
-                 "(expected " .. CFG.notifLibHash:upper() .. ", got " .. gotHash .. ")")
-            return
-        end
-    else
-        warn("LuaSyncX: notiflib running UNPINNED — set CFG.notifLibHash to " ..
-             _djb2(_nlSrc) .. " to pin it")
+    local _nlHash = _djb2(_nlSrc)
+    if _nlHash ~= EXPECTED_NOTIFLIB_HASH then
+        warn(("LuaSyncX: notiflib hash mismatch — refusing to run untrusted code (expected %s, got %s)")
+            :format(EXPECTED_NOTIFLIB_HASH, _nlHash))
+        return
     end
     local _fn, _cerr = _native_loadstring(_nlSrc)
     if not _fn then warn("LuaSyncX: notiflib compile error — " .. tostring(_cerr)); return end
