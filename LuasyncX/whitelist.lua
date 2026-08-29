@@ -1274,18 +1274,7 @@ local _mainOk = xpcall(function()
         local _label  = _isDev and "DEV ACCESS 👑"  or "FREE ACCESS 🎁"
         local _keyTag = _isDev and "[DEV]"           or "[FREE]"
         local _timeTag = _isDev and "∞  Developer"  or "∞  Free"
-        _bTop()
-        task.wait(0.15)
-        _bRow("✔  " .. _label .. "  ·  LuaSyncX  v" .. CFG.loaderVersion)
-        _bMid()
-        task.wait(0.15)
-        _bRow("👤  Player   ›  " .. PL.Name .. "  (" .. tostring(_uid) .. ")")
-        task.wait(0.15)
-        _bRow("🎮  PlaceId  ›  " .. tostring(game.PlaceId))
-        task.wait(0.15)
-        _bRow("⏳  Access   ›  " .. _timeTag)
-        task.wait(0.2)
-        _bBot()
+        log(_label .. "  ·  " .. PL.Name .. "  ·  " .. _timeTag, "success")
         task.wait(0.5)
         task.delay(1, function() _notifyWL(_timeTag, _isDev and "DEV 👑" or "FREE 🎁") end)
         _expiresAt_cached = -1
@@ -1423,24 +1412,13 @@ local _mainOk = xpcall(function()
         timeLeft = fmtTime(diff)
     end
     _expiresAt_cached = expiresAt
-    log("Key verified  —  Expires: " .. timeLeft, "success")
     task.wait(0.4)
-    _div()
-    task.wait(0.15)
-    _bTop()
-    _bRow("✔  VERIFIED  ·  LuaSyncX  v" .. CFG.loaderVersion)
-    _bMid()
-    task.wait(0.15)
-    _bRow("👤  Player   ›  " .. PL.Name)
     local _discordStr  = tostring(data.redeemed_by or "")
     local _discordName = _discordStr:match("^(.-)%s*%(%d+%)$") or _discordStr
-    if _discordName ~= "" then task.wait(0.15); _bRow("💬  Discord  ›  " .. _discordName) end
-    task.wait(0.15)
-    _bRow("⏳  Expires  ›  " .. timeLeft)
-    task.wait(0.15)
-    _bRow("🎮  PlaceId  ›  " .. tostring(game.PlaceId))
-    task.wait(0.2)
-    _bBot()
+    local _summary = "VERIFIED  ·  " .. PL.Name
+    if _discordName ~= "" then _summary = _summary .. "  ·  " .. _discordName end
+    _summary = _summary .. "  ·  Expires: " .. timeLeft
+    log(_summary, "success")
     task.wait(0.5)
     task.delay(1, function() _notifyWL(timeLeft, "KEY") end)
     task.spawn(function() sendWebhook("login", { key = _getKey(), hwid = hwid, timeLeft = timeLeft, expiresAt = expiresAt }) end)
