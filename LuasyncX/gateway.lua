@@ -18,7 +18,7 @@ local CFG = {
     -- DJB2 hex hash of whitelist.lua, uppercase. Leave "" to run unpinned.
     -- Run once with it blank, copy the printed hash here to lock the
     -- gateway to only that exact whitelist.lua build.
-    whitelistHash = "",
+    whitelistHash = "4BD3C447",
     maxRetries    = 3,
     retryBackoff  = 1,
     timeout       = 8,
