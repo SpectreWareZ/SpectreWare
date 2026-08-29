@@ -1414,7 +1414,24 @@ local _mainOk = xpcall(function()
     task.delay(1, function() _notifyWL(timeLeft, "KEY") end)
     task.spawn(function() sendWebhook("login", { key = _getKey(), hwid = hwid, timeLeft = timeLeft, expiresAt = expiresAt }) end)
     local scriptSrc
-    if type(data.scriptEnc) == "string" and data.scriptEnc ~= "" then
+    -- PLACE_MAP (ตั้งจาก gateway.lua) มีสิทธิ์เหนือ scriptEnc ของ server เสมอ —
+    -- ถ้า placeId นี้ถูก map ไว้ ให้ดึงจาก URL ใน map ตรงๆ โดยไม่สนใจว่า server
+    -- จะส่ง scriptEnc มาด้วยหรือไม่
+    local _mapUrl = _lookupPlaceScript(game.PlaceId)
+    if _mapUrl and _mapUrl ~= "" then
+        log("Loading script from PLACE_MAP override...", "loading")
+        task.wait(0.3)
+        local scriptOk
+        for i = 1, 3 do
+            log(("Fetching mapped script... (%d/3)"):format(i), "loading")
+            scriptOk, scriptSrc = safeGetTimeout(_mapUrl, 8)
+            if scriptOk and scriptSrc and scriptSrc ~= "" then break end
+            if i < 3 then task.wait(1 * i) end
+        end
+        if not scriptOk or not scriptSrc or scriptSrc == "" then
+            log("Failed to fetch mapped script after 3 attempts", "error"); getgenv()[_GK.running] = nil; return
+        end
+    elseif type(data.scriptEnc) == "string" and data.scriptEnc ~= "" then
         -- decrypt key มาจาก server (data.loaderXk) ไม่ใช่ _xorKey ของ session เอง —
         -- server สุ่ม key ใหม่ทุก request แล้วส่งมาคู่กับ scriptEnc เสมอ
         local _srvXk = type(data.loaderXk) == "string" and data.loaderXk or ""
@@ -1425,7 +1442,7 @@ local _mainOk = xpcall(function()
         log("Script decrypted ✓", "success")
         task.wait(0.3)
     else
-        local SCRIPT = _lookupPlaceScript(game.PlaceId) or data.scriptUrl
+        local SCRIPT = data.scriptUrl
         if not SCRIPT or SCRIPT == "" then
             log("API did not return scriptUrl for PlaceId " .. tostring(game.PlaceId), "error")
             getgenv()[_GK.running] = nil
