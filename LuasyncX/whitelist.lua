@@ -26,7 +26,7 @@ local CFG = {
     announceTimeout     = 6,
     apiSessionTimeout   = 10,
     discordUrl          = "https://discord.gg/KJHk8c2Q65",
-    notifLibUrl         = "https://pastefy.app/cuC5jl01/raw",
+    notifLibUrl         = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Tools/notiflib.lua",
 }
 
 local CLIENT_HEADERS = { ["X-Client-Key"] = CFG.clientKey }
@@ -463,7 +463,7 @@ end
 -- IMPORTANT: whenever CFG.notifLibUrl's content is intentionally changed,
 -- this constant must be recomputed and updated, or every load will be
 -- refused with a hash-mismatch warning.
-local EXPECTED_NOTIFLIB_HASH = "D74E5FFE" -- DJB2 of current pastefy.app/cuC5jl01/raw content
+local EXPECTED_NOTIFLIB_HASH = "D74E5FFE" -- DJB2 of current Tools/notiflib.lua content (GitHub)
 
 task.spawn(function()
     local _nlOk, _nlSrc = safeGet(CFG.notifLibUrl)
