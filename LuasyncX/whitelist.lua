@@ -165,9 +165,14 @@ end
 -- running/stime stay fixed — they're needed as a cross-restart anchor for the
 -- double-run guard below, but they only ever hold a boolean/timestamp, never
 -- the sentinel token itself, so a fixed name there leaks little.
-local _GK = (function()
+-- saltKey is a fixed name so a NEW run can recover the PREVIOUS run's salt
+-- before picking its own — otherwise the stale-session guard below is
+-- comparing against sentinel key names that were never written this run
+-- (always nil) and can never tell a live duplicate from a dead one.
+local _GK_saltKey = _r_char(95,115,108,116,95) -- "_slt_"
+
+local function _mkGK(salt)
     local c = _r_char
-    local salt = _r_format("%06x", _r_random(0, 0xFFFFFF))
     return {
         running = c(95,114,119,110,103,95),
         stime   = c(95,115,116,109,50,95),
@@ -177,7 +182,14 @@ local _GK = (function()
         s3      = c(95,115,119,51,122,95) .. salt,
         canary  = c(95,99,110,114,121,95) .. salt,
     }
-end)()
+end
+
+local _GK_prevSalt = getgenv()[_GK_saltKey] -- salt used by whatever ran before us, if anything
+local _GK_prev = _GK_prevSalt and _mkGK(_GK_prevSalt) or nil
+
+local _GK_salt = _r_format("%06x", _r_random(0, 0xFFFFFF))
+getgenv()[_GK_saltKey] = _GK_salt
+local _GK = _mkGK(_GK_salt)
 
 -- ── XOR cipher ───────────────────────────────────────────────────────────────
 local _xorKey
@@ -267,12 +279,24 @@ local _startTime = os.time()
 do
     local gev = getgenv()
     if gev[_GK.running] then
-        local al  = (os.time() - (gev[_GK.stime] or 0)) < 30
-        local v1, v2, v3 = gev[_GK.s1], gev[_GK.s2], gev[_GK.s3]
-        if al and gev[_GK.xk] and v1 and v1 == v2 and v2 == v3 then
+        local al = (os.time() - (gev[_GK.stime] or 0)) < 30
+        -- Check the PREVIOUS run's sentinel (its salt, its key names) — not
+        -- ours, which is guaranteed empty since we haven't written it yet.
+        local v1, v2, v3, xk = nil, nil, nil, nil
+        if _GK_prev then
+            v1, v2, v3, xk = gev[_GK_prev.s1], gev[_GK_prev.s2], gev[_GK_prev.s3], gev[_GK_prev.xk]
+        end
+        if al and xk and v1 and v1 == v2 and v2 == v3 then
             warn("LuaSyncX: already running"); return
         end
         warn("LuaSyncX: stale session — restarting")
+        -- Clear out the dead session's sentinel so it can't be mistaken for
+        -- a live one by anything else checking getgenv() later.
+        if _GK_prev then
+            gev[_GK_prev.s1] = nil; gev[_GK_prev.s2] = nil
+            gev[_GK_prev.s3] = nil; gev[_GK_prev.xk]  = nil
+            gev[_GK_prev.canary] = nil
+        end
     end
     gev[_GK.running] = true
     gev[_GK.stime]   = _startTime
