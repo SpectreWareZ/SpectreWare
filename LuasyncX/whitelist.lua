@@ -353,8 +353,8 @@ local function _stripDeco(msg)
     return (msg:match("^%s*(.-)%s*$"))
 end
 
-local function _div()  print(_TAG .. string.rep("─", 40)) end
-local function _sep()  print(_TAG .. string.rep("-", 40)) end
+local function _div()  end
+local function _sep()  end
 local function _bRow(msg)  print(_TAG .. _stripDeco(msg)) end
 local function _bTop()     print(_TAG .. "┌" .. string.rep("─", 38) .. "┐") end
 local function _bBot()     print(_TAG .. "└" .. string.rep("─", 38) .. "┘") end
