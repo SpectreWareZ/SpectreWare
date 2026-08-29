@@ -26,7 +26,7 @@ local CFG = {
     announceTimeout     = 6,
     apiSessionTimeout   = 10,
     discordUrl          = "https://discord.gg/KJHk8c2Q65",
-    notifLibUrl         = "https://pastefy.app/vVYdYcbO/raw",
+    notifLibUrl         = "https://pastefy.app/cuC5jl01/raw",
     -- DJB2 hex hash of the current notiflib source, uppercase. Leave "" to
     -- run unpinned (old behaviour). Get the real value by running once with
     -- it blank — the loader will warn()-print the computed hash — then paste
@@ -329,17 +329,24 @@ local function _stripDeco(msg)
     return (msg:match("^%s*(.-)%s*$"))
 end
 
-local function _div()  end
-local function _sep()  end
-local function _bRow(msg)  end
-local function _bTop()     end
-local function _bBot()     end
-local function _bMid()     end
+local function _div()  print(_TAG .. string.rep("─", 40)) end
+local function _sep()  print(_TAG .. string.rep("-", 40)) end
+local function _bRow(msg)  print(_TAG .. _stripDeco(msg)) end
+local function _bTop()     print(_TAG .. "┌" .. string.rep("─", 38) .. "┐") end
+local function _bBot()     print(_TAG .. "└" .. string.rep("─", 38) .. "┘") end
+local function _bMid()     print(_TAG .. "├" .. string.rep("─", 38) .. "┤") end
 
 local function _banner(msg)
+    print(_TAG .. _stripDeco(msg))
 end
 
 local function log(msg, t)
+    local m = _stripDeco(msg)
+    if t == "error" then
+        warn(_TAG .. m)
+    else
+        print(_TAG .. m)
+    end
 end
 local function try(fn, def) local ok, v = pcall(fn); return ok and v or def end
 
@@ -675,7 +682,7 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
             Padding = UDim.new(0, 10),
         }, headerFrame)
 
-        mk("TextLabel", {
+        local headerIcon = mk("TextLabel", {
             Size = UDim2.new(0, 30, 0, 30),
             BackgroundColor3 = Color3.fromRGB(45, 20, 25),
             Text = "⚠",
@@ -684,7 +691,7 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
             Font = Enum.Font.GothamBold,
             LayoutOrder = 1,
         }, headerFrame)
-        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, headerFrame:GetChildren()[1])
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, headerIcon)
 
         local titleBox = mk("Frame", {
             Size = UDim2.new(1, -40, 1, 0),
@@ -1086,7 +1093,8 @@ end
 local function _parseResult(raw)
     local ok, r = pcall(HS.JSONDecode, HS, raw)
     if not ok or type(r) ~= "table" then return nil end
-    if r.success == nil or r.data == nil or r.message == nil then return nil end
+    if r.success == nil or r.message == nil then return nil end
+    if r.data == nil then r.data = {} end
     return r
 end
 
