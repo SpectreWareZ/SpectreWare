@@ -35,7 +35,7 @@ local CLIENT_HEADERS = { ["X-Client-Key"] = CFG.clientKey }
 -- gateway.lua ยิง getgenv()._SW_PLACE_MAP = { [placeId] = scriptUrl, ... } ให้ก่อนรันไฟล์นี้
 -- ถ้าเจอ placeId ใน map นี้ จะใช้ค่านี้แทนการยิง /api/script/:placeId ไปที่ backend
 local function _lookupPlaceScript(placeId)
-    local ok, map = _r_pcall(getgenv)
+    local ok, map = pcall(getgenv)
     if not ok or type(map) ~= "table" then return nil end
     local m = map._SW_PLACE_MAP
     if type(m) ~= "table" then return nil end
