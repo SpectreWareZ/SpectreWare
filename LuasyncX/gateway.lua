@@ -15,22 +15,12 @@ local PLACE_MAP = {
 
 local CFG = {
     whitelistUrl = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/LuasyncX/whitelist.lua",
-    -- DJB2 hex hash of whitelist.lua, uppercase. Leave "" to run unpinned.
-    -- Run once with it blank, copy the printed hash here to lock the
-    -- gateway to only that exact whitelist.lua build.
-    whitelistHash = "4C7345B8",
     maxRetries    = 3,
     retryBackoff  = 1,
     timeout       = 8,
 }
 
-local _r_pcall, _r_byte, _r_format = pcall, string.byte, string.format
-
-local function _djb2(s)
-    local h = 5381
-    for i = 1, #s do h = ((h * 33) + _r_byte(s, i)) % 0x100000000 end
-    return _r_format("%08X", h)
-end
+local _r_pcall = pcall
 
 -- ── Multi-executor HTTP layer (mirrors whitelist.lua's httpSend) ────────────
 local _httpFns = {
@@ -136,18 +126,6 @@ end
 if not ok or not src or #src < 32 then
     warn("[ SpectreWare Gateway ]: Failed to fetch whitelist.lua after " .. CFG.maxRetries .. " attempts.")
     return
-end
-
--- ── Integrity pin (optional) ─────────────────────────────────────────────────
-if CFG.whitelistHash ~= "" then
-    local got = _djb2(src)
-    if got ~= CFG.whitelistHash:upper() then
-        warn("[ SpectreWare Gateway ]: whitelist.lua hash mismatch — refusing to run " ..
-             "untrusted code (expected " .. CFG.whitelistHash:upper() .. ", got " .. got .. ")")
-        return
-    end
-else
-    warn("[ SpectreWare Gateway ]: whitelist.lua running UNPINNED — set CFG.whitelistHash to " .. _djb2(src))
 end
 
 -- ── Compile & run ─────────────────────────────────────────────────────────────
