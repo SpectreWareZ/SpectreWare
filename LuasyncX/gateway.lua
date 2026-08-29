@@ -9,7 +9,7 @@
 -- whitelist.lua จะเช็ค map นี้ก่อนยิงไป backend เสมอ ถ้าเจอ placeId ใน map
 -- จะใช้ scriptUrl นี้เลย (ไม่ต้องพึ่ง /api/script/:placeId จาก backend)
 local PLACE_MAP = {
-     ["77908479907662"] = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Games/NeverTown.lua",
+     ["77908479907662"] = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/Never",
      ["17766863403"] = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/Beady",
 }
 
@@ -110,6 +110,21 @@ local function safeGetTimeout(url, timeout)
     while not done and ticks < max do task.wait(0.05); ticks = ticks + 1 end
     if not done then pcall(task.cancel, co) end
     return done and ok or false, done and body or nil
+end
+
+-- ── Double-execute guard (gateway-level, before any fetch) ──────────────────
+-- Prevents wasting an HTTP round-trip when the gateway itself gets invoked
+-- twice in quick succession (autoexec + manual run, double-bound hotkey,
+-- UI button without debounce, etc). This is separate from whitelist.lua's
+-- own guard, which only catches it *after* the fetch+decrypt already ran.
+do
+    local gev = getgenv()
+    if gev._SW_GW_RUNNING and (os.time() - (gev._SW_GW_STIME or 0)) < 10 then
+        warn("[ SpectreWare Gateway ]: already running — skipping duplicate invocation")
+        return
+    end
+    gev._SW_GW_RUNNING = true
+    gev._SW_GW_STIME = os.time()
 end
 
 -- ── Fetch whitelist.lua ──────────────────────────────────────────────────────
