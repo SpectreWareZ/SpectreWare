@@ -1533,9 +1533,51 @@ function Library:CreateWindow(config)
     TabContainer.Parent = MainContent
     corner(TabContainer, 12)
 
+    -- ============ ช่องค้นหาแท็บ (sticky อยู่บนสุดของ Sidebar) ============
+    local TabSearchWrap = Instance.new("Frame")
+    TabSearchWrap.Size = UDim2.new(1, -12, 0, 28)
+    TabSearchWrap.Position = UDim2.new(0, 6, 0, 6)
+    applyThemeColor(TabSearchWrap, "Background")
+    TabSearchWrap.BackgroundTransparency = 0.15
+    TabSearchWrap.Parent = TabContainer
+    corner(TabSearchWrap, 8)
+    local tabSearchStroke = stroke(TabSearchWrap)
+    tabSearchStroke.Thickness = 1
+    tabSearchStroke.Transparency = 0.75
+
+    local TabSearchIcon = Instance.new("ImageLabel")
+    TabSearchIcon.Size = UDim2.new(0, 11, 0, 11)
+    TabSearchIcon.Position = UDim2.new(0, 8, 0.5, -5.5)
+    TabSearchIcon.BackgroundTransparency = 1
+    TabSearchIcon.Image = Library.Icons.search
+    applyThemeColor(TabSearchIcon, "SubText", "ImageColor3")
+    TabSearchIcon.ScaleType = Enum.ScaleType.Fit
+    TabSearchIcon.Parent = TabSearchWrap
+
+    local TabSearchBox = Instance.new("TextBox")
+    TabSearchBox.Position = UDim2.new(0, 24, 0, 0)
+    TabSearchBox.Size = UDim2.new(1, -30, 1, 0)
+    TabSearchBox.BackgroundTransparency = 1
+    TabSearchBox.Text = ""
+    TabSearchBox.PlaceholderText = "ค้นหา"
+    applyThemeColor(TabSearchBox, "Text", "TextColor3")
+    applyThemeColor(TabSearchBox, "SubText", "PlaceholderColor3")
+    TabSearchBox.Font = Enum.Font.GothamSemibold
+    TabSearchBox.TextSize = 11.5
+    TabSearchBox.ClearTextOnFocus = false
+    TabSearchBox.TextXAlignment = Enum.TextXAlignment.Left
+    TabSearchBox.Parent = TabSearchWrap
+
+    TabSearchBox.Focused:Connect(function()
+        TweenService:Create(tabSearchStroke, TI.d012_Sine_Out, {Transparency = 0.15}):Play()
+    end)
+    TabSearchBox.FocusLost:Connect(function()
+        TweenService:Create(tabSearchStroke, TI.d012_Sine_Out, {Transparency = 0.75}):Play()
+    end)
+
     local TabList = Instance.new("ScrollingFrame")
-    TabList.Size = UDim2.new(1, -12, 1, -12)
-    TabList.Position = UDim2.new(0, 6, 0, 6)
+    TabList.Size = UDim2.new(1, -12, 1, -46)
+    TabList.Position = UDim2.new(0, 6, 0, 40)
     TabList.BackgroundTransparency = 1
     TabList.ScrollBarThickness = 2
     applyThemeColor(TabList, "AccentA", "ScrollBarImageColor3")
@@ -1547,6 +1589,32 @@ function Library:CreateWindow(config)
     TabLayout.Padding = UDim.new(0, 4)
     TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
     TabLayout.Parent = TabList
+
+    -- registry ของแท็บทั้งหมด (ใช้กรองตอนค้นหา) + label "ไม่พบแท็บ"
+    local allTabs = {}
+    local TabEmptyLbl = Instance.new("TextLabel")
+    TabEmptyLbl.Size = UDim2.new(1, 0, 0, 30)
+    TabEmptyLbl.BackgroundTransparency = 1
+    TabEmptyLbl.Text = "ไม่พบแท็บ"
+    applyThemeColor(TabEmptyLbl, "SubText", "TextColor3")
+    TabEmptyLbl.Font = Enum.Font.GothamSemibold
+    TabEmptyLbl.TextSize = 12
+    TabEmptyLbl.Visible = false
+    TabEmptyLbl.Parent = TabList
+
+    local function applyTabFilter(query)
+        query = (query or ""):lower()
+        local visibleCount = 0
+        for _, entry in ipairs(allTabs) do
+            local match = query == "" or string.find(entry.name:lower(), query, 1, true) ~= nil
+            entry.btn.Visible = match
+            if match then visibleCount += 1 end
+        end
+        TabEmptyLbl.Visible = visibleCount == 0
+    end
+    TabSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+        applyTabFilter(TabSearchBox.Text)
+    end)
 
     local ContentArea = Instance.new("Frame")
     ContentArea.Size = UDim2.new(1, -118, 1, -topBarH)
@@ -2088,6 +2156,11 @@ function Library:CreateWindow(config)
         ActiveBar.Parent = TabBtn
         corner(ActiveBar, 2)
         accentGradient(ActiveBar, 90)
+
+        table.insert(allTabs, {btn = TabBtn, name = name})
+        if TabSearchBox and TabSearchBox.Text ~= "" then
+            TabBtn.Visible = string.find(name:lower(), TabSearchBox.Text:lower(), 1, true) ~= nil
+        end
 
         TabBtn.MouseEnter:Connect(function()
             if CurrentTab and CurrentTab.Btn == TabBtn then return end
