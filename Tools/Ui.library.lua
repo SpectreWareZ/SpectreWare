@@ -515,6 +515,7 @@ function Library:CreateWindow(config)
     ScreenGui.Name = "ProMobileUI"
     ScreenGui.ResetOnSpawn = false
     ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    ScreenGui.IgnoreGuiInset = true   -- ใช้จอจริงเต็มจอ ไม่ใช่พื้นที่ safe-area ที่ Roblox เว้นให้ topbar (กัน clamp ลากคำนวณผิดขนาด)
     local UiParent = getUiParent()
     ScreenGui.Parent = UiParent
 
