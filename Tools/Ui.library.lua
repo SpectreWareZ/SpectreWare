@@ -29,90 +29,16 @@ function Library:SetFlag(name, value)
 end
 
 -- ============ ICONS SETUP ============
--- ระบบไอคอนแบบ ImageLabel (Asset ID มาตรฐาน)
--- Asset id ทั้งหมดอ้างอิงจาก Lucide icon pack บน Roblox (ตัวเดียวกับที่ Fluent UI ใช้จริง)
--- ตรวจสอบชื่อ<->id ตรงกันแล้วทีละตัว ไม่มีการใช้ id ซ้ำข้ามชื่อเหมือนไฟล์เดิม
-Library.Icons = {
-    -- Navigation
-    home = "rbxassetid://10723407389",
-    list = "rbxassetid://10723433811",
-    chevronDown = "rbxassetid://10709790948",
-    chevronUp = "rbxassetid://10709791523",
-    chevronLeft = "rbxassetid://10709791281",
-    chevronRight = "rbxassetid://10709791437",
-    
-    -- Settings & System
-    settings = "rbxassetid://10734950309",
-    sliders = "rbxassetid://10734963400",
-    toggle = "rbxassetid://10734985040",
-    toggleOff = "rbxassetid://10734984834",
-    lock = "rbxassetid://10723434711",
-    unlock = "rbxassetid://10747366027",
-    power = "rbxassetid://10734930466",
-    logout = "rbxassetid://10723434906",
-    shield = "rbxassetid://10734951847",
-    
-    -- Actions
-    play = "rbxassetid://10734923549",
-    pause = "rbxassetid://10734919336",
-    refresh = "rbxassetid://10734933222",
-    search = "rbxassetid://10734943674",
-    edit = "rbxassetid://10734883598",
-    copy = "rbxassetid://10709812159",
-    trash = "rbxassetid://10747362393",
-    plus = "rbxassetid://10734924532",
-    minus = "rbxassetid://10734896206",
-    check = "rbxassetid://10709790644",
-    close = "rbxassetid://10747384394",
-    
-    -- Content
-    script = "rbxassetid://10723356507",
-    code = "rbxassetid://10709810463",
-    file = "rbxassetid://10723374641",
-    folder = "rbxassetid://10723387563",
-    image = "rbxassetid://10723415040",
-    eye = "rbxassetid://10723346959",
-    eyeOff = "rbxassetid://10723346871",
-    
-    -- People & Social
-    user = "rbxassetid://10747373176",
-    users = "rbxassetid://10747373426",
-    heart = "rbxassetid://10723406885",
-    star = "rbxassetid://10734966248",
-    bell = "rbxassetid://10709775704",
-    mail = "rbxassetid://10734885430",
-    message = "rbxassetid://10734888000",
-    
-    -- Time & Status
-    clock = "rbxassetid://10709805144",
-    calendar = "rbxassetid://10709789505",
-    info = "rbxassetid://10723415903",
-    warning = "rbxassetid://10709753149",
-    error = "rbxassetid://10709753064",
-    
-    -- Game & Items
-    sword = "rbxassetid://10734975486",
-    target = "rbxassetid://10734977012",
-    crosshair = "rbxassetid://10709818534",
-    flag = "rbxassetid://10723375890",
-    trophy = "rbxassetid://10747363809",
-    crown = "rbxassetid://10709818626",
-    gem = "rbxassetid://10723396000",
-    coin = "rbxassetid://10709811110",
-    key = "rbxassetid://10723416652",
-    gift = "rbxassetid://10723396402",
-    
-    -- Environment
-    globe = "rbxassetid://10723404337",
-    cloud = "rbxassetid://10709806740",
-    wifi = "rbxassetid://10747382504",
-    sun = "rbxassetid://10734974297",
-    moon = "rbxassetid://10734897102",
-    fire = "rbxassetid://10723376114",
-    water = "rbxassetid://10723344432",
-    leaf = "rbxassetid://10723425539",
-    wind = "rbxassetid://10747382750",
-}
+-- แยกออกเป็นไฟล์ Icons.lua ต่างหากแล้ว โหลดผ่าน loadstring เหมือนไฟล์อื่นๆ ที่ host บน GitHub raw
+-- แก้ URL ตรงนี้ให้ตรงกับ path จริงของ Icons.lua ในเรโปก่อนใช้งาน
+local ICONS_URL = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Tools/Icons.lua"
+local iconsOk, iconsResult = pcall(function()
+    return loadstring(game:HttpGet(ICONS_URL, true))()
+end)
+Library.Icons = iconsOk and iconsResult or {}
+if not iconsOk then
+    warn("[SpectreUI] โหลด Icons.lua ไม่สำเร็จ ไอคอนจะไม่ขึ้น: " .. tostring(iconsResult))
+end
 
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
@@ -1114,6 +1040,113 @@ function Library:CreateWindow(config)
         LetterLabel.Parent = RestoreBtn
     end
 
+    -- ============ FPS Badge (ติดข้างปุ่มเปิด UI) ============
+    local FpsPill = Instance.new("Frame")
+    FpsPill.Name = "FpsPill"
+    FpsPill.Size = UDim2.new(0, 66, 0, 26)
+    applyThemeColor(FpsPill, "Element")
+    FpsPill.BackgroundTransparency = 0.05
+    FpsPill.BorderSizePixel = 0
+    FpsPill.ZIndex = 20
+    FpsPill.Visible = false
+    FpsPill.Parent = RestoreGui
+    corner(FpsPill, 13)
+    stroke(FpsPill)
+
+    local FpsPillScale = Instance.new("UIScale")
+    FpsPillScale.Scale = 1
+    FpsPillScale.Parent = FpsPill
+
+    local FpsPadding = Instance.new("UIPadding")
+    FpsPadding.PaddingLeft = UDim.new(0, 10)
+    FpsPadding.PaddingRight = UDim.new(0, 10)
+    FpsPadding.Parent = FpsPill
+
+    local FpsListLayout = Instance.new("UIListLayout")
+    FpsListLayout.FillDirection = Enum.FillDirection.Horizontal
+    FpsListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    FpsListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    FpsListLayout.Padding = UDim.new(0, 6)
+    FpsListLayout.Parent = FpsPill
+
+    local FpsDotWrap = Instance.new("Frame")
+    FpsDotWrap.Name = "FpsDotWrap"
+    FpsDotWrap.Size = UDim2.new(0, 8, 0, 8)
+    FpsDotWrap.BackgroundTransparency = 1
+    FpsDotWrap.LayoutOrder = 1
+    FpsDotWrap.Parent = FpsPill
+
+    local FpsDot = Instance.new("Frame")
+    FpsDot.Name = "FpsDot"
+    FpsDot.Size = UDim2.new(1, 0, 1, 0)
+    FpsDot.BackgroundColor3 = Theme.Success
+    FpsDot.BorderSizePixel = 0
+    FpsDot.Parent = FpsDotWrap
+    corner(FpsDot, 4)
+
+    -- glow เล็กๆ รอบจุดสี ให้ดูมีชีวิตขึ้นนิดหน่อย
+    local FpsDotGlow = Instance.new("UIStroke")
+    FpsDotGlow.Color = Theme.Success
+    FpsDotGlow.Thickness = 3
+    FpsDotGlow.Transparency = 0.6
+    FpsDotGlow.Parent = FpsDot
+
+    local FpsLabel = Instance.new("TextLabel")
+    FpsLabel.Name = "FpsLabel"
+    FpsLabel.BackgroundTransparency = 1
+    FpsLabel.AutomaticSize = Enum.AutomaticSize.X
+    FpsLabel.Size = UDim2.new(0, 0, 1, 0)
+    FpsLabel.Font = Enum.Font.GothamBold
+    FpsLabel.TextSize = 13
+    FpsLabel.Text = "60 FPS"
+    applyThemeColor(FpsLabel, "Text", "TextColor3")
+    FpsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    FpsLabel.LayoutOrder = 2
+    FpsLabel.Parent = FpsPill
+
+    -- เกาะติดขวาปุ่มเปิด UI เสมอ แม้จะลากปุ่มไปวางที่อื่น
+    local function repositionFpsPill()
+        FpsPill.Position = UDim2.new(
+            0, RestoreBtn.Position.X.Offset + RestoreBtn.Size.X.Offset + 10,
+            0, RestoreBtn.Position.Y.Offset + (RestoreBtn.Size.Y.Offset - FpsPill.Size.Y.Offset) / 2
+        )
+    end
+    RestoreBtn:GetPropertyChangedSignal("Position"):Connect(repositionFpsPill)
+    repositionFpsPill()
+
+    -- sample fps แบบ smoothed (ค่าเฉลี่ยเคลื่อนที่) ทุกๆ ~0.4 วิ กันตัวเลขกระตุก
+    do
+        local fpsFrames, fpsAccum, fpsSmoothed = 0, 0, 60
+        local fpsConn
+        fpsConn = RunService.RenderStepped:Connect(function(dt)
+            if dt <= 0 then return end
+            fpsFrames += 1
+            fpsAccum += dt
+            if fpsAccum >= 0.4 then
+                local currentFps = fpsFrames / fpsAccum
+                fpsSmoothed = fpsSmoothed * 0.55 + currentFps * 0.45
+                fpsFrames, fpsAccum = 0, 0
+                if FpsPill.Visible then
+                    local rounded = math.floor(fpsSmoothed + 0.5)
+                    FpsLabel.Text = rounded .. " FPS"
+                    local dotColor, glowColor
+                    if rounded >= 50 then
+                        dotColor, glowColor = Theme.Success, Theme.Success
+                    elseif rounded >= 30 then
+                        dotColor, glowColor = Theme.Warning, Theme.Warning
+                    else
+                        dotColor, glowColor = Theme.Danger, Theme.Danger
+                    end
+                    FpsDot.BackgroundColor3 = dotColor
+                    FpsDotGlow.Color = glowColor
+                end
+            end
+        end)
+        Window:BindToClose(function()
+            if fpsConn then fpsConn:Disconnect() end
+        end)
+    end
+
     local baseShadowPos = Shadow.Position
     local hiddenShadowPos = baseShadowPos + UDim2.new(0, 0, 0, 14)
     local hideToken = 0
@@ -1123,6 +1156,7 @@ function Library:CreateWindow(config)
         if visible then
             ScreenGui.Enabled = true
             RestoreBtn.Visible = false
+            FpsPill.Visible = false
             WindowScale.Scale = 0.94
             Shadow.Position = hiddenShadowPos
             MainFrame.BackgroundTransparency = 1
@@ -1149,6 +1183,9 @@ function Library:CreateWindow(config)
                 RestoreBtn.Visible = true
                 RestoreBtnScale.Scale = 0.5
                 TweenService:Create(RestoreBtnScale, TI.d022_Back_Out, {Scale = 1}):Play()
+                FpsPill.Visible = true
+                FpsPillScale.Scale = 0.5
+                TweenService:Create(FpsPillScale, TI.d022_Back_Out, {Scale = 1}):Play()
             end)
         end
     end
