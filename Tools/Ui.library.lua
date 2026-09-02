@@ -1498,6 +1498,15 @@ function Library:CreateWindow(config)
         local rDragging, rDragStart, rStartPos, rTouch, rMoved = false, nil, nil, nil, false
         local rChangedConn, rEndedConn = nil, nil
 
+        -- กันปุ่ม S ลากหลุดจอ (RestoreBtn มี AnchorPoint 0,0 ค่า Offset คือมุมบนซ้าย)
+        local function clampRestorePos(pos)
+            local screenSize = RestoreGui.AbsoluteSize
+            local w, h = RestoreBtn.AbsoluteSize.X, RestoreBtn.AbsoluteSize.Y
+            local x = math.clamp(pos.X.Offset, 0, math.max(0, screenSize.X - w))
+            local y = math.clamp(pos.Y.Offset, 0, math.max(0, screenSize.Y - h))
+            return UDim2.new(0, x, 0, y)
+        end
+
         local function stopRestoreDrag(input)
             if rDragging and not rMoved then
                 setUiVisible(true)
@@ -1521,7 +1530,7 @@ function Library:CreateWindow(config)
                         if input2.UserInputType == Enum.UserInputType.MouseMovement or input2 == rTouch then
                             local delta = input2.Position - rDragStart
                             if delta.Magnitude > 4 then rMoved = true end
-                            RestoreBtn.Position = UDim2.new(rStartPos.X.Scale, rStartPos.X.Offset + delta.X, rStartPos.Y.Scale, rStartPos.Y.Offset + delta.Y)
+                            RestoreBtn.Position = clampRestorePos(UDim2.new(rStartPos.X.Scale, rStartPos.X.Offset + delta.X, rStartPos.Y.Scale, rStartPos.Y.Offset + delta.Y))
                         end
                     end
                 end)
@@ -4027,11 +4036,29 @@ function Library:CreateWindow(config)
     local dragging, dragStart, startPos, activeTouch = false, nil, nil, nil
     local dragChangedConn, dragEndedConn = nil, nil
 
+    -- กันหน้าต่างลากหลุดจอ (มือถือ/PC ใช้ path เดียวกันนี้ทั้งคู่ผ่าน InputChanged ด้านล่าง)
+    -- Shadow มี AnchorPoint 0.5,0.5 ดังนั้น Position ของมันคือ "จุดกึ่งกลาง" ของหน้าต่าง
+    -- เราแปลง Scale+Offset ให้เป็นพิกัดจริงบนจอ แล้ว clamp กึ่งกลางให้อยู่ในช่วงที่ครึ่งนึงของขนาดหน้าต่างยังอยู่ในจอเสมอ
+    local function clampWindowCenter(pos)
+        local screenSize = ScreenGui.AbsoluteSize
+        local halfW = MainFrame.AbsoluteSize.X / 2
+        local halfH = MainFrame.AbsoluteSize.Y / 2
+        local centerX = pos.X.Scale * screenSize.X + pos.X.Offset
+        local centerY = pos.Y.Scale * screenSize.Y + pos.Y.Offset
+        if screenSize.X > 0 then
+            centerX = math.clamp(centerX, halfW, math.max(halfW, screenSize.X - halfW))
+        end
+        if screenSize.Y > 0 then
+            centerY = math.clamp(centerY, halfH, math.max(halfH, screenSize.Y - halfH))
+        end
+        return UDim2.new(0, centerX, 0, centerY)
+    end
+
     -- Render-synced so a fast flick (which can fire many InputChanged events per
     -- rendered frame) only ever applies its latest position once per frame,
     -- instead of writing Shadow.Position (and re-triggering layout) on every event.
     local dragPush, dragRSStart, dragRSStop = createRenderSyncedDrag(function(newPos)
-        Shadow.Position = newPos
+        Shadow.Position = clampWindowCenter(newPos)
     end)
 
     local function stopWindowDrag(input)
@@ -4077,6 +4104,7 @@ function Library:CreateWindow(config)
     -- avoids re-running that layout pass multiple times per frame while resizing.
     local resizePush, resizeRSStart, resizeRSStop = createRenderSyncedDrag(function(newSize)
         MainFrame.Size = newSize
+        Shadow.Position = clampWindowCenter(Shadow.Position)  -- โต ณ ใกล้ขอบจอ ก็ไม่ทะลุจอ
     end)
 
     local function stopResize(input)
