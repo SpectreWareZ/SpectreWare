@@ -11,7 +11,7 @@ Library.__index = Library
 Library.Flags = {}
 Library.Themes = {}
 Library.CurrentTheme = "Midnight"
-Library.Version = "6.5.0"
+Library.Version = "6.6.0"
 
 -- ============ FLAG SYSTEM (ต่อขยาย: registry + event สำหรับ Config save/load และ dependency) ============
 Library.FlagElements = {}                    -- ชื่อ Flag -> element object (ใช้ตอน LoadConfig เพื่อ Set ค่ากลับเข้า UI จริง)
@@ -872,6 +872,145 @@ function Library:CreateWindow(config)
 
         CloseX.MouseButton1Click:Connect(dismiss)
         task.delay(duration, dismiss)
+    end
+
+    -- ============ Library:Confirm — โมดัลยืนยัน (Yes/No) พร้อม backdrop เบลอ/มืดลง ============
+    function Library:Confirm(opts)
+        opts = type(opts) == "table" and opts or {}
+        local ConfirmGui = Instance.new("ScreenGui")
+        ConfirmGui.Name = "ConfirmGui"
+        ConfirmGui.ResetOnSpawn = false
+        ConfirmGui.IgnoreGuiInset = true
+        ConfirmGui.DisplayOrder = 999
+        ConfirmGui.Parent = UiParent
+
+        local Backdrop = Instance.new("Frame")
+        Backdrop.Size = UDim2.new(1, 0, 1, 0)
+        Backdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        Backdrop.BackgroundTransparency = 1
+        Backdrop.Active = true
+        Backdrop.ZIndex = 1
+        Backdrop.Parent = ConfirmGui
+
+        local Dialog = Instance.new("Frame")
+        Dialog.AnchorPoint = Vector2.new(0.5, 0.5)
+        Dialog.Position = UDim2.new(0.5, 0, 0.5, 0)
+        Dialog.Size = UDim2.new(0, 320, 0, 168)
+        applyThemeColor(Dialog, "Background")
+        Dialog.BackgroundTransparency = 1
+        Dialog.Active = true
+        Dialog.ZIndex = 2
+        Dialog.Parent = ConfirmGui
+        corner(Dialog, 14)
+        local dStroke = stroke(Dialog, "Stroke", 1)
+        dStroke.Transparency = 1
+        local dScale = Instance.new("UIScale")
+        dScale.Scale = 0.8
+        dScale.Parent = Dialog
+
+        local TitleLbl = Instance.new("TextLabel")
+        TitleLbl.Size = UDim2.new(1, -32, 0, 24)
+        TitleLbl.Position = UDim2.new(0, 16, 0, 16)
+        TitleLbl.BackgroundTransparency = 1
+        TitleLbl.Text = opts.Title or "ยืนยันการทำงาน"
+        applyThemeColor(TitleLbl, "Text", "TextColor3")
+        TitleLbl.Font = Enum.Font.GothamBold
+        TitleLbl.TextSize = 16
+        TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+        TitleLbl.TextTransparency = 1
+        TitleLbl.ZIndex = 2
+        TitleLbl.Parent = Dialog
+
+        local ContentLbl = Instance.new("TextLabel")
+        ContentLbl.Size = UDim2.new(1, -32, 0, 62)
+        ContentLbl.Position = UDim2.new(0, 16, 0, 44)
+        ContentLbl.BackgroundTransparency = 1
+        ContentLbl.Text = opts.Content or ""
+        applyThemeColor(ContentLbl, "SubText", "TextColor3")
+        ContentLbl.Font = Enum.Font.Gotham
+        ContentLbl.TextSize = 13
+        ContentLbl.TextWrapped = true
+        ContentLbl.TextXAlignment = Enum.TextXAlignment.Left
+        ContentLbl.TextYAlignment = Enum.TextYAlignment.Top
+        ContentLbl.TextTransparency = 1
+        ContentLbl.ZIndex = 2
+        ContentLbl.Parent = Dialog
+
+        local BtnRow = Instance.new("Frame")
+        BtnRow.Size = UDim2.new(1, -32, 0, 36)
+        BtnRow.Position = UDim2.new(0, 16, 1, -52)
+        BtnRow.BackgroundTransparency = 1
+        BtnRow.ZIndex = 2
+        BtnRow.Parent = Dialog
+        local RowLayout = Instance.new("UIListLayout")
+        RowLayout.FillDirection = Enum.FillDirection.Horizontal
+        RowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+        RowLayout.Padding = UDim.new(0, 8)
+        RowLayout.Parent = BtnRow
+
+        local CancelBtn = Instance.new("TextButton")
+        CancelBtn.Size = UDim2.new(0, 92, 1, 0)
+        applyThemeColor(CancelBtn, "Element")
+        CancelBtn.AutoButtonColor = false
+        CancelBtn.Text = opts.CancelText or "ยกเลิก"
+        applyThemeColor(CancelBtn, "SubText", "TextColor3")
+        CancelBtn.Font = Enum.Font.GothamSemibold
+        CancelBtn.TextSize = 13
+        CancelBtn.ZIndex = 2
+        CancelBtn.Parent = BtnRow
+        corner(CancelBtn, 8)
+        applyHoverEffect(CancelBtn, "Element", "ElementHover")
+        applyPressAnimation(CancelBtn, 0.94)
+        ripple(CancelBtn, "Stroke")
+
+        local ConfirmBtn = Instance.new("TextButton")
+        ConfirmBtn.Size = UDim2.new(0, 92, 1, 0)
+        applyThemeColor(ConfirmBtn, opts.Danger and "Danger" or "AccentA")
+        ConfirmBtn.AutoButtonColor = false
+        ConfirmBtn.Text = opts.ConfirmText or "ยืนยัน"
+        ConfirmBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        ConfirmBtn.Font = Enum.Font.GothamBold
+        ConfirmBtn.TextSize = 13
+        ConfirmBtn.ZIndex = 2
+        ConfirmBtn.Parent = BtnRow
+        corner(ConfirmBtn, 8)
+        applyPressAnimation(ConfirmBtn, 0.94)
+
+        local closed = false
+        local function close(result)
+            if closed then return end
+            closed = true
+            TweenService:Create(Backdrop, TI.d018_Sine_Out, {BackgroundTransparency = 1}):Play()
+            TweenService:Create(dScale, TI.d018_Quint_In, {Scale = 0.85}):Play()
+            TweenService:Create(Dialog, TI.d018_Quint_In, {BackgroundTransparency = 1}):Play()
+            TweenService:Create(dStroke, TI.d018_Quint_In, {Transparency = 1}):Play()
+            TweenService:Create(TitleLbl, TI.d014_Sine_Out, {TextTransparency = 1}):Play()
+            TweenService:Create(ContentLbl, TI.d014_Sine_Out, {TextTransparency = 1}):Play()
+            task.delay(0.2, function() if ConfirmGui then ConfirmGui:Destroy() end end)
+            if result then
+                if opts.OnConfirm then safeCallback(opts.OnConfirm) end
+            else
+                if opts.OnCancel then safeCallback(opts.OnCancel) end
+            end
+        end
+
+        Backdrop.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                close(false)
+            end
+        end)
+        CancelBtn.MouseButton1Click:Connect(function() close(false) end)
+        ConfirmBtn.MouseButton1Click:Connect(function() close(true) end)
+
+        -- ลำดับแอนิเมชันเข้า: backdrop มืดลง + กล่องเด้งเข้าแบบสปริง
+        TweenService:Create(Backdrop, TI.d022_Sine_Out, {BackgroundTransparency = 0.45}):Play()
+        TweenService:Create(dScale, TI.d045_Back_Out, {Scale = 1}):Play()
+        TweenService:Create(Dialog, TI.d024_Quint_Out, {BackgroundTransparency = 0}):Play()
+        TweenService:Create(dStroke, TI.d024_Quint_Out, {Transparency = 0.5}):Play()
+        TweenService:Create(TitleLbl, TI.d022_Sine_Out, {TextTransparency = 0}):Play()
+        TweenService:Create(ContentLbl, TI.d022_Sine_Out, {TextTransparency = 0}):Play()
+
+        return {Close = function() close(false) end}
     end
 
     -- ============ Main window ============
@@ -1981,6 +2120,162 @@ function Library:CreateWindow(config)
             Label.TextXAlignment = Enum.TextXAlignment.Left
             Label.Parent = Frame
             return newElement(Frame, function() return Label.Text end, function(_, newText) Label.Text = newText end)
+        end
+
+        -- ============ Accordion: หัวข้อกดขยาย/ย่อ พร้อมลูกศรหมุนและความสูงเด้งสปริง ============
+        function Tab:CreateAccordion(c)
+            c = type(c) == "table" and c or {}
+            local expanded = c.Expanded or false
+
+            local Holder = Instance.new("Frame")
+            Holder.Size = UDim2.new(1, 0, 0, 40)
+            applyThemeColor(Holder, "Element")
+            Holder.ClipsDescendants = true
+            Holder.Parent = TabContent
+            corner(Holder, 9)
+            applyGlowOnHover(Holder)
+
+            local Header = Instance.new("TextButton")
+            Header.Size = UDim2.new(1, 0, 0, 40)
+            Header.BackgroundTransparency = 1
+            Header.AutoButtonColor = false
+            Header.Text = ""
+            Header.Parent = Holder
+            ripple(Header, "AccentA")
+
+            local Arrow = Instance.new("ImageLabel")
+            Arrow.Size = UDim2.new(0, 14, 0, 14)
+            Arrow.Position = UDim2.new(1, -22, 0, 13)
+            Arrow.BackgroundTransparency = 1
+            Arrow.Image = "rbxassetid://6031091004"
+            applyThemeColor(Arrow, "SubText", "ImageColor3")
+            Arrow.Rotation = expanded and 180 or 0
+            Arrow.Parent = Header
+
+            local TitleLbl = Instance.new("TextLabel")
+            TitleLbl.Size = UDim2.new(1, -46, 0, 40)
+            TitleLbl.Position = UDim2.new(0, 12, 0, 0)
+            TitleLbl.BackgroundTransparency = 1
+            TitleLbl.Text = c.Title or "Accordion"
+            applyThemeColor(TitleLbl, "Text", "TextColor3")
+            TitleLbl.Font = Enum.Font.GothamSemibold
+            TitleLbl.TextSize = 14
+            TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+            TitleLbl.Parent = Header
+
+            local Body = Instance.new("TextLabel")
+            Body.Size = UDim2.new(1, -24, 0, 0)
+            Body.Position = UDim2.new(0, 12, 0, 40)
+            Body.BackgroundTransparency = 1
+            Body.Text = c.Content or ""
+            applyThemeColor(Body, "SubText", "TextColor3")
+            Body.Font = Enum.Font.Gotham
+            Body.TextSize = 13
+            Body.TextWrapped = true
+            Body.TextXAlignment = Enum.TextXAlignment.Left
+            Body.TextYAlignment = Enum.TextYAlignment.Top
+            Body.TextTransparency = 1
+            Body.Parent = Holder
+
+            local bodyHeight = 0
+            local function setExpanded(newExpanded, animate)
+                expanded = newExpanded
+                Body.Size = UDim2.new(1, -24, 0, bodyHeight)
+                local targetH = expanded and (48 + bodyHeight) or 40
+                local tw = animate ~= false and TI.d028_Back_Out_Wobble or TweenInfo.new(0)
+                TweenService:Create(Holder, tw, {Size = UDim2.new(1, 0, 0, targetH)}):Play()
+                TweenService:Create(Arrow, TI.d022_Sine_Out, {Rotation = expanded and 180 or 0}):Play()
+                TweenService:Create(Body, TI.d022_Sine_Out, {TextTransparency = expanded and 0 or 1}):Play()
+            end
+
+            task.defer(function()
+                bodyHeight = Body.TextBounds.Y + 6
+                setExpanded(expanded, false)
+            end)
+
+            Header.MouseButton1Click:Connect(function() setExpanded(not expanded, true) end)
+            return newElement(Holder, function() return expanded end, function(_, v) setExpanded(v, true) end)
+        end
+
+        -- ============ Segmented Control: ปุ่มเลือกตัวเลือกแบบแคปซูล มีแท่งไฮไลต์เลื่อนตามสปริง ============
+        function Tab:CreateSegmentedControl(c)
+            c = type(c) == "table" and c or {}
+            local options = c.Options or {"A", "B"}
+            local selected = math.clamp(c.Default or 1, 1, #options)
+            bindFlag(c.Flag, options[selected])
+
+            local Frame = Instance.new("Frame")
+            Frame.Size = UDim2.new(1, 0, 0, c.Text and 62 or 38)
+            applyThemeColor(Frame, "Element")
+            Frame.Parent = TabContent
+            corner(Frame, 9)
+
+            local yOffset = 0
+            if c.Text then
+                local Label = Instance.new("TextLabel")
+                Label.Size = UDim2.new(1, -24, 0, 18)
+                Label.Position = UDim2.new(0, 12, 0, 6)
+                Label.BackgroundTransparency = 1
+                Label.Text = c.Text
+                applyThemeColor(Label, "SubText", "TextColor3")
+                Label.Font = Enum.Font.GothamSemibold
+                Label.TextSize = 12
+                Label.TextXAlignment = Enum.TextXAlignment.Left
+                Label.Parent = Frame
+                yOffset = 24
+            end
+
+            local Track = Instance.new("Frame")
+            Track.Size = UDim2.new(1, -12, 0, 30)
+            Track.Position = UDim2.new(0, 6, 0, yOffset + 4)
+            applyThemeColor(Track, "Background")
+            Track.Parent = Frame
+            corner(Track, 8)
+
+            local Pill = Instance.new("Frame")
+            Pill.Size = UDim2.new(1 / #options, 0, 1, 0)
+            Pill.Position = UDim2.new((selected - 1) / #options, 0, 0, 0)
+            applyThemeColor(Pill, "AccentA")
+            Pill.ZIndex = 1
+            Pill.Parent = Track
+            corner(Pill, 7)
+            accentGradient(Pill, 0)
+
+            local buttons = {}
+            for i, optText in ipairs(options) do
+                local OptBtn = Instance.new("TextButton")
+                OptBtn.Size = UDim2.new(1 / #options, 0, 1, 0)
+                OptBtn.Position = UDim2.new((i - 1) / #options, 0, 0, 0)
+                OptBtn.BackgroundTransparency = 1
+                OptBtn.AutoButtonColor = false
+                OptBtn.Text = tostring(optText)
+                OptBtn.Font = Enum.Font.GothamSemibold
+                OptBtn.TextSize = 12
+                OptBtn.ZIndex = 2
+                applyThemeColor(OptBtn, i == selected and "Text" or "SubText", "TextColor3")
+                OptBtn.Parent = Track
+                buttons[i] = OptBtn
+            end
+
+            local function setSelected(i, fireCallback)
+                selected = i
+                bindFlag(c.Flag, options[i])
+                TweenService:Create(Pill, TI.d028_Back_Out_Wobble, {Position = UDim2.new((i - 1) / #options, 0, 0, 0)}):Play()
+                for idx, btn in ipairs(buttons) do
+                    TweenService:Create(btn, TI.d018_Sine_Out, {TextColor3 = idx == i and Theme.Text or Theme.SubText}):Play()
+                end
+                if fireCallback then safeCallback(c.Callback, options[i], i) end
+            end
+
+            for i, btn in ipairs(buttons) do
+                btn.MouseButton1Click:Connect(function() setSelected(i, true) end)
+            end
+
+            return newElement(Frame, function() return options[selected] end, function(_, v)
+                for i, o in ipairs(options) do
+                    if o == v then setSelected(i, true) break end
+                end
+            end, nil, c.Flag)
         end
 
         function Tab:CreateButton(c)
