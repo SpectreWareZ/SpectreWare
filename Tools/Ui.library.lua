@@ -585,7 +585,7 @@ function Library:CreateWindow(config)
         activeNotifyCount += 1
         local title = opts.Title or "Notice"
         local content = opts.Content or ""
-        local duration = opts.Duration or 3
+        local duration = math.max(opts.Duration or 3, 0.5)
         local ntype = opts.Type or "info"
         local COLOR_KEY = {success = "Success", error = "Danger", warning = "Warning", info = "Info"}
         local color = Theme[COLOR_KEY[ntype] or "Info"]
@@ -841,11 +841,20 @@ function Library:CreateWindow(config)
         IconScale.Parent = IconBadge
         IconBadge.Rotation = -20
 
-        -- คำนวณความสูงเป้าหมาย
+        -- รอให้ AutomaticSize คำนวณความสูงจริงให้นิ่งก่อน 1 เฟรม
+        -- (แก้ bug: การ์ดที่มีข้อความหลายบรรทัดสูงผิด/กระตุกตอนเด้งเข้า เพราะ AbsoluteSize ยังไม่อัปเดตทันทีที่ Parent)
+        RunService.Heartbeat:Wait()
+
+        -- คำนวณความสูงเป้าหมาย (อ้างอิงจากค่าที่นิ่งแล้ว)
         local targetHeight = Toast.AbsoluteSize.Y
+        Slot.Size = UDim2.new(1, 0, 0, 0)
         TweenService:Create(Slot, TI.d024_Quint_Out, {Size = UDim2.new(1, 0, 0, targetHeight)}):Play()
+
+        -- sync ความสูงแบบนุ่มนวลทุกครั้งที่เนื้อหาเปลี่ยน (กันการกระตุก/สะดุดของ Slot และ AccentBar)
         local heightSyncConn = Toast:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-            Slot.Size = UDim2.new(1, 0, 0, Toast.AbsoluteSize.Y)
+            local h = Toast.AbsoluteSize.Y
+            TweenService:Create(Slot, TI.d012_Sine_Out, {Size = UDim2.new(1, 0, 0, h)}):Play()
+            TweenService:Create(AccentBar, TI.d012_Sine_Out, {Size = UDim2.new(0, 4, 0, math.max(h - 32, 0))}):Play()
         end)
 
         -- ลำดับแอนิเมชันเข้า: สไลด์เข้า + เด้ง + แสดงผลทีละส่วน
@@ -868,7 +877,6 @@ function Library:CreateWindow(config)
 
         ProgressBar.BackgroundTransparency = 1
         TweenService:Create(ProgressBar, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.22), {BackgroundTransparency = 0}):Play()
-        TweenService:Create(ProgressBar, TweenInfo.new(duration, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 0, 1, 0)}):Play()
         TweenService:Create(ProgressTrack, TweenInfo.new(0.25, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.18), {BackgroundTransparency = 0.85}):Play()
 
         local dismissed = false
@@ -903,8 +911,38 @@ function Library:CreateWindow(config)
             end)
         end
 
+        -- ============ ตัวจับเวลาแบบ Pause ได้ ============
+        -- Hover ค้างไว้ = หยุดนับถอยหลังชั่วคราว กันการ์ดหายไปตอนอ่านไม่ทัน (เดิมใช้ task.delay ตายตัว หยุดไม่ได้ = bug UX)
+        local elapsed = 0
+        local isHovering = false
+        task.spawn(function()
+            while Toast and Toast.Parent and not dismissed do
+                local dt = task.wait()
+                if not isHovering and not dismissed then
+                    elapsed += dt
+                    local ratio = math.clamp(1 - (elapsed / duration), 0, 1)
+                    ProgressBar.Size = UDim2.new(ratio, 0, 1, 0)
+                    if elapsed >= duration then
+                        dismiss()
+                        break
+                    end
+                end
+            end
+        end)
+
+        -- โฮเวอร์การ์ด: หยุดนับถอยหลัง + ยกการ์ดขึ้นเล็กน้อยพร้อมเงาเข้มขึ้น ให้ความรู้สึก interactive
+        Toast.MouseEnter:Connect(function()
+            isHovering = true
+            TweenService:Create(Shadow, TI.d02_Sine_Out, {ImageTransparency = 0.35}):Play()
+            TweenService:Create(ToastScale, TI.d02_Sine_Out, {Scale = 1.015}):Play()
+        end)
+        Toast.MouseLeave:Connect(function()
+            isHovering = false
+            TweenService:Create(Shadow, TI.d02_Sine_Out, {ImageTransparency = 0.55}):Play()
+            TweenService:Create(ToastScale, TI.d02_Sine_Out, {Scale = 1}):Play()
+        end)
+
         CloseX.MouseButton1Click:Connect(dismiss)
-        task.delay(duration, dismiss)
     end
 
     -- ============ Library:Confirm — โมดัลยืนยัน (Yes/No) พร้อม backdrop เบลอ/มืดลง ============
