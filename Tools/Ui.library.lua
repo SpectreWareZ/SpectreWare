@@ -3360,7 +3360,16 @@ function Library:CreateWindow(config)
             local refreshVisuals
 
             local function closePicker()
-                if picker then isOpen = false; picker:Destroy(); picker = nil end
+                if picker then
+                    isOpen = false
+                    local closingPicker, closingScale = picker, picker:FindFirstChildOfClass("UIScale")
+                    picker = nil
+                    TweenService:Create(closingPicker, TI.d015_Sine_Out, {GroupTransparency = 1}):Play()
+                    if closingScale then
+                        TweenService:Create(closingScale, TI.d015_Sine_Out, {Scale = 0.92}):Play()
+                    end
+                    task.delay(0.15, function() closingPicker:Destroy() end)
+                end
                 if outsideConn then outsideConn:Disconnect(); outsideConn = nil end
                 refreshVisuals = nil
             end
@@ -3377,7 +3386,8 @@ function Library:CreateWindow(config)
                 isOpen = true
                 h, s, v = selectedColor:ToHSV()
 
-                picker = Instance.new("Frame")
+                -- ใช้ CanvasGroup แทน Frame เพื่อ fade เนื้อหาข้างในทั้งก้อนพร้อมกันได้ด้วย GroupTransparency เดียว
+                picker = Instance.new("CanvasGroup")
                 local pickerW = math.max(Btn.AbsoluteSize.X, 224)
                 local estimatedH = 220 -- ความสูงโดยประมาณของเนื้อหา (SV box + hue bar + hex + swatches + padding)
                 local popupX, edgeY, openUp = resolveFloatingPosition(Btn.AbsolutePosition, Btn.AbsoluteSize, pickerW, estimatedH, 6)
@@ -3386,12 +3396,18 @@ function Library:CreateWindow(config)
                 picker.AnchorPoint = Vector2.new(0, openUp and 1 or 0)
                 picker.Position = UDim2.new(0, popupX, 0, edgeY)
                 applyThemeColor(picker, "Background")
+                picker.GroupTransparency = 1 -- เริ่มโปร่งใสสนิท แล้ว fade+pop เข้าตอนเปิด
                 picker.ZIndex = 10
                 picker.Active = true
                 picker.Parent = ScreenGui
                 corner(picker, 12)
                 local pStroke = stroke(picker)
                 pStroke.Transparency = 0.4
+
+                -- ตัวย่อ/ขยายไว้ทำ pop animation ตอนเปิด (เริ่มเล็กกว่าปกตินิดหน่อยแล้วเด้งขึ้นมาที่ 1)
+                local pScale = Instance.new("UIScale")
+                pScale.Scale = 0.9
+                pScale.Parent = picker
 
                 local pPad = Instance.new("UIPadding")
                 pPad.PaddingLeft = UDim.new(0, 12)
@@ -3635,6 +3651,10 @@ function Library:CreateWindow(config)
                         applyColor(col, true)
                     end)
                 end
+
+                -- Pop เข้าแบบมีเด้งนิดๆ (Back_Out) พร้อมกับ fade ทั้งก้อนผ่าน GroupTransparency
+                TweenService:Create(picker, TI.d022_Back_Out, {GroupTransparency = 0}):Play()
+                TweenService:Create(pScale, TI.d022_Back_Out, {Scale = 1}):Play()
 
                 closeActivePopup = closePicker
                 outsideConn = UserInputService.InputBegan:Connect(function(input2)
