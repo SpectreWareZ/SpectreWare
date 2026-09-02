@@ -11,7 +11,7 @@ Library.__index = Library
 Library.Flags = {}
 Library.Themes = {}
 Library.CurrentTheme = "Midnight"
-Library.Version = "6.7.1"
+Library.Version = "6.7.4"
 
 -- ============ FLAG SYSTEM (ต่อขยาย: registry + event สำหรับ Config save/load และ dependency) ============
 Library.FlagElements = {}                    -- ชื่อ Flag -> element object (ใช้ตอน LoadConfig เพื่อ Set ค่ากลับเข้า UI จริง)
@@ -3043,6 +3043,9 @@ function Library:CreateWindow(config)
                 listStroke.Thickness = 1
                 listStroke.Transparency = 0.7
 
+                -- จับ reference ของ list รอบนี้ไว้ กัน stagger animation ยิงใส่ popup รอบใหม่ถ้าปิด/เปิดซ้ำเร็วๆ
+                local myList = list
+
                 -- ============ ช่องค้นหา (sticky อยู่บนสุด ไม่เลื่อนตามรายการ) ============
                 local SearchBox
                 if searchable then
@@ -3185,13 +3188,15 @@ function Library:CreateWindow(config)
                     corner(optBtn, 9)
                     if not isSelected then applyHoverEffect(optBtn, "Element", "ElementHover") end
 
+                    local accentBar
                     if isSelected then
-                        local accentBar = Instance.new("Frame")
+                        accentBar = Instance.new("Frame")
                         accentBar.Size = UDim2.new(0, 3, 0, itemH * 0.5)
                         accentBar.AnchorPoint = Vector2.new(0, 0.5)
                         accentBar.Position = UDim2.new(0, 4, 0.5, 0)
                         applyThemeColor(accentBar, "AccentA")
                         accentBar.BorderSizePixel = 0
+                        accentBar.BackgroundTransparency = 1 -- เริ่มจาง แล้วค่อย fade เข้าตอน stagger
                         accentBar.ZIndex = 12
                         accentBar.Parent = optBtn
                         corner(accentBar, 2)
@@ -3199,7 +3204,7 @@ function Library:CreateWindow(config)
 
                     local optLabel = Instance.new("TextLabel")
                     optLabel.Size = UDim2.new(1, isSelected and -46 or -24, 1, 0)
-                    optLabel.Position = UDim2.new(0, isSelected and 20 or 14, 0, 0)
+                    optLabel.Position = UDim2.new(0, (isSelected and 20 or 14) - 6, 0, 0) -- เลื่อนซ้าย 6px ไว้ก่อน แล้ว slide-in เข้าที่
                     optLabel.BackgroundTransparency = 1
                     optLabel.Text = opt
                     applyThemeColor(optLabel, isSelected and "AccentA" or "Text", "TextColor3")
@@ -3207,16 +3212,19 @@ function Library:CreateWindow(config)
                     optLabel.TextSize = 13
                     optLabel.TextXAlignment = Enum.TextXAlignment.Left
                     optLabel.TextTruncate = Enum.TextTruncate.AtEnd
+                    optLabel.TextTransparency = 1 -- เริ่มโปร่งใส แล้ว fade-in ทีละแถว (stagger)
                     optLabel.ZIndex = 12
                     optLabel.Parent = optBtn
 
+                    local check
                     if isSelected then
-                        local check = Instance.new("ImageLabel")
+                        check = Instance.new("ImageLabel")
                         check.Size = UDim2.new(0, 15, 0, 15)
                         check.AnchorPoint = Vector2.new(1, 0.5)
                         check.Position = UDim2.new(1, -12, 0.5, 0)
                         check.BackgroundTransparency = 1
                         check.Image = Library.Icons.check
+                        check.ImageTransparency = 1 -- เริ่มโปร่งใส แล้ว fade-in พร้อม label
                         applyThemeColor(check, "AccentA", "ImageColor3")
                         check.ScaleType = Enum.ScaleType.Fit
                         check.ZIndex = 12
@@ -3224,7 +3232,7 @@ function Library:CreateWindow(config)
                     end
 
                     optBtn.MouseButton1Click:Connect(function() selectOption(opt, true) end)
-                    table.insert(optEntries, {opt = opt, btn = optBtn})
+                    table.insert(optEntries, {opt = opt, btn = optBtn, label = optLabel, check = check, bar = accentBar, baseX = isSelected and 20 or 14})
                 end
 
                 -- กรองรายการตามคำค้นหา (ซ่อน/โชว์ผ่าน Visible, UIListLayout จะจัดเรียงใหม่ให้อัตโนมัติ)
@@ -3249,13 +3257,33 @@ function Library:CreateWindow(config)
                     end)
                 end
 
-                TweenService:Create(list, TI.d02_Quint_Out, {
+                -- เปิด popup ด้วย Back_Out ให้มีเด้งเล็กน้อย (overshoot) ดูมีชีวิตชีวากว่า Quint ตรงๆ
+                TweenService:Create(list, TI.d022_Back_Out, {
                     Size = UDim2.new(0, Drop.AbsoluteSize.X, 0, fullH),
                     BackgroundTransparency = 0
                 }):Play()
-                TweenService:Create(shadow, TI.d02_Quint_Out, {
+                -- เงาโตตามแบบนุ่มๆ ไม่เด้ง (เด้งพร้อมกันทั้งคู่จะดูรก)
+                TweenService:Create(shadow, TI.d024_Quint_Out, {
                     Size = UDim2.new(0, Drop.AbsoluteSize.X + 28, 0, fullH + 28)
                 }):Play()
+
+                -- Stagger reveal: แต่ละแถว fade+slide เข้าทีละนิดเรียงจากบนลงล่าง ให้ความรู้สึกลื่นไหลกว่าโผล่มาพร้อมกันหมด
+                for idx, entry in ipairs(optEntries) do
+                    local delay = math.min((idx - 1) * 0.026, 0.22)
+                    task.delay(delay, function()
+                        if list ~= myList then return end -- popup นี้ถูกปิดไปแล้วก่อน stagger จะยิงครบ
+                        TweenService:Create(entry.label, TI.d02_Sine_Out, {
+                            TextTransparency = 0,
+                            Position = UDim2.new(0, entry.baseX, 0, 0)
+                        }):Play()
+                        if entry.check then
+                            TweenService:Create(entry.check, TI.d02_Sine_Out, {ImageTransparency = 0}):Play()
+                        end
+                        if entry.bar then
+                            TweenService:Create(entry.bar, TI.d02_Sine_Out, {BackgroundTransparency = 0}):Play()
+                        end
+                    end)
+                end
 
                 closeActivePopup = closeDropdown
                 outsideConn = UserInputService.InputBegan:Connect(function(input2)
