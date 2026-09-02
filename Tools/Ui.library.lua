@@ -11,7 +11,7 @@ Library.__index = Library
 Library.Flags = {}
 Library.Themes = {}
 Library.CurrentTheme = "Midnight"
-Library.Version = "6.3.5"
+Library.Version = "6.5.0"
 
 -- ============ FLAG SYSTEM (ต่อขยาย: registry + event สำหรับ Config save/load และ dependency) ============
 Library.FlagElements = {}                    -- ชื่อ Flag -> element object (ใช้ตอน LoadConfig เพื่อ Set ค่ากลับเข้า UI จริง)
@@ -65,6 +65,10 @@ local TI = {
     d022_Back_Out = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
     d024_Quint_Out = TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
     d02_Quint_In = TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+    -- เพิ่มชุด "สปริง/เด้งแรง" สำหรับแอนิเมชันโหดๆ (เปิดหน้าต่าง, ทอมโบน, พัลส์)
+    d035_Elastic_Out = TweenInfo.new(0.5, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out),
+    d045_Back_Out = TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+    d028_Back_Out_Wobble = TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
 }
 local CoreGui = game:GetService("CoreGui")
 
@@ -361,6 +365,64 @@ local function applyPressAnimation(btn, pressScale)
         pressDown()
         task.delay(0.08, pressUp)
     end)
+end
+
+-- ============ RIPPLE CLICK EFFECT (วงกลมกระเพื่อมออกจากจุดคลิก แบบ Material) ============
+local function ripple(btn, colorKey)
+    local holder = Instance.new("Frame")
+    holder.Name = "__RippleHolder"
+    holder.BackgroundTransparency = 1
+    holder.Size = UDim2.new(1, 0, 1, 0)
+    holder.ClipsDescendants = true
+    holder.ZIndex = btn.ZIndex
+    holder.Parent = btn
+    local srcCorner = btn:FindFirstChildOfClass("UICorner")
+    if srcCorner then
+        local hc = Instance.new("UICorner")
+        hc.CornerRadius = srcCorner.CornerRadius
+        hc.Parent = holder
+    end
+    btn.MouseButton1Down:Connect(function(x, y)
+        local absPos, absSize = btn.AbsolutePosition, btn.AbsoluteSize
+        local relX, relY = x - absPos.X, y - absPos.Y
+        local maxDim = math.max(absSize.X, absSize.Y) * 2.4
+        local circle = Instance.new("Frame")
+        circle.AnchorPoint = Vector2.new(0.5, 0.5)
+        circle.Position = UDim2.new(0, relX, 0, relY)
+        circle.Size = UDim2.new(0, 0, 0, 0)
+        circle.BackgroundColor3 = Theme[colorKey or "AccentA"]
+        circle.BackgroundTransparency = 0.5
+        circle.BorderSizePixel = 0
+        circle.ZIndex = holder.ZIndex
+        circle.Parent = holder
+        corner(circle, 999)
+        local tw = TweenService:Create(circle, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+            Size = UDim2.new(0, maxDim, 0, maxDim),
+            BackgroundTransparency = 1
+        })
+        tw:Play()
+        tw.Completed:Connect(function() circle:Destroy() end)
+    end)
+end
+
+-- ============ PULSE RING (แหวนกระเพื่อมออกจากขอบ element ใช้ตอน toggle เปิด/สถานะสำเร็จ) ============
+local function pulseRing(inst, colorKey, radiusInst)
+    local pulse = Instance.new("Frame")
+    pulse.AnchorPoint = Vector2.new(0.5, 0.5)
+    pulse.Position = UDim2.new(0.5, 0, 0.5, 0)
+    pulse.Size = UDim2.new(1, 0, 1, 0)
+    pulse.BackgroundTransparency = 0.25
+    pulse.BackgroundColor3 = Theme[colorKey or "AccentA"]
+    pulse.BorderSizePixel = 0
+    pulse.ZIndex = math.max(inst.ZIndex - 1, 0)
+    pulse.Parent = inst
+    corner(pulse, radiusInst or 10)
+    local tw = TweenService:Create(pulse, TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+        Size = UDim2.new(1, 28, 1, 28),
+        BackgroundTransparency = 1
+    })
+    tw:Play()
+    tw.Completed:Connect(function() pulse:Destroy() end)
 end
 
 local function isPointOverGui(pos, guiObject)
@@ -1154,13 +1216,16 @@ function Library:CreateWindow(config)
             ScreenGui.Enabled = true
             RestoreBtn.Visible = false
             FpsPill.Visible = false
-            WindowScale.Scale = 0.94
+            WindowScale.Scale = 0.82
+            MainFrame.Rotation = -2.2
             Shadow.Position = hiddenShadowPos
             MainFrame.BackgroundTransparency = 1
             mainStroke.Transparency = 1
             MainContent.GroupTransparency = 1
             local easeIn = TI.d024_Quint_Out
-            TweenService:Create(WindowScale, TI.d022_Back_Out, {Scale = 1}):Play()
+            -- เด้งเข้าแบบสปริงแรงๆ พร้อมเอียงตัวเล็กน้อยแล้วสะบัดกลับ ให้ความรู้สึก "โหด" ตอนเปิดหน้าต่าง
+            TweenService:Create(WindowScale, TI.d045_Back_Out, {Scale = 1}):Play()
+            TweenService:Create(MainFrame, TI.d045_Back_Out, {Rotation = 0}):Play()
             TweenService:Create(Shadow, easeIn, {Position = baseShadowPos}):Play()
             TweenService:Create(MainFrame, easeIn, {BackgroundTransparency = 0}):Play()
             TweenService:Create(mainStroke, easeIn, {Transparency = 0.5}):Play()
@@ -1737,6 +1802,7 @@ function Library:CreateWindow(config)
         TabBtn.LayoutOrder = tabOrderCounter
         corner(TabBtn, 8)
         applyPressAnimation(TabBtn, 0.96)
+        ripple(TabBtn, "AccentA")
 
         local iconOffset = 10
         if icon then
@@ -1929,6 +1995,7 @@ function Library:CreateWindow(config)
             applyHoverEffect(Btn, "Element", "ElementHover")
             applyGlowOnHover(Btn)
             applyPressAnimation(Btn)
+            ripple(Btn, "AccentA")
 
             local iconOffset = 12
             if c.Icon then
@@ -2007,6 +2074,7 @@ function Library:CreateWindow(config)
             Switch.Parent = Frame
             corner(Switch, 10)
             applyPressAnimation(Switch, 0.85)
+            ripple(Switch, "AccentA")
             local switchGrad = accentGradient(Switch, 0)
             switchGrad.Transparency = NumberSequence.new(1)
 
@@ -2028,9 +2096,18 @@ function Library:CreateWindow(config)
                 bindFlag(c.Flag, state)
                 TweenService:Create(Switch, TI.d015_Sine_Out, {BackgroundColor3 = state and Theme.AccentA or Theme.ToggleOff}):Play()
                 TweenService:Create(switchGradProxy, TI.d015_Sine_Out, {Value = state and 0 or 1}):Play()
-                TweenService:Create(Circle, TI.d015_Sine_Out, {
-                    Position = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-                }):Play()
+                -- ลูกบิดยืด-หด (squash & stretch) ก่อนเด้งไปตำแหน่งใหม่แบบสปริง ให้ความรู้สึก "หนึบ" ขึ้น
+                local targetPos = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+                TweenService:Create(Circle, TweenInfo.new(0.09, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Size = UDim2.new(0, 21, 0, 15)}):Play()
+                TweenService:Create(Circle, TI.d028_Back_Out_Wobble, {Position = targetPos}):Play()
+                task.delay(0.09, function()
+                    if Circle.Parent then
+                        TweenService:Create(Circle, TI.d028_Back_Out_Wobble, {Size = UDim2.new(0, 16, 0, 16)}):Play()
+                    end
+                end)
+                if state then
+                    pulseRing(Switch, "AccentA", 10)
+                end
                 if fireCallback then
                     if c.Notify ~= false then
                         Library:Notify({
