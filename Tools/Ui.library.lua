@@ -1535,28 +1535,42 @@ function Library:CreateWindow(config)
 
     -- ============ ช่องค้นหาแท็บ (sticky อยู่บนสุดของ Sidebar) ============
     local TabSearchWrap = Instance.new("Frame")
-    TabSearchWrap.Size = UDim2.new(1, -12, 0, 28)
+    TabSearchWrap.Size = UDim2.new(1, -12, 0, 30)
     TabSearchWrap.Position = UDim2.new(0, 6, 0, 6)
     applyThemeColor(TabSearchWrap, "Background")
     TabSearchWrap.BackgroundTransparency = 0.15
+    TabSearchWrap.ClipsDescendants = true
     TabSearchWrap.Parent = TabContainer
-    corner(TabSearchWrap, 8)
+    corner(TabSearchWrap, 14) -- โค้งมนแบบแคปซูล ดูทันสมัยขึ้น
     local tabSearchStroke = stroke(TabSearchWrap)
     tabSearchStroke.Thickness = 1
     tabSearchStroke.Transparency = 0.75
+    -- แถบเรืองแสงสีธีม ซ้อนอยู่เหนือกรอบปกติ โผล่มาตอน focus (ไม่แตะสี Stroke ที่ผูกกับระบบ Theme)
+    local tabSearchGlow = stroke(TabSearchWrap, "AccentA", 1.2)
+    tabSearchGlow.Transparency = 1
+    -- ชั้นไล่เฉดบางๆ ให้พื้นผิวดูมีมิติ ไม่แบนราบ
+    local tabSearchSheen = Instance.new("UIGradient")
+    tabSearchSheen.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(255, 255, 255))
+    tabSearchSheen.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.93), NumberSequenceKeypoint.new(1, 1)})
+    tabSearchSheen.Rotation = 90
+    tabSearchSheen.Parent = TabSearchWrap
+    local tabSearchScale = Instance.new("UIScale")
+    tabSearchScale.Parent = TabSearchWrap
 
     local TabSearchIcon = Instance.new("ImageLabel")
-    TabSearchIcon.Size = UDim2.new(0, 11, 0, 11)
-    TabSearchIcon.Position = UDim2.new(0, 8, 0.5, -5.5)
+    TabSearchIcon.Size = UDim2.new(0, 12, 0, 12)
+    TabSearchIcon.AnchorPoint = Vector2.new(0, 0.5)
+    TabSearchIcon.Position = UDim2.new(0, 9, 0.5, 0)
     TabSearchIcon.BackgroundTransparency = 1
+    TabSearchIcon.ImageTransparency = 0.2
     TabSearchIcon.Image = Library.Icons.search
     applyThemeColor(TabSearchIcon, "SubText", "ImageColor3")
     TabSearchIcon.ScaleType = Enum.ScaleType.Fit
     TabSearchIcon.Parent = TabSearchWrap
 
     local TabSearchBox = Instance.new("TextBox")
-    TabSearchBox.Position = UDim2.new(0, 24, 0, 0)
-    TabSearchBox.Size = UDim2.new(1, -30, 1, 0)
+    TabSearchBox.Position = UDim2.new(0, 26, 0, 0)
+    TabSearchBox.Size = UDim2.new(1, -46, 1, 0)
     TabSearchBox.BackgroundTransparency = 1
     TabSearchBox.Text = ""
     TabSearchBox.PlaceholderText = "ค้นหา"
@@ -1568,11 +1582,39 @@ function Library:CreateWindow(config)
     TabSearchBox.TextXAlignment = Enum.TextXAlignment.Left
     TabSearchBox.Parent = TabSearchWrap
 
+    -- ปุ่มล้างคำค้นหา (X) โผล่มาเมื่อมีข้อความ กดแล้วเคลียร์ + โฟกัสกลับทันที
+    local TabSearchClear = Instance.new("ImageButton")
+    TabSearchClear.AnchorPoint = Vector2.new(1, 0.5)
+    TabSearchClear.Position = UDim2.new(1, -6, 0.5, 0)
+    TabSearchClear.Size = UDim2.new(0, 15, 0, 15)
+    TabSearchClear.BackgroundTransparency = 1
+    TabSearchClear.AutoButtonColor = false
+    TabSearchClear.Image = Library.Icons.close
+    applyThemeColor(TabSearchClear, "SubText", "ImageColor3")
+    TabSearchClear.ImageTransparency = 1
+    TabSearchClear.ScaleType = Enum.ScaleType.Fit
+    TabSearchClear.Parent = TabSearchWrap
+    TabSearchClear.MouseButton1Click:Connect(function()
+        TabSearchBox.Text = ""
+        TabSearchBox:CaptureFocus()
+    end)
+
     TabSearchBox.Focused:Connect(function()
-        TweenService:Create(tabSearchStroke, TI.d012_Sine_Out, {Transparency = 0.15}):Play()
+        TweenService:Create(tabSearchStroke, TI.d015_Sine_Out, {Transparency = 0.3}):Play()
+        TweenService:Create(tabSearchGlow, TI.d02_Sine_Out, {Transparency = 0.35}):Play()
+        TweenService:Create(TabSearchWrap, TI.d015_Sine_Out, {BackgroundTransparency = 0}):Play()
+        TweenService:Create(TabSearchIcon, TI.d015_Sine_Out, {ImageTransparency = 0}):Play()
+        TweenService:Create(tabSearchScale, TI.d02_Back_Out, {Scale = 1.015}):Play()
     end)
     TabSearchBox.FocusLost:Connect(function()
-        TweenService:Create(tabSearchStroke, TI.d012_Sine_Out, {Transparency = 0.75}):Play()
+        TweenService:Create(tabSearchStroke, TI.d015_Sine_Out, {Transparency = 0.75}):Play()
+        TweenService:Create(tabSearchGlow, TI.d015_Sine_Out, {Transparency = 1}):Play()
+        TweenService:Create(TabSearchWrap, TI.d015_Sine_Out, {BackgroundTransparency = 0.15}):Play()
+        TweenService:Create(TabSearchIcon, TI.d015_Sine_Out, {ImageTransparency = 0.2}):Play()
+        TweenService:Create(tabSearchScale, TI.d02_Back_Out, {Scale = 1}):Play()
+    end)
+    TabSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+        TweenService:Create(TabSearchClear, TI.d012_Sine_Out, {ImageTransparency = TabSearchBox.Text == "" and 1 or 0.1}):Play()
     end)
 
     local TabList = Instance.new("ScrollingFrame")
@@ -2864,17 +2906,30 @@ function Library:CreateWindow(config)
                     SearchWrap.Position = UDim2.new(0, pad, 0, pad)
                     applyThemeColor(SearchWrap, "Background")
                     SearchWrap.BackgroundTransparency = 0.15
+                    SearchWrap.ClipsDescendants = true
                     SearchWrap.ZIndex = 11
                     SearchWrap.Parent = list
-                    corner(SearchWrap, 10)
+                    corner(SearchWrap, 12) -- โค้งมนแบบแคปซูล
                     local swStroke = stroke(SearchWrap)
                     swStroke.Thickness = 1
                     swStroke.Transparency = 0.7
+                    -- แถบเรืองแสงสีธีม ซ้อนอยู่เหนือกรอบปกติ โผล่มาตอน focus
+                    local swGlow = stroke(SearchWrap, "AccentA", 1.2)
+                    swGlow.Transparency = 1
+                    local swSheen = Instance.new("UIGradient")
+                    swSheen.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(255, 255, 255))
+                    swSheen.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.93), NumberSequenceKeypoint.new(1, 1)})
+                    swSheen.Rotation = 90
+                    swSheen.Parent = SearchWrap
+                    local swScale = Instance.new("UIScale")
+                    swScale.Parent = SearchWrap
 
                     local SearchIcon = Instance.new("ImageLabel")
                     SearchIcon.Size = UDim2.new(0, 13, 0, 13)
-                    SearchIcon.Position = UDim2.new(0, 10, 0.5, -6.5)
+                    SearchIcon.AnchorPoint = Vector2.new(0, 0.5)
+                    SearchIcon.Position = UDim2.new(0, 11, 0.5, 0)
                     SearchIcon.BackgroundTransparency = 1
+                    SearchIcon.ImageTransparency = 0.2
                     SearchIcon.Image = Library.Icons.search
                     applyThemeColor(SearchIcon, "SubText", "ImageColor3")
                     SearchIcon.ScaleType = Enum.ScaleType.Fit
@@ -2882,8 +2937,8 @@ function Library:CreateWindow(config)
                     SearchIcon.Parent = SearchWrap
 
                     SearchBox = Instance.new("TextBox")
-                    SearchBox.Position = UDim2.new(0, 30, 0, 0)
-                    SearchBox.Size = UDim2.new(1, -38, 1, 0)
+                    SearchBox.Position = UDim2.new(0, 31, 0, 0)
+                    SearchBox.Size = UDim2.new(1, -58, 1, 0)
                     SearchBox.BackgroundTransparency = 1
                     SearchBox.Text = ""
                     SearchBox.PlaceholderText = "ค้นหา..."
@@ -2896,11 +2951,40 @@ function Library:CreateWindow(config)
                     SearchBox.ZIndex = 12
                     SearchBox.Parent = SearchWrap
 
+                    -- ปุ่มล้างคำค้นหา (X) โผล่มาเมื่อมีข้อความ
+                    local SearchClear = Instance.new("ImageButton")
+                    SearchClear.AnchorPoint = Vector2.new(1, 0.5)
+                    SearchClear.Position = UDim2.new(1, -8, 0.5, 0)
+                    SearchClear.Size = UDim2.new(0, 16, 0, 16)
+                    SearchClear.BackgroundTransparency = 1
+                    SearchClear.AutoButtonColor = false
+                    SearchClear.Image = Library.Icons.close
+                    applyThemeColor(SearchClear, "SubText", "ImageColor3")
+                    SearchClear.ImageTransparency = 1
+                    SearchClear.ScaleType = Enum.ScaleType.Fit
+                    SearchClear.ZIndex = 12
+                    SearchClear.Parent = SearchWrap
+                    SearchClear.MouseButton1Click:Connect(function()
+                        SearchBox.Text = ""
+                        SearchBox:CaptureFocus()
+                    end)
+
                     SearchBox.Focused:Connect(function()
-                        TweenService:Create(swStroke, TI.d012_Sine_Out, {Transparency = 0.15}):Play()
+                        TweenService:Create(swStroke, TI.d015_Sine_Out, {Transparency = 0.3}):Play()
+                        TweenService:Create(swGlow, TI.d02_Sine_Out, {Transparency = 0.35}):Play()
+                        TweenService:Create(SearchWrap, TI.d015_Sine_Out, {BackgroundTransparency = 0}):Play()
+                        TweenService:Create(SearchIcon, TI.d015_Sine_Out, {ImageTransparency = 0}):Play()
+                        TweenService:Create(swScale, TI.d02_Back_Out, {Scale = 1.015}):Play()
                     end)
                     SearchBox.FocusLost:Connect(function()
-                        TweenService:Create(swStroke, TI.d012_Sine_Out, {Transparency = 0.7}):Play()
+                        TweenService:Create(swStroke, TI.d015_Sine_Out, {Transparency = 0.7}):Play()
+                        TweenService:Create(swGlow, TI.d015_Sine_Out, {Transparency = 1}):Play()
+                        TweenService:Create(SearchWrap, TI.d015_Sine_Out, {BackgroundTransparency = 0.15}):Play()
+                        TweenService:Create(SearchIcon, TI.d015_Sine_Out, {ImageTransparency = 0.2}):Play()
+                        TweenService:Create(swScale, TI.d02_Back_Out, {Scale = 1}):Play()
+                    end)
+                    SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+                        TweenService:Create(SearchClear, TI.d012_Sine_Out, {ImageTransparency = SearchBox.Text == "" and 1 or 0.1}):Play()
                     end)
                 end
 
