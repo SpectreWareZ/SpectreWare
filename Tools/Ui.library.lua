@@ -699,7 +699,7 @@ function Library:CreateWindow(config)
         local COLOR_KEY = {success = "Success", error = "Danger", warning = "Warning", info = "Info"}
         local color = Theme[COLOR_KEY[ntype] or "Info"]
 
-        -- เงานุ่มๆ ใต้การ์ด
+        -- ===== SHADOW =====
         local Shadow = Instance.new("ImageLabel")
         Shadow.Name = "ToastShadow"
         Shadow.BackgroundTransparency = 1
@@ -719,22 +719,45 @@ function Library:CreateWindow(config)
         Slot.ZIndex = 2
         Slot.Parent = NotifyHolder
 
+        -- ===== CARD =====
         local Toast = Instance.new("Frame")
         applyThemeColor(Toast, "Element")
+        Toast.BackgroundTransparency = 0.08
         Toast.Size = UDim2.new(1, 0, 0, 0)
         Toast.AutomaticSize = Enum.AutomaticSize.Y
-        Toast.BackgroundTransparency = 1
-        Toast.ClipsDescendants = true
+        Toast.ClipsDescendants = false
         Toast.ZIndex = 2
-        -- เพิ่ม Offset เริ่มต้นเพื่อทำ Slide-in Animation
-        Toast.Position = UDim2.new(0, 30, 0, 0) 
+        Toast.Position = UDim2.new(0, 24, 0, 0)
         Toast.Parent = Slot
-        corner(Toast, 18)
-        local outline = stroke(Toast)
-        outline.Thickness = 1
-        outline.Transparency = 1
+        corner(Toast, 14)
 
-        -- ชั้นสีบางๆ ไล่เฉดตามประเภทแจ้งเตือน ให้การ์ดดูมีโทนสีแทนที่จะเทาแบนๆ
+        -- subtle stroke border
+        local outline = Instance.new("UIStroke")
+        outline.Color = color
+        outline.Transparency = 1
+        outline.Thickness = 1
+        outline.Parent = Toast
+
+        -- top-edge colored highlight (thin 2px line inside card top)
+        local TopEdge = Instance.new("Frame")
+        TopEdge.Name = "TopEdge"
+        TopEdge.Size = UDim2.new(1, -28, 0, 2)
+        TopEdge.Position = UDim2.new(0, 14, 0, 0)
+        TopEdge.BackgroundColor3 = color
+        TopEdge.BackgroundTransparency = 1
+        TopEdge.BorderSizePixel = 0
+        TopEdge.ZIndex = 6
+        TopEdge.Parent = Toast
+        corner(TopEdge, 1)
+        local topEdgeGrad = Instance.new("UIGradient")
+        topEdgeGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, color),
+            ColorSequenceKeypoint.new(0.5, color:Lerp(Color3.new(1,1,1), 0.25)),
+            ColorSequenceKeypoint.new(1, color),
+        })
+        topEdgeGrad.Parent = TopEdge
+
+        -- very subtle color wash (barely visible tint)
         local ColorTint = Instance.new("Frame")
         ColorTint.Name = "ColorTint"
         ColorTint.Size = UDim2.new(1, 0, 1, 0)
@@ -743,41 +766,21 @@ function Library:CreateWindow(config)
         ColorTint.ZIndex = 2
         ColorTint.BackgroundTransparency = 1
         ColorTint.Parent = Toast
-        corner(ColorTint, 18)
+        corner(ColorTint, 14)
         local tintGradient = Instance.new("UIGradient")
         tintGradient.Color = ColorSequence.new(color, color:Lerp(Theme.Element, 1))
         tintGradient.Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 0.86),
-            NumberSequenceKeypoint.new(0.6, 0.97),
+            NumberSequenceKeypoint.new(0, 0.93),
+            NumberSequenceKeypoint.new(0.5, 0.98),
             NumberSequenceKeypoint.new(1, 1),
         })
-        tintGradient.Rotation = 100
+        tintGradient.Rotation = 135
         tintGradient.Parent = ColorTint
-
-        -- เอฟเฟกต์ Glass Sheen บางๆ เพื่อให้การ์ดดูมีมิติ
-        local Sheen = Instance.new("Frame")
-        Sheen.Name = "Sheen"
-        Sheen.Size = UDim2.new(1, 0, 1, 0)
-        Sheen.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        Sheen.BorderSizePixel = 0
-        Sheen.ZIndex = 3
-        Sheen.Active = false
-        Sheen.Parent = Toast
-        corner(Sheen, 18)
-        local sheenGradient = Instance.new("UIGradient")
-        sheenGradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(255, 255, 255))
-        sheenGradient.Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 0.95),
-            NumberSequenceKeypoint.new(0.35, 1),
-            NumberSequenceKeypoint.new(1, 1),
-        })
-        sheenGradient.Rotation = 100
-        sheenGradient.Parent = Sheen
 
         local function syncShadow()
             if not Shadow.Parent or not Toast.Parent then return end
-            Shadow.Position = UDim2.new(0, Toast.AbsolutePosition.X - 14, 0, Toast.AbsolutePosition.Y - 12)
-            Shadow.Size = UDim2.new(0, Toast.AbsoluteSize.X + 28, 0, Toast.AbsoluteSize.Y + 26)
+            Shadow.Position = UDim2.new(0, Toast.AbsolutePosition.X - 14, 0, Toast.AbsolutePosition.Y - 10)
+            Shadow.Size = UDim2.new(0, Toast.AbsoluteSize.X + 28, 0, Toast.AbsoluteSize.Y + 22)
         end
         local shadowConns = {
             Toast:GetPropertyChangedSignal("AbsoluteSize"):Connect(syncShadow),
@@ -785,50 +788,45 @@ function Library:CreateWindow(config)
         }
         syncShadow()
 
-        -- แถบสีบอกประเภท ชิดซ้ายบน ปลายมนและไล่เฉดล่าง
+        -- ===== LEFT ACCENT STRIP (3px, rounded) =====
         local AccentBar = Instance.new("Frame")
-        AccentBar.AnchorPoint = Vector2.new(0, 0.5)
-        AccentBar.Position = UDim2.new(0, 12, 0.5, 0)
-        AccentBar.Size = UDim2.new(0, 4, 0, 0)
+        AccentBar.Name = "AccentBar"
+        AccentBar.AnchorPoint = Vector2.new(0, 0)
+        AccentBar.Position = UDim2.new(0, 0, 0, 8)
+        AccentBar.Size = UDim2.new(0, 3, 1, -16)
         AccentBar.BackgroundColor3 = color
         AccentBar.BackgroundTransparency = 1
         AccentBar.BorderSizePixel = 0
-        AccentBar.ZIndex = 4
+        AccentBar.ZIndex = 5
         AccentBar.Parent = Toast
         corner(AccentBar, 2)
         local accentFade = Instance.new("UIGradient")
-        accentFade.Color = ColorSequence.new(color, color)
         accentFade.Transparency = NumberSequence.new({
             NumberSequenceKeypoint.new(0, 0),
-            NumberSequenceKeypoint.new(1, 0.55),
+            NumberSequenceKeypoint.new(1, 0.45),
         })
         accentFade.Rotation = 90
         accentFade.Parent = AccentBar
 
-        -- วงกลมไอคอน (Badge) สีพาสเทลโทนนุ่มนวล
+        -- ===== ICON BADGE (compact 28x28) =====
         local IconBadge = Instance.new("Frame")
-        IconBadge.AnchorPoint = Vector2.new(0, 0)
-        IconBadge.Size = UDim2.new(0, 34, 0, 34)
-        IconBadge.Position = UDim2.new(0, 18, 0, 16)
-        IconBadge.BackgroundColor3 = color:Lerp(Theme.Element, 0.7)
+        IconBadge.Size = UDim2.new(0, 28, 0, 28)
+        IconBadge.Position = UDim2.new(0, 14, 0, 14)
+        IconBadge.BackgroundColor3 = color:Lerp(Theme.Element, 0.78)
         IconBadge.BackgroundTransparency = 1
         IconBadge.ZIndex = 4
         IconBadge.Parent = Toast
-        corner(IconBadge, 12)
-        local badgeGradient = Instance.new("UIGradient")
-        badgeGradient.Color = ColorSequence.new(color:Lerp(Color3.new(1, 1, 1), 0.12), color:Lerp(Theme.Element, 0.55))
-        badgeGradient.Rotation = 90
-        badgeGradient.Parent = IconBadge
+        corner(IconBadge, 8)
         local badgeStroke = Instance.new("UIStroke")
         badgeStroke.Color = color
-        badgeStroke.Transparency = 0.55
+        badgeStroke.Transparency = 0.6
         badgeStroke.Thickness = 1
         badgeStroke.Parent = IconBadge
 
         local IconImg = Instance.new("ImageLabel")
         IconImg.AnchorPoint = Vector2.new(0.5, 0.5)
         IconImg.Position = UDim2.new(0.5, 0, 0.5, 0)
-        IconImg.Size = UDim2.new(0, 17, 0, 17)
+        IconImg.Size = UDim2.new(0, 14, 0, 14)
         IconImg.BackgroundTransparency = 1
         IconImg.Image = NOTIFY_ICON[ntype] or Library.Icons.info
         IconImg.ImageColor3 = color
@@ -837,78 +835,109 @@ function Library:CreateWindow(config)
         IconImg.ZIndex = 5
         IconImg.Parent = IconBadge
 
-        -- ข้อความ
-        local TextHolder = Instance.new("Frame")
-        TextHolder.BackgroundTransparency = 1
-        TextHolder.Position = UDim2.new(0, 66, 0, 17)
-        TextHolder.Size = UDim2.new(1, -104, 0, 0)
-        TextHolder.AutomaticSize = Enum.AutomaticSize.Y
-        TextHolder.ZIndex = 4
-        TextHolder.Parent = Toast
-        local Layout = Instance.new("UIListLayout")
-        Layout.Padding = UDim.new(0, 5)
-        Layout.Parent = TextHolder
+        -- ===== TYPE CHIP (small uppercase label, colored) =====
+        local TypeChip = Instance.new("TextLabel")
+        TypeChip.BackgroundTransparency = 1
+        TypeChip.Position = UDim2.new(0, 54, 0, 14)
+        TypeChip.Size = UDim2.new(1, -92, 0, 11)
+        TypeChip.Font = Enum.Font.GothamBold
+        TypeChip.TextSize = 9.5
+        TypeChip.TextColor3 = color
+        TypeChip.TextTransparency = 1
+        TypeChip.TextXAlignment = Enum.TextXAlignment.Left
+        TypeChip.Text = string.upper(ntype)
+        TypeChip.ZIndex = 4
+        TypeChip.Parent = Toast
 
+        -- ===== TITLE =====
         local TitleLbl = Instance.new("TextLabel")
         TitleLbl.BackgroundTransparency = 1
-        TitleLbl.Size = UDim2.new(1, 0, 0, 16)
+        TitleLbl.Position = UDim2.new(0, 54, 0, 26)
+        TitleLbl.Size = UDim2.new(1, -92, 0, 16)
         TitleLbl.Font = Enum.Font.GothamBold
-        TitleLbl.TextSize = 14.5
+        TitleLbl.TextSize = 13.5
         applyThemeColor(TitleLbl, "Text", "TextColor3")
         TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
         TitleLbl.TextTransparency = 1
         TitleLbl.Text = title
         TitleLbl.ZIndex = 4
-        TitleLbl.Parent = TextHolder
+        TitleLbl.Parent = Toast
 
+        -- ===== CONTENT =====
         local ContentLbl = Instance.new("TextLabel")
         ContentLbl.BackgroundTransparency = 1
-        ContentLbl.Size = UDim2.new(1, 0, 0, 0)
+        ContentLbl.Position = UDim2.new(0, 54, 0, 44)
+        ContentLbl.Size = UDim2.new(1, -66, 0, 0)
         ContentLbl.AutomaticSize = Enum.AutomaticSize.Y
         ContentLbl.Font = Enum.Font.Gotham
-        ContentLbl.TextSize = 12.5
-        ContentLbl.LineHeight = 1.25
+        ContentLbl.TextSize = 11.5
+        ContentLbl.LineHeight = 1.3
         applyThemeColor(ContentLbl, "SubText", "TextColor3")
         ContentLbl.TextXAlignment = Enum.TextXAlignment.Left
         ContentLbl.TextWrapped = true
         ContentLbl.TextTransparency = 1
         ContentLbl.Text = content
         ContentLbl.ZIndex = 4
-        ContentLbl.Parent = TextHolder
+        ContentLbl.Parent = Toast
 
-        -- สเปเซอร์ล่างสุดเพื่อกันพื้นที่สำหรับ Progress Bar
+        -- ===== BOTTOM SPACER (for progress bar gap) =====
         local BottomSpacer = Instance.new("Frame")
         BottomSpacer.BackgroundTransparency = 1
-        BottomSpacer.Size = UDim2.new(1, 0, 0, 18)
-        BottomSpacer.ZIndex = 4
-        BottomSpacer.Parent = TextHolder
+        BottomSpacer.Position = UDim2.new(0, 54, 0, 44)
+        BottomSpacer.Size = UDim2.new(1, 0, 0, 22)
+        BottomSpacer.ZIndex = 2
+        BottomSpacer.Parent = Toast
 
-        -- ปุ่มปิด X พร้อมพื้นหลังวงกลมนุ่มๆ ตอน hover
+        -- ===== PROGRESS BAR (2px full-width bottom edge) =====
+        local ProgressTrack = Instance.new("Frame")
+        ProgressTrack.AnchorPoint = Vector2.new(0, 1)
+        ProgressTrack.Position = UDim2.new(0, 0, 1, 0)
+        ProgressTrack.Size = UDim2.new(1, 0, 0, 2)
+        ProgressTrack.BackgroundColor3 = Theme.Stroke
+        ProgressTrack.BackgroundTransparency = 1
+        ProgressTrack.BorderSizePixel = 0
+        ProgressTrack.ZIndex = 6
+        ProgressTrack.ClipsDescendants = true
+        ProgressTrack.Parent = Toast
+        corner(ProgressTrack, 1)
+
+        local ProgressBar = Instance.new("Frame")
+        ProgressBar.Size = UDim2.new(1, 0, 1, 0)
+        ProgressBar.BackgroundColor3 = color
+        ProgressBar.BorderSizePixel = 0
+        ProgressBar.ZIndex = 7
+        ProgressBar.Parent = ProgressTrack
+        corner(ProgressBar, 1)
+        local progressGradient = Instance.new("UIGradient")
+        progressGradient.Color = ColorSequence.new(color:Lerp(Color3.new(1, 1, 1), 0.3), color)
+        progressGradient.Parent = ProgressBar
+
+        -- ===== CLOSE BUTTON =====
         local CloseX = Instance.new("ImageButton")
         CloseX.AnchorPoint = Vector2.new(1, 0)
-        CloseX.Position = UDim2.new(1, -10, 0, 10)
-        CloseX.Size = UDim2.new(0, 24, 0, 24)
+        CloseX.Position = UDim2.new(1, -8, 0, 8)
+        CloseX.Size = UDim2.new(0, 20, 0, 20)
         CloseX.BackgroundColor3 = Theme.SubText
         CloseX.BackgroundTransparency = 1
         CloseX.AutoButtonColor = false
-        CloseX.ZIndex = 5
+        CloseX.ZIndex = 6
         CloseX.Parent = Toast
-        corner(CloseX, 8)
+        corner(CloseX, 6)
 
         local CloseXIcon = Instance.new("ImageLabel")
         CloseXIcon.AnchorPoint = Vector2.new(0.5, 0.5)
         CloseXIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
-        CloseXIcon.Size = UDim2.new(0, 13, 0, 13)
+        CloseXIcon.Size = UDim2.new(0, 10, 0, 10)
         CloseXIcon.BackgroundTransparency = 1
         CloseXIcon.Image = Library.Icons.close
         applyThemeColor(CloseXIcon, "SubText", "ImageColor3")
         CloseXIcon.ImageTransparency = 1
         CloseXIcon.ScaleType = Enum.ScaleType.Fit
-        CloseXIcon.ZIndex = 6
+        CloseXIcon.ZIndex = 7
         CloseXIcon.Parent = CloseX
 
         CloseX.MouseEnter:Connect(function()
-            TweenService:Create(CloseX, TI.d012_Sine_Out, {BackgroundTransparency = 0.88}):Play()
+            TweenService:Create(CloseX, TI.d012_Sine_Out, {BackgroundTransparency = 0.82}):Play()
             TweenService:Create(CloseXIcon, TI.d012_Sine_Out, {ImageColor3 = Theme.Text}):Play()
         end)
         CloseX.MouseLeave:Connect(function()
@@ -916,102 +945,65 @@ function Library:CreateWindow(config)
             TweenService:Create(CloseXIcon, TI.d012_Sine_Out, {ImageColor3 = Theme.SubText}):Play()
         end)
 
-        -- แถบนับถอยหลัง (Progress bar) ด้านล่างสุดแบบเต็มความกว้าง
-        local ProgressTrack = Instance.new("Frame")
-        ProgressTrack.AnchorPoint = Vector2.new(0.5, 1)
-        ProgressTrack.Position = UDim2.new(0.5, 0, 1, -10)
-        ProgressTrack.Size = UDim2.new(1, -28, 0, 3)
-        applyThemeColor(ProgressTrack, "Stroke")
-        ProgressTrack.BackgroundTransparency = 1
-        ProgressTrack.BorderSizePixel = 0
-        ProgressTrack.ZIndex = 4
-        ProgressTrack.ClipsDescendants = true
-        ProgressTrack.Parent = Toast
-        corner(ProgressTrack, 2)
-        
-        local ProgressBar = Instance.new("Frame")
-        ProgressBar.Size = UDim2.new(1, 0, 1, 0)
-        ProgressBar.BackgroundColor3 = color
-        ProgressBar.BorderSizePixel = 0
-        ProgressBar.ZIndex = 5
-        ProgressBar.Parent = ProgressTrack
-        corner(ProgressBar, 2)
-        local progressGradient = Instance.new("UIGradient")
-        progressGradient.Color = ColorSequence.new(color:Lerp(Color3.new(1, 1, 1), 0.2), color)
-        progressGradient.Parent = ProgressBar
-
-        -- UIScale สำหรับทำเอฟเฟกต์เด้ง
+        -- ===== UIScale for bounce animation =====
         local ToastScale = Instance.new("UIScale")
-        ToastScale.Scale = 0.9
+        ToastScale.Scale = 0.88
         ToastScale.Parent = Toast
 
-        local IconScale = Instance.new("UIScale")
-        IconScale.Scale = 0.5
-        IconScale.Parent = IconBadge
-        IconBadge.Rotation = -20
-
-        -- รอให้ AutomaticSize คำนวณความสูงจริงให้นิ่งก่อน 1 เฟรม
-        -- (แก้ bug: การ์ดที่มีข้อความหลายบรรทัดสูงผิด/กระตุกตอนเด้งเข้า เพราะ AbsoluteSize ยังไม่อัปเดตทันทีที่ Parent)
+        -- รอ AutomaticSize นิ่ง 1 เฟรม
         RunService.Heartbeat:Wait()
 
-        -- คำนวณความสูงเป้าหมาย (อ้างอิงจากค่าที่นิ่งแล้ว)
         local targetHeight = Toast.AbsoluteSize.Y
         Slot.Size = UDim2.new(1, 0, 0, 0)
         TweenService:Create(Slot, TI.d024_Quint_Out, {Size = UDim2.new(1, 0, 0, targetHeight)}):Play()
 
-        -- sync ความสูงแบบนุ่มนวลทุกครั้งที่เนื้อหาเปลี่ยน (กันการกระตุก/สะดุดของ Slot และ AccentBar)
         local heightSyncConn = Toast:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
             local h = Toast.AbsoluteSize.Y
             TweenService:Create(Slot, TI.d012_Sine_Out, {Size = UDim2.new(1, 0, 0, h)}):Play()
-            TweenService:Create(AccentBar, TI.d012_Sine_Out, {Size = UDim2.new(0, 4, 0, math.max(h - 32, 0))}):Play()
         end)
 
-        -- ลำดับแอนิเมชันเข้า: สไลด์เข้า + เด้ง + แสดงผลทีละส่วน
+        -- ===== ENTER ANIMATION =====
         TweenService:Create(Toast, TI.d024_Quint_Out, {Position = UDim2.new(0, 0, 0, 0)}):Play()
-        TweenService:Create(ToastScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
-        -- Toast background kept transparent (no background)
-        TweenService:Create(outline, TI.d022_Sine_Out, {Transparency = 0.45}):Play()
+        TweenService:Create(ToastScale, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+        TweenService:Create(outline, TI.d022_Sine_Out, {Transparency = 0.55}):Play()
         TweenService:Create(ColorTint, TI.d022_Sine_Out, {BackgroundTransparency = 0}):Play()
-        TweenService:Create(Shadow, TI.d03_Sine_Out, {ImageTransparency = 0.55}):Play()
-
-        TweenService:Create(AccentBar, TweenInfo.new(0.38, Enum.EasingStyle.Quint, Enum.EasingDirection.Out, 0, false, 0.04), {Size = UDim2.new(0, 4, 0, targetHeight - 32), BackgroundTransparency = 0}):Play()
-
-        TweenService:Create(IconScale, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, 0.08), {Scale = 1}):Play()
-        TweenService:Create(IconBadge, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, 0.08), {Rotation = 0, BackgroundTransparency = 0}):Play()
-        TweenService:Create(IconImg, TweenInfo.new(0.22, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.14), {ImageTransparency = 0}):Play()
-
-        TweenService:Create(TitleLbl, TweenInfo.new(0.22, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.1), {TextTransparency = 0}):Play()
-        TweenService:Create(ContentLbl, TweenInfo.new(0.22, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.16), {TextTransparency = 0}):Play()
-        TweenService:Create(CloseXIcon, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.2), {ImageTransparency = 0.25}):Play()
-
+        TweenService:Create(Shadow, TI.d03_Sine_Out, {ImageTransparency = 0.6}):Play()
+        TweenService:Create(TopEdge, TI.d022_Sine_Out, {BackgroundTransparency = 0}):Play()
+        TweenService:Create(AccentBar, TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out, 0, false, 0.04), {BackgroundTransparency = 0}):Play()
+        TweenService:Create(IconBadge, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, 0.06), {BackgroundTransparency = 0}):Play()
+        TweenService:Create(IconImg, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.12), {ImageTransparency = 0}):Play()
+        TweenService:Create(TypeChip, TweenInfo.new(0.18, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.08), {TextTransparency = 0}):Play()
+        TweenService:Create(TitleLbl, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.1), {TextTransparency = 0}):Play()
+        TweenService:Create(ContentLbl, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.15), {TextTransparency = 0}):Play()
+        TweenService:Create(CloseXIcon, TweenInfo.new(0.18, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.18), {ImageTransparency = 0.4}):Play()
         ProgressBar.BackgroundTransparency = 1
-        TweenService:Create(ProgressBar, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.22), {BackgroundTransparency = 0}):Play()
-        TweenService:Create(ProgressTrack, TweenInfo.new(0.25, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.18), {BackgroundTransparency = 0.85}):Play()
+        TweenService:Create(ProgressBar, TweenInfo.new(0.18, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.2), {BackgroundTransparency = 0}):Play()
+        TweenService:Create(ProgressTrack, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.15), {BackgroundTransparency = 0.7}):Play()
 
         local dismissed = false
         local function dismiss()
             if dismissed or not Toast or not Toast.Parent then return end
             dismissed = true
             if heightSyncConn then heightSyncConn:Disconnect(); heightSyncConn = nil end
-            
-            -- แอนิเมชันออก: สไลด์ออกขวา + จางหาย
-            TweenService:Create(Toast, TI.d018_Quint_In, {Position = UDim2.new(0, 30, 0, 0)}):Play()
-            TweenService:Create(ToastScale, TI.d018_Quint_In, {Scale = 0.92}):Play()
-            TweenService:Create(IconBadge, TI.d016_Sine_In, {Rotation = 12, BackgroundTransparency = 1}):Play()
-            -- Toast background already transparent, no tween needed
+
+            -- EXIT ANIMATION
+            TweenService:Create(Toast, TI.d018_Quint_In, {Position = UDim2.new(0, 24, 0, 0)}):Play()
+            TweenService:Create(ToastScale, TI.d018_Quint_In, {Scale = 0.93}):Play()
             TweenService:Create(outline, TI.d018_Sine_Out, {Transparency = 1}):Play()
             TweenService:Create(ColorTint, TI.d018_Sine_Out, {BackgroundTransparency = 1}):Play()
-            TweenService:Create(Shadow, TI.d018_Sine_Out, {ImageTransparency = 1}):Play()
+            TweenService:Create(TopEdge, TI.d018_Sine_Out, {BackgroundTransparency = 1}):Play()
             TweenService:Create(AccentBar, TI.d016_Sine_In, {BackgroundTransparency = 1}):Play()
+            TweenService:Create(Shadow, TI.d018_Sine_Out, {ImageTransparency = 1}):Play()
+            TweenService:Create(IconBadge, TI.d016_Sine_In, {BackgroundTransparency = 1}):Play()
             TweenService:Create(IconImg, TI.d014_Sine_Out, {ImageTransparency = 1}):Play()
+            TweenService:Create(TypeChip, TI.d014_Sine_Out, {TextTransparency = 1}):Play()
             TweenService:Create(TitleLbl, TI.d014_Sine_Out, {TextTransparency = 1}):Play()
             TweenService:Create(ContentLbl, TI.d014_Sine_Out, {TextTransparency = 1}):Play()
             TweenService:Create(CloseXIcon, TI.d014_Sine_Out, {ImageTransparency = 1}):Play()
             TweenService:Create(ProgressTrack, TI.d014_Sine_Out, {BackgroundTransparency = 1}):Play()
             TweenService:Create(ProgressBar, TI.d014_Sine_Out, {BackgroundTransparency = 1}):Play()
-            
             TweenService:Create(Slot, TI.d018_Quint_In, {Size = UDim2.new(1, 0, 0, 0)}):Play()
-            task.delay(0.2, function()
+            task.delay(0.22, function()
                 for _, c in ipairs(shadowConns) do c:Disconnect() end
                 Shadow:Destroy()
                 if Slot then Slot:Destroy() end
@@ -1020,8 +1012,7 @@ function Library:CreateWindow(config)
             end)
         end
 
-        -- ============ ตัวจับเวลาแบบ Pause ได้ ============
-        -- Hover ค้างไว้ = หยุดนับถอยหลังชั่วคราว กันการ์ดหายไปตอนอ่านไม่ทัน (เดิมใช้ task.delay ตายตัว หยุดไม่ได้ = bug UX)
+        -- HOVER: หยุดนับถอยหลัง + lift card
         local elapsed = 0
         local isHovering = false
         task.spawn(function()
@@ -1039,15 +1030,14 @@ function Library:CreateWindow(config)
             end
         end)
 
-        -- โฮเวอร์การ์ด: หยุดนับถอยหลัง + ยกการ์ดขึ้นเล็กน้อยพร้อมเงาเข้มขึ้น ให้ความรู้สึก interactive
         Toast.MouseEnter:Connect(function()
             isHovering = true
-            TweenService:Create(Shadow, TI.d02_Sine_Out, {ImageTransparency = 0.35}):Play()
-            TweenService:Create(ToastScale, TI.d02_Sine_Out, {Scale = 1.015}):Play()
+            TweenService:Create(Shadow, TI.d02_Sine_Out, {ImageTransparency = 0.4}):Play()
+            TweenService:Create(ToastScale, TI.d02_Sine_Out, {Scale = 1.012}):Play()
         end)
         Toast.MouseLeave:Connect(function()
             isHovering = false
-            TweenService:Create(Shadow, TI.d02_Sine_Out, {ImageTransparency = 0.55}):Play()
+            TweenService:Create(Shadow, TI.d02_Sine_Out, {ImageTransparency = 0.6}):Play()
             TweenService:Create(ToastScale, TI.d02_Sine_Out, {Scale = 1}):Play()
         end)
 
@@ -1290,6 +1280,26 @@ function Library:CreateWindow(config)
     topBarFix.BorderSizePixel = 0
     topBarFix.ZIndex = 0
     topBarFix.Parent = TopBar
+
+    -- accent gradient strip ที่ขอบบนสุดของหน้าต่าง (2px, ครบความกว้าง)
+    local TopAccentStrip = Instance.new("Frame")
+    TopAccentStrip.Name = "TopAccentStrip"
+    TopAccentStrip.Size = UDim2.new(1, -24, 0, 2)
+    TopAccentStrip.Position = UDim2.new(0, 12, 0, 0)
+    TopAccentStrip.BackgroundColor3 = Theme.AccentA
+    TopAccentStrip.BackgroundTransparency = 0
+    TopAccentStrip.BorderSizePixel = 0
+    TopAccentStrip.ZIndex = 10
+    TopAccentStrip.Parent = TopBar
+    corner(TopAccentStrip, 1)
+    local stripGrad = Instance.new("UIGradient")
+    stripGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Theme.AccentA),
+        ColorSequenceKeypoint.new(0.5, Theme.AccentB),
+        ColorSequenceKeypoint.new(1, Theme.AccentA),
+    })
+    stripGrad:SetAttribute("IsAccent", true)
+    stripGrad.Parent = TopAccentStrip
 
     local TopBarLine = Instance.new("Frame")
     TopBarLine.Name = "TopBarLine"
