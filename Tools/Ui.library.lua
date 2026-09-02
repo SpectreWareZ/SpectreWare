@@ -4085,7 +4085,16 @@ function Library:CreateWindow(config)
             if isPointOverGui(input.Position, CloseBtn) then return end
             dragging = true
             dragStart = input.Position
-            startPos = Shadow.Position
+            -- normalize Shadow.Position → pure pixel Offset ก่อน เพราะ Shadow เริ่มที่ Scale=0.5,Offset=0
+            -- ถ้าดึง startPos มาตรงๆ แล้ว delta บวกแค่ฝั่ง Offset → clampWindowCenter resolve เป็น
+            -- 0.5*screenW + delta แทนที่จะเป็น currentCenter + delta → หน้าต่างกระโดดออกนอกจอ
+            do
+                local _ss = ScreenGui.AbsoluteSize
+                startPos = UDim2.new(
+                    0, Shadow.Position.X.Scale * _ss.X + Shadow.Position.X.Offset,
+                    0, Shadow.Position.Y.Scale * _ss.Y + Shadow.Position.Y.Offset
+                )
+            end
             if input.UserInputType == Enum.UserInputType.Touch then activeTouch = input end
             dragRSStart()
 
