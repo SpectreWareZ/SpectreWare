@@ -3265,11 +3265,7 @@ function Library:CreateWindow(config)
                     end
                 end)
 
-                if SearchBox then
-                    task.defer(function()
-                        if SearchBox and SearchBox.Parent then SearchBox:CaptureFocus() end
-                    end)
-                end
+                -- SearchBox ไม่ auto-focus ตอนเปิด dropdown — user กดเองเมื่อต้องการค้นหา
             end
             Drop.MouseButton1Click:Connect(function() if isOpen then closeDropdown() else openDropdown() end end)
             return newElement(Drop, function() return selected end, function(_, newVal) selectOption(newVal, true) end, nil, c.Flag)
