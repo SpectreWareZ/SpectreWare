@@ -1447,8 +1447,14 @@ function Library:CreateWindow(config)
         end)
     end
 
+    -- normalize เป็น pure Offset ตั้งแต่เริ่ม กัน Scale=0.5 ปนกับ Offset ตอน tween กลับบ้านหลัง drag
+    local _ss0 = ScreenGui.AbsoluteSize
+    local _rp = Shadow.Position
+    local _normX = _rp.X.Scale * _ss0.X + _rp.X.Offset
+    local _normY = _rp.Y.Scale * _ss0.Y + _rp.Y.Offset
+    Shadow.Position = UDim2.new(0, _normX, 0, _normY)
     local baseShadowPos = Shadow.Position
-    local hiddenShadowPos = baseShadowPos + UDim2.new(0, 0, 0, 14)
+    local hiddenShadowPos = UDim2.new(0, _normX, 0, _normY + 14)
     local hideToken = 0
     local function setUiVisible(visible)
         hideToken = hideToken + 1
@@ -4037,22 +4043,26 @@ function Library:CreateWindow(config)
     local dragging, dragStart, startPos, activeTouch = false, nil, nil, nil
     local dragChangedConn, dragEndedConn = nil, nil
 
-    -- กันหน้าต่างลากหลุดจอ (มือถือ/PC ใช้ path เดียวกันนี้ทั้งคู่ผ่าน InputChanged ด้านล่าง)
-    -- Shadow มี AnchorPoint 0.5,0.5 ดังนั้น Position ของมันคือ "จุดกึ่งกลาง" ของหน้าต่าง
-    -- เราแปลง Scale+Offset ให้เป็นพิกัดจริงบนจอ แล้ว clamp กึ่งกลางให้อยู่ในช่วงที่ครึ่งนึงของขนาดหน้าต่างยังอยู่ในจอเสมอ
+    -- กันหน้าต่างลากหลุดจอจริง (มือถือ/PC path เดียวกัน)
+    -- Shadow มี AnchorPoint 0.5,0.5 → Position = จุดกึ่งกลาง Shadow ทั้งก้อน (รวม glow 30px รอบนอก)
+    -- ใช้ Shadow.AbsoluteSize แทน MainFrame เพื่อนับ glow ด้วย ไม่งั้น edge ยัง overflow ได้ 30px
+    -- return pure Offset เสมอ กัน Scale=0.5 ค้างใน startPos ทำให้ mixed Scale/Offset ในรอบถัดไป
+    local SCREEN_PADDING = 6   -- ระยะห่างขอบจอจริงขั้นต่ำ (px) กัน window ชิดขอบสนิท
     local function clampWindowCenter(pos)
         local screenSize = ScreenGui.AbsoluteSize
-        local halfW = MainFrame.AbsoluteSize.X / 2
-        local halfH = MainFrame.AbsoluteSize.Y / 2
+        -- resolve Scale+Offset → pixel absolute (Shadow อาจยังมี Scale=0.5 ตอน init)
         local centerX = pos.X.Scale * screenSize.X + pos.X.Offset
         local centerY = pos.Y.Scale * screenSize.Y + pos.Y.Offset
-        if screenSize.X > 0 then
-            centerX = math.clamp(centerX, halfW, math.max(halfW, screenSize.X - halfW))
+        -- ใช้ Shadow (ใหญ่กว่า MainFrame 30px ต่อด้าน) เพื่อกัน glow ไม่ให้ทะลุด้วย
+        local halfW = Shadow.AbsoluteSize.X / 2
+        local halfH = Shadow.AbsoluteSize.Y / 2
+        if screenSize.X > 0 and halfW > 0 then
+            centerX = math.clamp(centerX, halfW + SCREEN_PADDING, math.max(halfW + SCREEN_PADDING, screenSize.X - halfW - SCREEN_PADDING))
         end
-        if screenSize.Y > 0 then
-            centerY = math.clamp(centerY, halfH, math.max(halfH, screenSize.Y - halfH))
+        if screenSize.Y > 0 and halfH > 0 then
+            centerY = math.clamp(centerY, halfH + SCREEN_PADDING, math.max(halfH + SCREEN_PADDING, screenSize.Y - halfH - SCREEN_PADDING))
         end
-        return UDim2.new(0, centerX, 0, centerY)
+        return UDim2.new(0, centerX, 0, centerY)   -- pure Offset เสมอ ไม่มี Scale ปน
     end
 
     -- Render-synced so a fast flick (which can fire many InputChanged events per
