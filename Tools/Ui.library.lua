@@ -1115,9 +1115,9 @@ function Library:CreateWindow(config)
     repositionFpsPill()
 
     -- sample fps แบบ smoothed (ค่าเฉลี่ยเคลื่อนที่) ทุกๆ ~0.4 วิ กันตัวเลขกระตุก
+    local fpsConn
     do
         local fpsFrames, fpsAccum, fpsSmoothed = 0, 0, 60
-        local fpsConn
         fpsConn = RunService.RenderStepped:Connect(function(dt)
             if dt <= 0 then return end
             fpsFrames += 1
@@ -1141,9 +1141,6 @@ function Library:CreateWindow(config)
                     FpsDotGlow.Color = glowColor
                 end
             end
-        end)
-        Window:BindToClose(function()
-            if fpsConn then fpsConn:Disconnect() end
         end)
     end
 
@@ -1357,6 +1354,7 @@ function Library:CreateWindow(config)
             end
             if activeWatermark then pcall(function() activeWatermark:Destroy() end) end
             if activeKeyList then pcall(function() activeKeyList:Destroy() end) end
+            if fpsConn then fpsConn:Disconnect() end
             ScreenGui:Destroy(); RestoreGui:Destroy(); NotifyGui:Destroy()
         end
         if ScreenGui.Enabled then
