@@ -1334,26 +1334,29 @@ function Library:CreateWindow(config)
     -- ============ FPS Badge (ติดข้างปุ่มเปิด UI) ============
     local FpsPill = Instance.new("Frame")
     FpsPill.Name = "FpsPill"
-    FpsPill.Size = UDim2.new(0, 66, 0, 26)
+    FpsPill.AutomaticSize = Enum.AutomaticSize.X
+    FpsPill.Size = UDim2.new(0, 0, 0, 46)          -- สูงเท่า RestoreBtn (46) ให้ตรงแนวกันสนิท
     applyThemeColor(FpsPill, "Element")
     FpsPill.BackgroundTransparency = 0.05
     FpsPill.BorderSizePixel = 0
     FpsPill.ZIndex = 20
     FpsPill.Visible = false
     FpsPill.Parent = RestoreGui
-    corner(FpsPill, 13)
-    stroke(FpsPill)
+    corner(FpsPill, 23)
+    local FpsStroke = stroke(FpsPill, "AccentA")   -- border สีเดียวกับปุ่ม S ให้เข้าชุด
+    FpsStroke.Transparency = 0.3
 
     local FpsPillScale = Instance.new("UIScale")
     FpsPillScale.Scale = 1
     FpsPillScale.Parent = FpsPill
 
     local FpsPadding = Instance.new("UIPadding")
-    FpsPadding.PaddingLeft = UDim.new(0, 10)
-    FpsPadding.PaddingRight = UDim.new(0, 10)
+    FpsPadding.PaddingLeft = UDim.new(0, 14)
+    FpsPadding.PaddingRight = UDim.new(0, 14)
     FpsPadding.Parent = FpsPill
 
     local FpsListLayout = Instance.new("UIListLayout")
+    FpsListLayout.SortOrder = Enum.SortOrder.LayoutOrder
     FpsListLayout.FillDirection = Enum.FillDirection.Horizontal
     FpsListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
     FpsListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -1365,13 +1368,18 @@ function Library:CreateWindow(config)
     FpsDotWrap.Size = UDim2.new(0, 8, 0, 8)
     FpsDotWrap.BackgroundTransparency = 1
     FpsDotWrap.LayoutOrder = 1
+    FpsDotWrap.ZIndex = 22
+    FpsDotWrap.Visible = true
     FpsDotWrap.Parent = FpsPill
 
     local FpsDot = Instance.new("Frame")
     FpsDot.Name = "FpsDot"
     FpsDot.Size = UDim2.new(1, 0, 1, 0)
     FpsDot.BackgroundColor3 = Theme.Success
+    FpsDot.BackgroundTransparency = 0
     FpsDot.BorderSizePixel = 0
+    FpsDot.ZIndex = 22
+    FpsDot.Visible = true
     FpsDot.Parent = FpsDotWrap
     corner(FpsDot, 4)
 
@@ -1389,20 +1397,25 @@ function Library:CreateWindow(config)
     FpsLabel.Size = UDim2.new(0, 0, 1, 0)
     FpsLabel.Font = Enum.Font.GothamBold
     FpsLabel.TextSize = 13
+    FpsLabel.TextTransparency = 0
+    FpsLabel.RichText = false
     FpsLabel.Text = "60 FPS"
     applyThemeColor(FpsLabel, "Text", "TextColor3")
     FpsLabel.TextXAlignment = Enum.TextXAlignment.Left
     FpsLabel.LayoutOrder = 2
+    FpsLabel.ZIndex = 22
+    FpsLabel.Visible = true
     FpsLabel.Parent = FpsPill
 
     -- เกาะติดขวาปุ่มเปิด UI เสมอ แม้จะลากปุ่มไปวางที่อื่น
     local function repositionFpsPill()
         FpsPill.Position = UDim2.new(
             0, RestoreBtn.Position.X.Offset + RestoreBtn.Size.X.Offset + 10,
-            0, RestoreBtn.Position.Y.Offset + (RestoreBtn.Size.Y.Offset - FpsPill.Size.Y.Offset) / 2
+            0, RestoreBtn.Position.Y.Offset + (RestoreBtn.Size.Y.Offset - FpsPill.AbsoluteSize.Y) / 2
         )
     end
     RestoreBtn:GetPropertyChangedSignal("Position"):Connect(repositionFpsPill)
+    FpsPill:GetPropertyChangedSignal("AbsoluteSize"):Connect(repositionFpsPill)
     repositionFpsPill()
 
     -- sample fps แบบ smoothed (ค่าเฉลี่ยเคลื่อนที่) ทุกๆ ~0.4 วิ กันตัวเลขกระตุก
@@ -1417,20 +1430,18 @@ function Library:CreateWindow(config)
                 local currentFps = fpsFrames / fpsAccum
                 fpsSmoothed = fpsSmoothed * 0.55 + currentFps * 0.45
                 fpsFrames, fpsAccum = 0, 0
-                if FpsPill.Visible then
-                    local rounded = math.floor(fpsSmoothed + 0.5)
-                    FpsLabel.Text = rounded .. " FPS"
-                    local dotColor, glowColor
-                    if rounded >= 50 then
-                        dotColor, glowColor = Theme.Success, Theme.Success
-                    elseif rounded >= 30 then
-                        dotColor, glowColor = Theme.Warning, Theme.Warning
-                    else
-                        dotColor, glowColor = Theme.Danger, Theme.Danger
-                    end
-                    FpsDot.BackgroundColor3 = dotColor
-                    FpsDotGlow.Color = glowColor
+                local rounded = math.floor(fpsSmoothed + 0.5)
+                FpsLabel.Text = rounded .. " FPS"     -- อัปเดตทุกครั้ง ไม่เช็ค Visible แล้ว กันเคสตกจังหวะ
+                local dotColor
+                if rounded >= 50 then
+                    dotColor = Theme.Success
+                elseif rounded >= 30 then
+                    dotColor = Theme.Warning
+                else
+                    dotColor = Theme.Danger
                 end
+                FpsDot.BackgroundColor3 = dotColor
+                FpsDotGlow.Color = dotColor
             end
         end)
     end
