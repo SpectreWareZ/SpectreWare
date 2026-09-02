@@ -11,7 +11,7 @@ Library.__index = Library
 Library.Flags = {}
 Library.Themes = {}
 Library.CurrentTheme = "Midnight"
-Library.Version = "6.7.4"
+Library.Version = "6.7.6"
 
 -- ============ FLAG SYSTEM (ต่อขยาย: registry + event สำหรับ Config save/load และ dependency) ============
 Library.FlagElements = {}                    -- ชื่อ Flag -> element object (ใช้ตอน LoadConfig เพื่อ Set ค่ากลับเข้า UI จริง)
@@ -28,6 +28,43 @@ function Library:SetFlag(name, value)
     Library.Flags[name] = value
 end
 
+-- ============ ERROR LOG SYSTEM (ต่อขยาย: ring buffer + event สำหรับ Debug panel/telemetry) ============
+-- เก็บ error ที่เกิดขึ้นระหว่างรัน (callback พัง, โหลด asset ไม่ผ่าน, ฯลฯ) ไว้ที่เดียว
+-- ให้ตัว UI (Debug panel) หรือระบบ telemetry ภายนอกมาอ่าน/subscribe ต่อได้ ไม่ต้องเดาว่าพังตรงไหนจาก console เฉยๆ
+Library.ErrorLog = {}
+Library.MaxErrorLog = 50
+Library.ErrorLogChanged = Instance.new("BindableEvent") -- ยิงทุกครั้งที่มี error ใหม่เข้า log (entry) ใช้กับ badge/แจ้งเตือนสด
+
+-- source = ชื่อจุดที่ error เกิด เช่น "Callback:ESP.Chams", "IconsLoader", "SaveConfig"
+-- message = ข้อความ error, traceback = ผลลัพธ์จาก debug.traceback (optional ใส่ nil ได้ถ้าไม่มี)
+function Library:LogError(source, message, traceback)
+    local entry = {
+        time = os.time(),
+        source = tostring(source or "unknown"),
+        message = tostring(message),
+        traceback = traceback,
+    }
+    table.insert(Library.ErrorLog, 1, entry)
+    if #Library.ErrorLog > Library.MaxErrorLog then
+        table.remove(Library.ErrorLog) -- ตัดตัวเก่าสุดทิ้ง กัน log บวมไม่รู้จบ
+    end
+    Library.ErrorLogChanged:Fire(entry)
+    return entry
+end
+
+function Library:GetErrorLog()
+    return Library.ErrorLog
+end
+
+-- ต่อ error log ทั้งหมดเป็นข้อความก้อนเดียว เอาไว้กด "Copy" ส่งเข้า Discord support ได้ในคลิกเดียว
+function Library:ExportErrorLog()
+    local lines = {}
+    for _, e in ipairs(Library.ErrorLog) do
+        table.insert(lines, string.format("[%s] %s: %s", os.date("%H:%M:%S", e.time), e.source, e.message))
+    end
+    return table.concat(lines, "\n")
+end
+
 -- ============ ICONS SETUP ============
 -- แยกออกเป็นไฟล์ Icons.lua ต่างหากแล้ว โหลดผ่าน loadstring เหมือนไฟล์อื่นๆ ที่ host บน GitHub raw
 -- แก้ URL ตรงนี้ให้ตรงกับ path จริงของ Icons.lua ในเรโปก่อนใช้งาน
@@ -38,7 +75,9 @@ end)
 Library.Icons = iconsOk and iconsResult or {}
 if not iconsOk then
     warn("[SpectreUI] โหลด Icons.lua ไม่สำเร็จ ไอคอนจะไม่ขึ้น: " .. tostring(iconsResult))
+    Library:LogError("IconsLoader", iconsResult)
 end
+
 
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
@@ -278,9 +317,15 @@ end
 
 local function safeCallback(fn, ...)
     if type(fn) ~= "function" then return end
-    local ok, err = pcall(fn, ...)
+    local args = table.pack(...)
+    local ok, errInfo = xpcall(function()
+        return fn(table.unpack(args, 1, args.n))
+    end, function(e)
+        return {message = e, traceback = debug.traceback(nil, 2)}
+    end)
     if not ok then
-        warn("[" .. Library.Version .. "] Callback error: " .. tostring(err))
+        warn("[" .. Library.Version .. "] Callback error: " .. tostring(errInfo.message))
+        Library:LogError("Callback", errInfo.message, errInfo.traceback)
     end
 end
 
@@ -297,12 +342,14 @@ function Library:SaveConfig(name)
     local ok, encoded = pcall(function() return HttpService:JSONEncode(Library.Flags) end)
     if not ok then
         safeNotify({Title = "Config", Content = "แปลงค่า Config เป็น JSON ไม่สำเร็จ", Type = "error"})
+        Library:LogError("SaveConfig:Encode", encoded)
         return false
     end
     ensureConfigFolder()
-    local wok = pcall(writefile, configPath(name), encoded)
+    local wok, werr = pcall(writefile, configPath(name), encoded)
     if not wok then
         safeNotify({Title = "Config", Content = "บันทึกไฟล์ไม่สำเร็จ", Type = "error"})
+        Library:LogError("SaveConfig:Write", werr)
         return false
     end
     safeNotify({Title = "Config", Content = "บันทึก \"" .. tostring(name or "default") .. "\" แล้ว", Type = "success", Duration = 2})
@@ -322,17 +369,20 @@ function Library:LoadConfig(name)
     local rok, raw = pcall(readfile, path)
     if not rok then
         safeNotify({Title = "Config", Content = "อ่านไฟล์ config ไม่สำเร็จ", Type = "error"})
+        Library:LogError("LoadConfig:Read", raw)
         return false
     end
     local dok, data = pcall(function() return HttpService:JSONDecode(raw) end)
     if not dok or type(data) ~= "table" then
         safeNotify({Title = "Config", Content = "ไฟล์ config เสียหายหรือไม่ใช่ JSON", Type = "error"})
+        Library:LogError("LoadConfig:Decode", dok and "ไม่ใช่ table" or data)
         return false
     end
     for flag, value in pairs(data) do
         local elem = Library.FlagElements[flag]
         if elem and elem.Set then
-            pcall(function() elem:Set(value) end)
+            local sok, serr = pcall(function() elem:Set(value) end)
+            if not sok then Library:LogError("LoadConfig:ApplyFlag:" .. tostring(flag), serr) end
         else
             Library.Flags[flag] = value
         end
@@ -3727,18 +3777,36 @@ function Library:CreateWindow(config)
             Label.TextXAlignment = Enum.TextXAlignment.Left
             Label.Parent = Btn
 
-            local waiting, bindConn = false, nil
+            local waiting, bindConn, pulseConn = false, nil, nil
+            local waitStroke = stroke(Btn, "AccentA", 1.2)
+            waitStroke.Transparency = 1
             Btn.MouseButton1Click:Connect(function()
                 if waiting then return end
                 if bindConn then bindConn:Disconnect(); bindConn = nil end
                 waiting = true
                 Label.Text = (c.Text or "Keybind") .. ": Press..."
+                -- ชีพจรเรืองแสงวนไปมาตอนรอกดปุ่ม ให้รู้ชัดว่า "กำลังฟังอยู่" ไม่ใช่ค้าง
+                local t0 = os.clock()
+                pulseConn = RunService.RenderStepped:Connect(function()
+                    if not Btn.Parent then -- element ถูกทำลายระหว่างรอ (เช่น Tab:Clear()) กันลูป/คอนเนกชันค้าง
+                        if pulseConn then pulseConn:Disconnect(); pulseConn = nil end
+                        if bindConn then bindConn:Disconnect(); bindConn = nil end
+                        return
+                    end
+                    local a = (math.sin((os.clock() - t0) * 4) + 1) / 2 -- 0..1
+                    waitStroke.Transparency = 0.85 - a * 0.55
+                end)
+                local function stopWaitPulse()
+                    if pulseConn then pulseConn:Disconnect(); pulseConn = nil end
+                    TweenService:Create(waitStroke, TI.d02_Sine_Out, {Transparency = 1}):Play()
+                end
                 bindConn = UserInputService.InputBegan:Connect(function(input)
                     if waiting and input.UserInputType == Enum.UserInputType.Keyboard then
                         selectedKey = input.KeyCode
                         bindFlag(c.Flag, selectedKey)
                         Label.Text = (c.Text or "Keybind") .. ": " .. selectedKey.Name
                         waiting = false
+                        stopWaitPulse()
                         if bindConn then bindConn:Disconnect(); bindConn = nil end
                         safeCallback(c.Callback, selectedKey)
                     end
@@ -3801,6 +3869,126 @@ function Library:CreateWindow(config)
             return newElement(Box, function() return Box.Text end, function(_, newText)
                 Box.Text = newText; safeCallback(c.Callback, newText)
             end, nil, c.Flag)
+        end
+
+        -- ============ ERROR LOG PANEL ============
+        -- แผงแสดง error ล่าสุดจาก Library.ErrorLog สดๆ (อัปเดตอัตโนมัติทุกครั้งที่มี error ใหม่)
+        -- ใช้วางไว้ในแท็บ Settings/Misc เพื่อ "รู้ตัว" ว่าฟีเจอร์ไหนพังโดยไม่ต้องเปิด console ดู
+        function Tab:CreateErrorLog(c)
+            c = type(c) == "table" and c or {}
+            local maxShow = c.MaxShow or 8
+
+            local Frame = Instance.new("Frame")
+            Frame.Size = UDim2.new(1, 0, 0, 0)
+            Frame.AutomaticSize = Enum.AutomaticSize.Y
+            applyThemeColor(Frame, "Element")
+            Frame.Parent = TabContent
+            corner(Frame, 9)
+
+            local Pad = Instance.new("UIPadding")
+            Pad.PaddingLeft = UDim.new(0, 12); Pad.PaddingRight = UDim.new(0, 12)
+            Pad.PaddingTop = UDim.new(0, 10); Pad.PaddingBottom = UDim.new(0, 10)
+            Pad.Parent = Frame
+
+            local Layout = Instance.new("UIListLayout")
+            Layout.Padding = UDim.new(0, 6)
+            Layout.Parent = Frame
+
+            local Header = Instance.new("Frame")
+            Header.Size = UDim2.new(1, 0, 0, 24)
+            Header.BackgroundTransparency = 1
+            Header.Parent = Frame
+
+            local TitleLbl = Instance.new("TextLabel")
+            TitleLbl.Size = UDim2.new(1, -70, 1, 0)
+            TitleLbl.BackgroundTransparency = 1
+            TitleLbl.Text = c.Text or "Error Log"
+            applyThemeColor(TitleLbl, "Text", "TextColor3")
+            TitleLbl.Font = Enum.Font.GothamBold
+            TitleLbl.TextSize = 14
+            TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+            TitleLbl.Parent = Header
+
+            local CopyBtn = Instance.new("TextButton")
+            CopyBtn.Size = UDim2.new(0, 60, 0, 22)
+            CopyBtn.Position = UDim2.new(1, -60, 0.5, -11)
+            applyThemeColor(CopyBtn, "Background")
+            CopyBtn.AutoButtonColor = false
+            CopyBtn.Text = "Copy"
+            applyThemeColor(CopyBtn, "SubText", "TextColor3")
+            CopyBtn.Font = Enum.Font.GothamSemibold
+            CopyBtn.TextSize = 12
+            CopyBtn.Parent = Header
+            corner(CopyBtn, 6)
+            applyHoverEffect(CopyBtn, "Background", "ElementHover")
+
+            local ListHolder = Instance.new("Frame")
+            ListHolder.Size = UDim2.new(1, 0, 0, 0)
+            ListHolder.AutomaticSize = Enum.AutomaticSize.Y
+            ListHolder.BackgroundTransparency = 1
+            ListHolder.Parent = Frame
+            local ListLayout = Instance.new("UIListLayout")
+            ListLayout.Padding = UDim.new(0, 4)
+            ListLayout.Parent = ListHolder
+
+            local EmptyLbl = Instance.new("TextLabel")
+            EmptyLbl.Size = UDim2.new(1, 0, 0, 20)
+            EmptyLbl.BackgroundTransparency = 1
+            EmptyLbl.Text = "ยังไม่มี error — ทุกอย่างโอเค"
+            applyThemeColor(EmptyLbl, "SubText", "TextColor3")
+            EmptyLbl.Font = Enum.Font.GothamSemibold
+            EmptyLbl.TextSize = 12
+            EmptyLbl.TextXAlignment = Enum.TextXAlignment.Left
+            EmptyLbl.Parent = ListHolder
+
+            local function fmtEntry(e)
+                return string.format("[%s] %s: %s", os.date("%H:%M:%S", e.time), e.source, e.message)
+            end
+
+            local function refresh()
+                for _, child in ipairs(ListHolder:GetChildren()) do
+                    if child ~= EmptyLbl and not child:IsA("UIListLayout") then child:Destroy() end
+                end
+                local log = Library:GetErrorLog()
+                EmptyLbl.Visible = #log == 0
+                for i = 1, math.min(#log, maxShow) do
+                    local e = log[i]
+                    local row = Instance.new("TextLabel")
+                    row.Size = UDim2.new(1, 0, 0, 0)
+                    row.AutomaticSize = Enum.AutomaticSize.Y
+                    row.BackgroundTransparency = 1
+                    row.Text = fmtEntry(e)
+                    row.TextWrapped = true
+                    applyThemeColor(row, "Danger", "TextColor3")
+                    row.Font = Enum.Font.Code
+                    row.TextSize = 11
+                    row.TextXAlignment = Enum.TextXAlignment.Left
+                    row.LayoutOrder = i
+                    row.Parent = ListHolder
+                end
+            end
+            refresh()
+
+            local changedConn = Library.ErrorLogChanged.Event:Connect(function()
+                refresh()
+            end)
+            Frame.Destroying:Connect(function() changedConn:Disconnect() end) -- กัน connection ค้างเวลา Tab:Clear() ทำลาย Frame ตรงๆ
+
+            CopyBtn.MouseButton1Click:Connect(function()
+                local text = Library:ExportErrorLog()
+                local copied = false
+                if type(setclipboard) == "function" then
+                    copied = pcall(setclipboard, text)
+                end
+                safeNotify({
+                    Title = c.Text or "Error Log",
+                    Content = (text == "" and "ไม่มี log ให้คัดลอก") or (copied and "คัดลอก log แล้ว" or "executor นี้ไม่รองรับ copy อัตโนมัติ"),
+                    Type = copied and "success" or "warning",
+                    Duration = 2
+                })
+            end)
+
+            return newElement(Frame, function() return Library:GetErrorLog() end, function() refresh() end)
         end
 
         function Tab:CreateProgressBar(c)
@@ -3998,6 +4186,8 @@ function Library:CreateWindow(config)
                 Row.AutoButtonColor = false
                 Row.Text = ""
                 Row.Parent = Frame
+                corner(Row, 6)
+                applyHoverEffect(Row, "Element", "ElementHover") -- เดิมแถวไม่มี feedback ตอน hover เลย ทำให้รู้สึกดิบๆ
 
                 local CheckBox = Instance.new("Frame")
                 CheckBox.Size = UDim2.new(0, 16, 0, 16)
@@ -4006,6 +4196,8 @@ function Library:CreateWindow(config)
                 CheckBox.Parent = Row
                 corner(CheckBox, 4)
                 stroke(CheckBox)
+                local cbScale = Instance.new("UIScale")
+                cbScale.Parent = CheckBox
 
                 local Check = Instance.new("ImageLabel")
                 Check.Size = UDim2.new(1, -4, 1, -4)
@@ -4034,6 +4226,13 @@ function Library:CreateWindow(config)
                     selected[opt] = not selected[opt]
                     TweenService:Create(CheckBox, TI.d015_Sine_Out, {BackgroundColor3 = selected[opt] and Theme.AccentA or Theme.ToggleOff}):Play()
                     TweenService:Create(Check, TI.d015_Sine_Out, {ImageTransparency = selected[opt] and 0 or 1}):Play()
+                    -- กระเพื่อมเล็กๆ ตอนติ๊ก/ถอด ให้รู้สึกหนึบเหมือน Toggle
+                    TweenService:Create(cbScale, TI.d008_Quad_Out, {Scale = 0.8}):Play()
+                    task.delay(0.08, function()
+                        if cbScale.Parent then
+                            TweenService:Create(cbScale, TI.d022_Back_Out, {Scale = 1}):Play()
+                        end
+                    end)
                     fireCallback()
                 end)
             end
