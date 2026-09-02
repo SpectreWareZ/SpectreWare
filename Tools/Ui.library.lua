@@ -11,7 +11,7 @@ Library.__index = Library
 Library.Flags = {}
 Library.Themes = {}
 Library.CurrentTheme = "Midnight"
-Library.Version = "6.6.0"
+Library.Version = "6.7.0"
 
 -- ============ FLAG SYSTEM (ต่อขยาย: registry + event สำหรับ Config save/load และ dependency) ============
 Library.FlagElements = {}                    -- ชื่อ Flag -> element object (ใช้ตอน LoadConfig เพื่อ Set ค่ากลับเข้า UI จริง)
@@ -948,20 +948,23 @@ function Library:CreateWindow(config)
         RowLayout.Padding = UDim.new(0, 8)
         RowLayout.Parent = BtnRow
 
-        local CancelBtn = Instance.new("TextButton")
-        CancelBtn.Size = UDim2.new(0, 92, 1, 0)
-        applyThemeColor(CancelBtn, "Element")
-        CancelBtn.AutoButtonColor = false
-        CancelBtn.Text = opts.CancelText or "ยกเลิก"
-        applyThemeColor(CancelBtn, "SubText", "TextColor3")
-        CancelBtn.Font = Enum.Font.GothamSemibold
-        CancelBtn.TextSize = 13
-        CancelBtn.ZIndex = 2
-        CancelBtn.Parent = BtnRow
-        corner(CancelBtn, 8)
-        applyHoverEffect(CancelBtn, "Element", "ElementHover")
-        applyPressAnimation(CancelBtn, 0.94)
-        ripple(CancelBtn, "Stroke")
+        local CancelBtn
+        if not opts.HideCancel then
+            CancelBtn = Instance.new("TextButton")
+            CancelBtn.Size = UDim2.new(0, 92, 1, 0)
+            applyThemeColor(CancelBtn, "Element")
+            CancelBtn.AutoButtonColor = false
+            CancelBtn.Text = opts.CancelText or "ยกเลิก"
+            applyThemeColor(CancelBtn, "SubText", "TextColor3")
+            CancelBtn.Font = Enum.Font.GothamSemibold
+            CancelBtn.TextSize = 13
+            CancelBtn.ZIndex = 2
+            CancelBtn.Parent = BtnRow
+            corner(CancelBtn, 8)
+            applyHoverEffect(CancelBtn, "Element", "ElementHover")
+            applyPressAnimation(CancelBtn, 0.94)
+            ripple(CancelBtn, "Stroke")
+        end
 
         local ConfirmBtn = Instance.new("TextButton")
         ConfirmBtn.Size = UDim2.new(0, 92, 1, 0)
@@ -999,7 +1002,9 @@ function Library:CreateWindow(config)
                 close(false)
             end
         end)
-        CancelBtn.MouseButton1Click:Connect(function() close(false) end)
+        if CancelBtn then
+            CancelBtn.MouseButton1Click:Connect(function() close(false) end)
+        end
         ConfirmBtn.MouseButton1Click:Connect(function() close(true) end)
 
         -- ลำดับแอนิเมชันเข้า: backdrop มืดลง + กล่องเด้งเข้าแบบสปริง
@@ -1011,6 +1016,20 @@ function Library:CreateWindow(config)
         TweenService:Create(ContentLbl, TI.d022_Sine_Out, {TextTransparency = 0}):Play()
 
         return {Close = function() close(false) end}
+    end
+
+    -- ============ Library:Alert — โมดัลแจ้งเตือนปุ่มเดียว (OK) ใช้ Confirm ภายในโดยซ่อนปุ่มยกเลิก ============
+    function Library:Alert(opts)
+        opts = type(opts) == "table" and opts or {}
+        return Library:Confirm({
+            Title = opts.Title,
+            Content = opts.Content,
+            ConfirmText = opts.ButtonText or "OK",
+            CancelText = nil,
+            HideCancel = true,
+            OnConfirm = opts.OnClose,
+            OnCancel = opts.OnClose,
+        })
     end
 
     -- ============ Main window ============
