@@ -11,7 +11,7 @@ Library.__index = Library
 Library.Flags = {}
 Library.Themes = {}
 Library.CurrentTheme = "Midnight"
-Library.Version = "6.7.0"
+Library.Version = "6.7.1"
 
 -- ============ FLAG SYSTEM (ต่อขยาย: registry + event สำหรับ Config save/load และ dependency) ============
 Library.FlagElements = {}                    -- ชื่อ Flag -> element object (ใช้ตอน LoadConfig เพื่อ Set ค่ากลับเข้า UI จริง)
@@ -432,6 +432,39 @@ local function isPointOverGui(pos, guiObject)
     local size = guiObject.AbsoluteSize
     return pos.X >= topLeft.X and pos.X <= topLeft.X + size.X
        and pos.Y >= topLeft.Y and pos.Y <= topLeft.Y + size.Y
+end
+
+-- ============ FLOATING POPUP POSITIONING (dropdown/color picker) ============
+-- คำนวณตำแหน่งกล่อง popup ไม่ให้ล้นขอบจอ ทั้งแนวตั้ง (สลับเปิดขึ้น-ลง) และแนวนอน (เลื่อนเข้าขอบ)
+-- คืนค่า posX, edgeY, openUp — edgeY คือ "ขอบที่ยึดตำแหน่งไว้" (ขอบบนถ้าเปิดลง, ขอบล่างถ้าเปิดขึ้น)
+-- ใช้คู่กับ AnchorPoint = Vector2.new(0, openUp and 1 or 0) เพื่อให้กล่องขยายออกจากขอบที่ถูกต้อง
+local function resolveFloatingPosition(anchorAbsPos, anchorAbsSize, popupW, popupH, gap)
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+    local margin = 8
+
+    local spaceBelow = viewport.Y - (anchorAbsPos.Y + anchorAbsSize.Y + gap) - margin
+    local spaceAbove = anchorAbsPos.Y - gap - margin
+    local openUp = spaceBelow < popupH and spaceAbove > spaceBelow
+
+    local edgeY
+    if openUp then
+        edgeY = anchorAbsPos.Y - gap
+        if edgeY - popupH < margin then edgeY = popupH + margin end
+    else
+        edgeY = anchorAbsPos.Y + anchorAbsSize.Y + gap
+        if edgeY + popupH > viewport.Y - margin then
+            edgeY = math.max(margin, viewport.Y - margin - popupH)
+        end
+    end
+
+    local posX = anchorAbsPos.X
+    if posX + popupW > viewport.X - margin then
+        posX = viewport.X - margin - popupW
+    end
+    if posX < margin then posX = margin end
+
+    return posX, edgeY, openUp
 end
 
 local function newElement(root, getter, setter, destroyer, flag)
@@ -2646,6 +2679,10 @@ function Library:CreateWindow(config)
                 local fullH = pad * 2 + math.min(contentH, maxVisible * itemH + (maxVisible - 1) * gap)
                 local needsScroll = #c.Options > maxVisible
 
+                local popupX, edgeY, openUp = resolveFloatingPosition(Drop.AbsolutePosition, Drop.AbsoluteSize, Drop.AbsoluteSize.X, fullH, 6)
+                local anchorPoint = Vector2.new(0, openUp and 1 or 0)
+                local shadowEdgeY = edgeY + (openUp and 14 or -14)
+
                 shadow = Instance.new("ImageLabel")
                 shadow.Name = "DropShadow"
                 shadow.BackgroundTransparency = 1
@@ -2656,14 +2693,15 @@ function Library:CreateWindow(config)
                 shadow.SliceCenter = Rect.new(24, 24, 276, 276)
                 shadow.ZIndex = 9
                 shadow.Parent = ScreenGui
-                shadow.AnchorPoint = Vector2.new(0, 0)
-                shadow.Position = UDim2.new(0, Drop.AbsolutePosition.X - 14, 0, Drop.AbsolutePosition.Y + Drop.AbsoluteSize.Y + 6 - 14)
+                shadow.AnchorPoint = anchorPoint
+                shadow.Position = UDim2.new(0, popupX - 14, 0, shadowEdgeY)
                 shadow.Size = UDim2.new(0, Drop.AbsoluteSize.X + 28, 0, 28)
                 TweenService:Create(shadow, TI.d018_Sine_Out, {ImageTransparency = 0.55}):Play()
 
                 list = Instance.new(needsScroll and "ScrollingFrame" or "Frame")
                 list.Size = UDim2.new(0, Drop.AbsoluteSize.X, 0, 0)
-                list.Position = UDim2.new(0, Drop.AbsolutePosition.X, 0, Drop.AbsolutePosition.Y + Drop.AbsoluteSize.Y + 6)
+                list.AnchorPoint = anchorPoint
+                list.Position = UDim2.new(0, popupX, 0, edgeY)
                 applyThemeColor(list, "Element")
                 list.BackgroundTransparency = 1
                 list.ClipsDescendants = true
@@ -2849,9 +2887,13 @@ function Library:CreateWindow(config)
                 h, s, v = selectedColor:ToHSV()
 
                 picker = Instance.new("Frame")
-                picker.Size = UDim2.new(0, math.max(Btn.AbsoluteSize.X, 224), 0, 0)
+                local pickerW = math.max(Btn.AbsoluteSize.X, 224)
+                local estimatedH = 220 -- ความสูงโดยประมาณของเนื้อหา (SV box + hue bar + hex + swatches + padding)
+                local popupX, edgeY, openUp = resolveFloatingPosition(Btn.AbsolutePosition, Btn.AbsoluteSize, pickerW, estimatedH, 6)
+                picker.Size = UDim2.new(0, pickerW, 0, 0)
                 picker.AutomaticSize = Enum.AutomaticSize.Y
-                picker.Position = UDim2.new(0, Btn.AbsolutePosition.X, 0, Btn.AbsolutePosition.Y + 46)
+                picker.AnchorPoint = Vector2.new(0, openUp and 1 or 0)
+                picker.Position = UDim2.new(0, popupX, 0, edgeY)
                 applyThemeColor(picker, "Background")
                 picker.ZIndex = 10
                 picker.Active = true
