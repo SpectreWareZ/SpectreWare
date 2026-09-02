@@ -1528,24 +1528,45 @@ function Library:CreateWindow(config)
     ResizeHandle.ZIndex = 6
     ResizeHandle.Parent = MainContent
 
+    -- พื้นหลัง pill โชว์ตอน hover/resize
+    local ResizeBg = Instance.new("Frame")
+    ResizeBg.AnchorPoint = Vector2.new(1, 1)
+    ResizeBg.Position = UDim2.new(1, -2, 1, -2)
+    ResizeBg.Size = UDim2.new(0, 28, 0, 28)
+    ResizeBg.BackgroundColor3 = Theme.AccentA
+    ResizeBg.BackgroundTransparency = 1
+    ResizeBg.BorderSizePixel = 0
+    ResizeBg.ZIndex = 5
+    ResizeBg.Parent = ResizeHandle
+    corner(ResizeBg, 8)
+
     local ResizeIcon = Instance.new("ImageLabel")
-    ResizeIcon.AnchorPoint = Vector2.new(1, 1)
-    ResizeIcon.Position = UDim2.new(1, -4, 1, -4)
-    ResizeIcon.Size = UDim2.new(0, 18, 0, 18)
+    ResizeIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+    ResizeIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
+    ResizeIcon.Size = UDim2.new(0, 14, 0, 14)
     ResizeIcon.BackgroundTransparency = 1
     ResizeIcon.Image = "rbxassetid://10709760051"
     ResizeIcon.Rotation = 90
-    ResizeIcon.ImageTransparency = 0.4
-    applyThemeColor(ResizeIcon, "SubText", "ImageColor3")
+    ResizeIcon.ImageTransparency = 0.55
+    ResizeIcon.ImageColor3 = Theme.SubText
     ResizeIcon.ScaleType = Enum.ScaleType.Fit
     ResizeIcon.ZIndex = 6
-    ResizeIcon.Parent = ResizeHandle
+    ResizeIcon.Parent = ResizeBg
+
+    local ResizeIconScale = Instance.new("UIScale")
+    ResizeIconScale.Scale = 1
+    ResizeIconScale.Parent = ResizeBg
+
     ResizeHandle.MouseEnter:Connect(function()
-        TweenService:Create(ResizeIcon, TI.d015_Sine_Out, {ImageTransparency = 0}):Play()
+        TweenService:Create(ResizeBg, TI.d015_Sine_Out, {BackgroundTransparency = 0.82}):Play()
+        TweenService:Create(ResizeIcon, TI.d015_Sine_Out, {ImageTransparency = 0, ImageColor3 = Theme.AccentA}):Play()
+        TweenService:Create(ResizeIconScale, TI.d015_Sine_Out, {Scale = 1.1}):Play()
     end)
     ResizeHandle.MouseLeave:Connect(function()
         if not resizing then
-            TweenService:Create(ResizeIcon, TI.d015_Sine_Out, {ImageTransparency = 0.4}):Play()
+            TweenService:Create(ResizeBg, TI.d015_Sine_Out, {BackgroundTransparency = 1}):Play()
+            TweenService:Create(ResizeIcon, TI.d015_Sine_Out, {ImageTransparency = 0.55, ImageColor3 = Theme.SubText}):Play()
+            TweenService:Create(ResizeIconScale, TI.d015_Sine_Out, {Scale = 1}):Play()
         end
     end)
 
@@ -3749,7 +3770,9 @@ function Library:CreateWindow(config)
     local function stopResize(input)
         if resizing then
             resizing = false
-            TweenService:Create(ResizeIcon, TI.d015_Sine_Out, {ImageTransparency = 0.4}):Play()
+            TweenService:Create(ResizeBg, TI.d015_Sine_Out, {BackgroundTransparency = 1}):Play()
+            TweenService:Create(ResizeIcon, TI.d015_Sine_Out, {ImageTransparency = 0.55, ImageColor3 = Theme.SubText}):Play()
+            TweenService:Create(ResizeIconScale, TI.d015_Sine_Out, {Scale = 1}):Play()
         end
         if input and input == resizeTouch then resizeTouch = nil end
         if resizeChangedConn then resizeChangedConn:Disconnect(); resizeChangedConn = nil end
