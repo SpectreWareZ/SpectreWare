@@ -1797,6 +1797,12 @@ function Library:CreateWindow(config)
         ContentLayout.Padding = UDim.new(0, 8)
         ContentLayout.Parent = TabContent
 
+        -- ค่าตำแหน่ง/สเกลตั้งต้นของเนื้อหาแท็บ ใช้ตอนสลับแท็บให้เด้งเข้ามาสวยๆ
+        -- (แค่ Tween ตอนคลิกครั้งเดียว ไม่มี loop ต่อเนื่อง เลยไม่กินเฟรมเรต)
+        local ContentBasePos = TabContent.Position
+        local ContentScale = Instance.new("UIScale")
+        ContentScale.Parent = TabContent
+
         local function setActive(active)
             TweenService:Create(TabBtn, TI.d018_Sine_Out, {
                 BackgroundTransparency = active and 0.85 or 1,
@@ -1817,7 +1823,18 @@ function Library:CreateWindow(config)
             for _, t in ipairs(Tabs) do
                 local isThis = (t.Btn == TabBtn)
                 t.SetActive(isThis)
-                t.Content.Visible = isThis
+                if isThis then
+                    if not t.Content.Visible then
+                        -- เด้งขึ้นมาจากด้านล่างนิดๆ พร้อม pop สเกล ให้รู้สึกลื่นไหลตอนสลับแท็บ
+                        t.Content.Position = t.BasePos + UDim2.new(0, 0, 0, 12)
+                        t.Scale.Scale = 0.96
+                        t.Content.Visible = true
+                        TweenService:Create(t.Content, TI.d02_Back_Out, {Position = t.BasePos}):Play()
+                        TweenService:Create(t.Scale, TI.d02_Back_Out, {Scale = 1}):Play()
+                    end
+                else
+                    t.Content.Visible = false
+                end
             end
             CurrentTab = {Btn = TabBtn, Content = TabContent, SetActive = setActive}
         end)
@@ -3230,7 +3247,7 @@ function Library:CreateWindow(config)
         end
 
         Tab.Btn = TabBtn
-        table.insert(Tabs, {Btn = TabBtn, Content = TabContent, SetActive = setActive})
+        table.insert(Tabs, {Btn = TabBtn, Content = TabContent, SetActive = setActive, BasePos = ContentBasePos, Scale = ContentScale})
         if #Tabs == 1 then
             setActive(true)
             TabContent.Visible = true
