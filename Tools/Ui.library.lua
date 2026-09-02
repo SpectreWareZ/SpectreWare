@@ -144,6 +144,114 @@ Library.Themes.Light = resolveTheme({
     ToggleOff = Color3.fromRGB(216, 218, 227), Stroke = Color3.fromRGB(228, 229, 236),
     Success = Color3.fromRGB(22, 163, 106), Danger = Color3.fromRGB(224, 54, 54), Warning = Color3.fromRGB(217, 130, 0), Info = Color3.fromRGB(37, 108, 224)
 })
+-- ดาร์กเขียว ป่าลึก อำพลาง
+Library.Themes.Forest = resolveTheme({
+    Background = Color3.fromRGB(8, 14, 10), Sidebar = Color3.fromRGB(10, 18, 12), Topbar = Color3.fromRGB(12, 20, 14),
+    Element = Color3.fromRGB(16, 28, 18), ElementHover = Color3.fromRGB(22, 38, 24),
+    AccentA = Color3.fromRGB(52, 211, 110), AccentB = Color3.fromRGB(101, 232, 169),
+    ToggleOff = Color3.fromRGB(20, 35, 22), Stroke = Color3.fromRGB(26, 46, 30),
+    Text = Color3.fromRGB(240, 252, 244), SubText = Color3.fromRGB(130, 170, 140),
+    Success = Color3.fromRGB(52, 211, 110), Info = Color3.fromRGB(101, 232, 200)
+})
+-- ส้มอมชมพูอ่อน อาทิตย์ตก
+Library.Themes.Sunset = resolveTheme({
+    Background = Color3.fromRGB(18, 10, 8), Sidebar = Color3.fromRGB(22, 12, 9), Topbar = Color3.fromRGB(26, 14, 10),
+    Element = Color3.fromRGB(34, 18, 12), ElementHover = Color3.fromRGB(44, 24, 16),
+    AccentA = Color3.fromRGB(255, 118, 56), AccentB = Color3.fromRGB(255, 212, 86),
+    ToggleOff = Color3.fromRGB(45, 24, 16), Stroke = Color3.fromRGB(52, 28, 18),
+    Text = Color3.fromRGB(255, 248, 240), SubText = Color3.fromRGB(185, 155, 130),
+    Warning = Color3.fromRGB(255, 212, 86), Danger = Color3.fromRGB(255, 80, 60)
+})
+-- ชมพูอ่อน ซากุระ ญี่ปุ่น
+Library.Themes.Sakura = resolveTheme({
+    Background = Color3.fromRGB(16, 10, 14), Sidebar = Color3.fromRGB(20, 13, 18), Topbar = Color3.fromRGB(24, 15, 21),
+    Element = Color3.fromRGB(32, 20, 28), ElementHover = Color3.fromRGB(42, 27, 37),
+    AccentA = Color3.fromRGB(255, 128, 180), AccentB = Color3.fromRGB(255, 190, 220),
+    ToggleOff = Color3.fromRGB(42, 26, 36), Stroke = Color3.fromRGB(52, 32, 46),
+    Text = Color3.fromRGB(255, 245, 252), SubText = Color3.fromRGB(188, 148, 175),
+    Success = Color3.fromRGB(200, 160, 220), Info = Color3.fromRGB(180, 130, 200)
+})
+-- ดำสนิท เส้นขอบไซยาน ว่างเปล่า
+Library.Themes.Void = resolveTheme({
+    Background = Color3.fromRGB(4, 4, 6), Sidebar = Color3.fromRGB(7, 7, 10), Topbar = Color3.fromRGB(8, 8, 12),
+    Element = Color3.fromRGB(14, 14, 20), ElementHover = Color3.fromRGB(20, 20, 30),
+    AccentA = Color3.fromRGB(0, 245, 255), AccentB = Color3.fromRGB(0, 180, 255),
+    ToggleOff = Color3.fromRGB(18, 18, 28), Stroke = Color3.fromRGB(24, 24, 36),
+    Text = Color3.fromRGB(245, 250, 255), SubText = Color3.fromRGB(140, 155, 175),
+    Info = Color3.fromRGB(0, 200, 240)
+})
+-- ดำทองคำ หรูหรา
+Library.Themes.Gold = resolveTheme({
+    Background = Color3.fromRGB(12, 9, 4), Sidebar = Color3.fromRGB(16, 12, 5), Topbar = Color3.fromRGB(18, 14, 6),
+    Element = Color3.fromRGB(26, 20, 8), ElementHover = Color3.fromRGB(34, 26, 10),
+    AccentA = Color3.fromRGB(255, 195, 60), AccentB = Color3.fromRGB(255, 230, 120),
+    ToggleOff = Color3.fromRGB(34, 26, 10), Stroke = Color3.fromRGB(46, 34, 14),
+    Text = Color3.fromRGB(255, 252, 240), SubText = Color3.fromRGB(185, 168, 120),
+    Warning = Color3.fromRGB(255, 195, 60), Success = Color3.fromRGB(180, 215, 90)
+})
+-- น้ำเงินเข้ม น้ำแข็งขั้วโลก
+Library.Themes.Arctic = resolveTheme({
+    Background = Color3.fromRGB(7, 12, 18), Sidebar = Color3.fromRGB(9, 16, 24), Topbar = Color3.fromRGB(11, 18, 28),
+    Element = Color3.fromRGB(15, 25, 38), ElementHover = Color3.fromRGB(20, 33, 50),
+    AccentA = Color3.fromRGB(160, 220, 255), AccentB = Color3.fromRGB(210, 240, 255),
+    ToggleOff = Color3.fromRGB(18, 30, 46), Stroke = Color3.fromRGB(24, 38, 58),
+    Text = Color3.fromRGB(235, 248, 255), SubText = Color3.fromRGB(148, 185, 215),
+    Info = Color3.fromRGB(160, 220, 255), Success = Color3.fromRGB(100, 220, 200)
+})
+-- ดำสนิท สีเขียวนีออนเรืองแสง
+Library.Themes.Neon = resolveTheme({
+    Background = Color3.fromRGB(5, 8, 5), Sidebar = Color3.fromRGB(7, 11, 7), Topbar = Color3.fromRGB(8, 13, 8),
+    Element = Color3.fromRGB(10, 18, 10), ElementHover = Color3.fromRGB(14, 25, 14),
+    AccentA = Color3.fromRGB(57, 255, 20), AccentB = Color3.fromRGB(120, 255, 80),
+    ToggleOff = Color3.fromRGB(13, 22, 13), Stroke = Color3.fromRGB(18, 32, 18),
+    Text = Color3.fromRGB(240, 255, 235), SubText = Color3.fromRGB(130, 200, 130),
+    Success = Color3.fromRGB(57, 255, 20), Info = Color3.fromRGB(80, 240, 160), Danger = Color3.fromRGB(255, 80, 80)
+})
+-- ม่วงลึก องุ่น
+Library.Themes.Grape = resolveTheme({
+    Background = Color3.fromRGB(12, 8, 18), Sidebar = Color3.fromRGB(16, 10, 24), Topbar = Color3.fromRGB(19, 12, 28),
+    Element = Color3.fromRGB(26, 16, 38), ElementHover = Color3.fromRGB(34, 22, 50),
+    AccentA = Color3.fromRGB(180, 100, 255), AccentB = Color3.fromRGB(220, 160, 255),
+    ToggleOff = Color3.fromRGB(34, 22, 50), Stroke = Color3.fromRGB(44, 28, 64),
+    Text = Color3.fromRGB(248, 240, 255), SubText = Color3.fromRGB(168, 148, 200),
+    Info = Color3.fromRGB(180, 100, 255), Success = Color3.fromRGB(140, 200, 180)
+})
+-- น้ำตาลทองแดง ดิบ
+Library.Themes.Copper = resolveTheme({
+    Background = Color3.fromRGB(14, 9, 6), Sidebar = Color3.fromRGB(18, 12, 8), Topbar = Color3.fromRGB(22, 14, 9),
+    Element = Color3.fromRGB(30, 19, 12), ElementHover = Color3.fromRGB(40, 25, 16),
+    AccentA = Color3.fromRGB(210, 120, 60), AccentB = Color3.fromRGB(240, 175, 100),
+    ToggleOff = Color3.fromRGB(38, 24, 15), Stroke = Color3.fromRGB(48, 30, 18),
+    Text = Color3.fromRGB(255, 248, 240), SubText = Color3.fromRGB(185, 155, 125),
+    Warning = Color3.fromRGB(240, 175, 100), Danger = Color3.fromRGB(220, 80, 60)
+})
+-- ชมพูทองกุหลาบ อบอุ่น
+Library.Themes.RoseGold = resolveTheme({
+    Background = Color3.fromRGB(16, 10, 12), Sidebar = Color3.fromRGB(20, 13, 15), Topbar = Color3.fromRGB(24, 15, 18),
+    Element = Color3.fromRGB(32, 19, 23), ElementHover = Color3.fromRGB(42, 25, 30),
+    AccentA = Color3.fromRGB(230, 140, 155), AccentB = Color3.fromRGB(255, 185, 190),
+    ToggleOff = Color3.fromRGB(44, 26, 32), Stroke = Color3.fromRGB(54, 32, 40),
+    Text = Color3.fromRGB(255, 245, 248), SubText = Color3.fromRGB(190, 155, 165),
+    Success = Color3.fromRGB(200, 200, 160), Info = Color3.fromRGB(190, 160, 220)
+})
+-- ดำสุดขั้ว เขียวแมทริกซ์
+Library.Themes.Matrix = resolveTheme({
+    Background = Color3.fromRGB(2, 6, 2), Sidebar = Color3.fromRGB(3, 8, 3), Topbar = Color3.fromRGB(4, 10, 4),
+    Element = Color3.fromRGB(6, 16, 6), ElementHover = Color3.fromRGB(9, 23, 9),
+    AccentA = Color3.fromRGB(0, 200, 50), AccentB = Color3.fromRGB(0, 255, 80),
+    ToggleOff = Color3.fromRGB(8, 20, 8), Stroke = Color3.fromRGB(12, 30, 12),
+    Text = Color3.fromRGB(210, 255, 210), SubText = Color3.fromRGB(100, 180, 100),
+    Success = Color3.fromRGB(0, 220, 60), Info = Color3.fromRGB(0, 200, 150), Danger = Color3.fromRGB(200, 50, 50)
+})
+-- น้ำตาลอบอุ่น คาราเมล กาแฟ
+Library.Themes.Caramel = resolveTheme({
+    Background = Color3.fromRGB(16, 11, 6), Sidebar = Color3.fromRGB(20, 14, 8), Topbar = Color3.fromRGB(24, 17, 10),
+    Element = Color3.fromRGB(32, 23, 13), ElementHover = Color3.fromRGB(42, 30, 17),
+    AccentA = Color3.fromRGB(200, 148, 80), AccentB = Color3.fromRGB(230, 190, 120),
+    ToggleOff = Color3.fromRGB(40, 28, 16), Stroke = Color3.fromRGB(50, 35, 20),
+    Text = Color3.fromRGB(255, 250, 238), SubText = Color3.fromRGB(188, 162, 128),
+    Warning = Color3.fromRGB(230, 190, 120), Success = Color3.fromRGB(150, 200, 130)
+})
 
 function Library:AddTheme(name, overrides)
     if type(name) ~= "string" or name == "" then return end
