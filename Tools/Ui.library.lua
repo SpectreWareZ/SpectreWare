@@ -2734,8 +2734,14 @@ function Library:CreateWindow(config)
 
                 local itemH, gap, pad = 38, 6, 8
                 local maxVisible = 5
-                local contentH = #c.Options * itemH + (#c.Options - 1) * gap
-                local fullH = pad * 2 + math.min(contentH, maxVisible * itemH + (maxVisible - 1) * gap)
+                -- ช่องค้นหา: เปิดอัตโนมัติถ้าตัวเลือกเยอะ (>6) หรือบังคับเปิด/ปิดได้ผ่าน c.Searchable
+                local searchable = c.Searchable
+                if searchable == nil then searchable = #c.Options > 6 end
+                local searchH = searchable and 40 or 0
+
+                local contentH = #c.Options * itemH + math.max(#c.Options - 1, 0) * gap
+                local optionsAreaH = math.min(contentH, maxVisible * itemH + (maxVisible - 1) * gap)
+                local fullH = pad * 2 + searchH + optionsAreaH
                 local needsScroll = #c.Options > maxVisible
 
                 local popupX, edgeY, openUp = resolveFloatingPosition(Drop.AbsolutePosition, Drop.AbsoluteSize, Drop.AbsoluteSize.X, fullH, 6)
@@ -2757,7 +2763,8 @@ function Library:CreateWindow(config)
                 shadow.Size = UDim2.new(0, Drop.AbsoluteSize.X + 28, 0, 28)
                 TweenService:Create(shadow, TI.d018_Sine_Out, {ImageTransparency = 0.55}):Play()
 
-                list = Instance.new(needsScroll and "ScrollingFrame" or "Frame")
+                -- Popup การ์ดหลัก (ครอบทั้งช่องค้นหา + รายการตัวเลือก ให้ดูเป็นชิ้นเดียวกัน)
+                list = Instance.new("Frame")
                 list.Size = UDim2.new(0, Drop.AbsoluteSize.X, 0, 0)
                 list.AnchorPoint = anchorPoint
                 list.Position = UDim2.new(0, popupX, 0, edgeY)
@@ -2767,13 +2774,6 @@ function Library:CreateWindow(config)
                 list.ZIndex = 10
                 list.Active = true
                 list.Parent = ScreenGui
-                if needsScroll then
-                    list.ScrollBarThickness = 3
-                    list.ScrollBarImageTransparency = 0.4
-                    applyThemeColor(list, "AccentA", "ScrollBarImageColor3")
-                    list.CanvasSize = UDim2.new(0, 0, 0, contentH + pad * 2)
-                    list.BorderSizePixel = 0
-                end
                 corner(list, 14)
                 local listGrad = Instance.new("UIGradient")
                 listGrad.Rotation = 90
@@ -2783,16 +2783,93 @@ function Library:CreateWindow(config)
                 listStroke.Thickness = 1
                 listStroke.Transparency = 0.7
 
+                -- ============ ช่องค้นหา (sticky อยู่บนสุด ไม่เลื่อนตามรายการ) ============
+                local SearchBox
+                if searchable then
+                    local SearchWrap = Instance.new("Frame")
+                    SearchWrap.Size = UDim2.new(1, -pad * 2, 0, searchH - 8)
+                    SearchWrap.Position = UDim2.new(0, pad, 0, pad)
+                    applyThemeColor(SearchWrap, "Background")
+                    SearchWrap.BackgroundTransparency = 0.15
+                    SearchWrap.ZIndex = 11
+                    SearchWrap.Parent = list
+                    corner(SearchWrap, 10)
+                    local swStroke = stroke(SearchWrap)
+                    swStroke.Thickness = 1
+                    swStroke.Transparency = 0.7
+
+                    local SearchIcon = Instance.new("ImageLabel")
+                    SearchIcon.Size = UDim2.new(0, 13, 0, 13)
+                    SearchIcon.Position = UDim2.new(0, 10, 0.5, -6.5)
+                    SearchIcon.BackgroundTransparency = 1
+                    SearchIcon.Image = Library.Icons.search
+                    applyThemeColor(SearchIcon, "SubText", "ImageColor3")
+                    SearchIcon.ScaleType = Enum.ScaleType.Fit
+                    SearchIcon.ZIndex = 12
+                    SearchIcon.Parent = SearchWrap
+
+                    SearchBox = Instance.new("TextBox")
+                    SearchBox.Position = UDim2.new(0, 30, 0, 0)
+                    SearchBox.Size = UDim2.new(1, -38, 1, 0)
+                    SearchBox.BackgroundTransparency = 1
+                    SearchBox.Text = ""
+                    SearchBox.PlaceholderText = "ค้นหา..."
+                    applyThemeColor(SearchBox, "Text", "TextColor3")
+                    applyThemeColor(SearchBox, "SubText", "PlaceholderColor3")
+                    SearchBox.Font = Enum.Font.GothamSemibold
+                    SearchBox.TextSize = 12.5
+                    SearchBox.ClearTextOnFocus = false
+                    SearchBox.TextXAlignment = Enum.TextXAlignment.Left
+                    SearchBox.ZIndex = 12
+                    SearchBox.Parent = SearchWrap
+
+                    SearchBox.Focused:Connect(function()
+                        TweenService:Create(swStroke, TI.d012_Sine_Out, {Transparency = 0.15}):Play()
+                    end)
+                    SearchBox.FocusLost:Connect(function()
+                        TweenService:Create(swStroke, TI.d012_Sine_Out, {Transparency = 0.7}):Play()
+                    end)
+                end
+
+                -- ============ พื้นที่รายการตัวเลือก ============
+                local scrollWrap = Instance.new(needsScroll and "ScrollingFrame" or "Frame")
+                scrollWrap.Size = UDim2.new(1, -pad * 2, 1, -(pad * 2 + searchH))
+                scrollWrap.Position = UDim2.new(0, pad, 0, pad + searchH)
+                scrollWrap.BackgroundTransparency = 1
+                scrollWrap.ZIndex = 11
+                scrollWrap.Parent = list
+                if needsScroll then
+                    scrollWrap.ScrollBarThickness = 3
+                    scrollWrap.ScrollBarImageTransparency = 0.4
+                    applyThemeColor(scrollWrap, "AccentA", "ScrollBarImageColor3")
+                    scrollWrap.CanvasSize = UDim2.new(0, 0, 0, contentH)
+                    scrollWrap.BorderSizePixel = 0
+                end
+
                 local inner = Instance.new("Frame")
-                inner.Size = UDim2.new(1, -pad * 2, 1, -pad * 2)
-                inner.Position = UDim2.new(0, pad, 0, pad)
+                inner.Size = UDim2.new(1, 0, 1, 0)
                 inner.BackgroundTransparency = 1
                 inner.ZIndex = 11
-                inner.Parent = list
+                inner.Parent = scrollWrap
                 local innerLayout = Instance.new("UIListLayout")
                 innerLayout.Padding = UDim.new(0, gap)
                 innerLayout.Parent = inner
 
+                -- ข้อความ "ไม่พบผลลัพธ์" ตอนค้นหาแล้วไม่เจอ
+                local emptyLbl = Instance.new("TextLabel")
+                emptyLbl.Size = UDim2.new(1, 0, 1, 0)
+                emptyLbl.BackgroundTransparency = 1
+                emptyLbl.Text = "ไม่พบตัวเลือกที่ตรงกัน"
+                applyThemeColor(emptyLbl, "SubText", "TextColor3")
+                emptyLbl.Font = Enum.Font.GothamSemibold
+                emptyLbl.TextSize = 12.5
+                emptyLbl.TextXAlignment = Enum.TextXAlignment.Center
+                emptyLbl.TextYAlignment = Enum.TextYAlignment.Center
+                emptyLbl.Visible = false
+                emptyLbl.ZIndex = 11
+                emptyLbl.Parent = scrollWrap
+
+                local optEntries = {}
                 for _, opt in ipairs(c.Options) do
                     local isSelected = (opt == selected)
                     local optBtn = Instance.new("TextButton")
@@ -2845,6 +2922,29 @@ function Library:CreateWindow(config)
                     end
 
                     optBtn.MouseButton1Click:Connect(function() selectOption(opt, true) end)
+                    table.insert(optEntries, {opt = opt, btn = optBtn})
+                end
+
+                -- กรองรายการตามคำค้นหา (ซ่อน/โชว์ผ่าน Visible, UIListLayout จะจัดเรียงใหม่ให้อัตโนมัติ)
+                local function applyFilter(query)
+                    query = (query or ""):lower()
+                    local visibleCount = 0
+                    for _, entry in ipairs(optEntries) do
+                        local match = query == "" or string.find(entry.opt:lower(), query, 1, true) ~= nil
+                        entry.btn.Visible = match
+                        if match then visibleCount += 1 end
+                    end
+                    emptyLbl.Visible = visibleCount == 0
+                    if needsScroll then
+                        local h = visibleCount * itemH + math.max(visibleCount - 1, 0) * gap
+                        scrollWrap.CanvasSize = UDim2.new(0, 0, 0, h)
+                    end
+                end
+
+                if SearchBox then
+                    SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+                        applyFilter(SearchBox.Text)
+                    end)
                 end
 
                 TweenService:Create(list, TI.d02_Quint_Out, {
@@ -2862,6 +2962,12 @@ function Library:CreateWindow(config)
                         if not isPointOverGui(pos, Drop) and (not list or not isPointOverGui(pos, list)) then closeDropdown() end
                     end
                 end)
+
+                if SearchBox then
+                    task.defer(function()
+                        if SearchBox and SearchBox.Parent then SearchBox:CaptureFocus() end
+                    end)
+                end
             end
             Drop.MouseButton1Click:Connect(function() if isOpen then closeDropdown() else openDropdown() end end)
             return newElement(Drop, function() return selected end, function(_, newVal) selectOption(newVal, true) end, nil, c.Flag)
