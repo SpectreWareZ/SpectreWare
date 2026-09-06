@@ -891,7 +891,7 @@ function Library:CreateWindow(config)
         TypeChip.Position = UDim2.new(0, 54, 0, 14)
         TypeChip.Size = UDim2.new(1, -92, 0, 11)
         TypeChip.Font = Enum.Font.GothamBold
-        TypeChip.TextSize = 9.5
+        TypeChip.TextSize = 10.5
         TypeChip.TextColor3 = color
         TypeChip.TextTransparency = 1
         TypeChip.TextXAlignment = Enum.TextXAlignment.Left
@@ -919,9 +919,9 @@ function Library:CreateWindow(config)
         ContentLbl.Position = UDim2.new(0, 54, 0, 44)
         ContentLbl.Size = UDim2.new(1, -66, 0, 0)
         ContentLbl.AutomaticSize = Enum.AutomaticSize.Y
-        ContentLbl.Font = Enum.Font.Gotham
-        ContentLbl.TextSize = 11.5
-        ContentLbl.LineHeight = 1.3
+        ContentLbl.Font = Enum.Font.GothamMedium
+        ContentLbl.TextSize = 12
+        ContentLbl.LineHeight = 1.35
         applyThemeColor(ContentLbl, "SubText", "TextColor3")
         ContentLbl.TextXAlignment = Enum.TextXAlignment.Left
         ContentLbl.TextWrapped = true
@@ -1147,8 +1147,9 @@ function Library:CreateWindow(config)
         ContentLbl.BackgroundTransparency = 1
         ContentLbl.Text = opts.Content or ""
         applyThemeColor(ContentLbl, "SubText", "TextColor3")
-        ContentLbl.Font = Enum.Font.Gotham
-        ContentLbl.TextSize = 13
+        ContentLbl.Font = Enum.Font.GothamMedium
+        ContentLbl.TextSize = 13.5
+        ContentLbl.LineHeight = 1.3
         ContentLbl.TextWrapped = true
         ContentLbl.TextXAlignment = Enum.TextXAlignment.Left
         ContentLbl.TextYAlignment = Enum.TextYAlignment.Top
@@ -1390,7 +1391,7 @@ function Library:CreateWindow(config)
         SubTitleLabel.Text = config.SubTitle
         applyThemeColor(SubTitleLabel, "SubText", "TextColor3")
         SubTitleLabel.TextTransparency = 1
-        SubTitleLabel.Font = Enum.Font.Gotham
+        SubTitleLabel.Font = Enum.Font.GothamMedium
         SubTitleLabel.TextSize = 11
         SubTitleLabel.TextXAlignment = Enum.TextXAlignment.Left
         SubTitleLabel.Parent = TopBar
@@ -2141,7 +2142,7 @@ function Library:CreateWindow(config)
             NameLbl.Size = UDim2.new(0.58, 0, 1, 0)
             NameLbl.BackgroundTransparency = 1
             NameLbl.Text = item.Text or "Action"
-            NameLbl.Font = Enum.Font.Gotham
+            NameLbl.Font = Enum.Font.GothamMedium
             NameLbl.TextSize = 12
             NameLbl.TextXAlignment = Enum.TextXAlignment.Left
             NameLbl.TextTruncate = Enum.TextTruncate.AtEnd
@@ -2218,8 +2219,9 @@ function Library:CreateWindow(config)
         Content.BackgroundTransparency = 1
         Content.Text = opts.Content or ""
         applyThemeColor(Content, "SubText", "TextColor3")
-        Content.Font = Enum.Font.Gotham
-        Content.TextSize = 13
+        Content.Font = Enum.Font.GothamMedium
+        Content.TextSize = 13.5
+        Content.LineHeight = 1.3
         Content.TextWrapped = true
         Content.TextXAlignment = Enum.TextXAlignment.Left
         Content.TextYAlignment = Enum.TextYAlignment.Top
@@ -2289,8 +2291,9 @@ function Library:CreateWindow(config)
         Content.BackgroundTransparency = 1
         Content.Text = opts.Content or ""
         applyThemeColor(Content, "SubText", "TextColor3")
-        Content.Font = Enum.Font.Gotham
-        Content.TextSize = 13
+        Content.Font = Enum.Font.GothamMedium
+        Content.TextSize = 13.5
+        Content.LineHeight = 1.3
         Content.TextWrapped = true
         Content.TextXAlignment = Enum.TextXAlignment.Left
         Content.TextYAlignment = Enum.TextYAlignment.Top
@@ -2535,8 +2538,9 @@ function Library:CreateWindow(config)
             Label.BackgroundTransparency = 1
             Label.Text = c.Text or "Paragraph"
             applyThemeColor(Label, "SubText", "TextColor3")
-            Label.Font = Enum.Font.Gotham
-            Label.TextSize = 13
+            Label.Font = Enum.Font.GothamMedium
+            Label.TextSize = 13.5
+            Label.LineHeight = 1.3
             Label.TextWrapped = true
             Label.TextXAlignment = Enum.TextXAlignment.Left
             Label.Parent = Frame
@@ -2590,8 +2594,9 @@ function Library:CreateWindow(config)
             Body.BackgroundTransparency = 1
             Body.Text = c.Content or ""
             applyThemeColor(Body, "SubText", "TextColor3")
-            Body.Font = Enum.Font.Gotham
-            Body.TextSize = 13
+            Body.Font = Enum.Font.GothamMedium
+            Body.TextSize = 13.5
+            Body.LineHeight = 1.3
             Body.TextWrapped = true
             Body.TextXAlignment = Enum.TextXAlignment.Left
             Body.TextYAlignment = Enum.TextYAlignment.Top
@@ -3853,7 +3858,7 @@ function Library:CreateWindow(config)
             Box.PlaceholderText = c.Text or "Type notes here..."
             applyThemeColor(Box, "Text", "TextColor3")
             applyThemeColor(Box, "SubText", "PlaceholderColor3")
-            Box.Font = Enum.Font.Gotham
+            Box.Font = Enum.Font.GothamMedium
             Box.TextSize = 13
             Box.ClearTextOnFocus = false
             Box.MultiLine = true
@@ -3961,7 +3966,8 @@ function Library:CreateWindow(config)
                     row.TextWrapped = true
                     applyThemeColor(row, "Danger", "TextColor3")
                     row.Font = Enum.Font.Code
-                    row.TextSize = 11
+                    row.TextSize = 12
+                    row.LineHeight = 1.25
                     row.TextXAlignment = Enum.TextXAlignment.Left
                     row.LayoutOrder = i
                     row.Parent = ListHolder
