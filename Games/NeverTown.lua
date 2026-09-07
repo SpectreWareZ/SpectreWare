@@ -114,10 +114,50 @@ Window:EditOpenButton({
     Title="SpectreWare", Icon="monitor", CornerRadius=UDim.new(0,16),
     StrokeThickness=2,
     Color=ColorSequence.new(Color3.fromRGB(123,142,200), Color3.fromRGB(107,47,160)),
-    OnlyMobile=true, Enabled=true, Draggable=true,
+    OnlyMobile=true, Enabled=false, Draggable=true,
 })
 Window:Tag({Title="v1.6.12", Icon="github", Color=Color3.fromRGB(123,142,200), Radius=13})
 Window:SetIconSize(80)
+
+-- ── Custom Circular Open Button (Mobile Only, no flash) ──
+local UserInputService = game:GetService("UserInputService")
+local IsMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+
+local SW_OpenGui = Instance.new("ScreenGui")
+SW_OpenGui.Name = "SW_OpenButtonGui"
+SW_OpenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+SW_OpenGui.ResetOnSpawn = false
+SW_OpenGui.Parent = LP.PlayerGui
+
+local SW_OpenButton = Instance.new("ImageButton")
+SW_OpenButton.Visible = false
+SW_OpenButton.BorderSizePixel = 0
+SW_OpenButton.Draggable = true
+SW_OpenButton.BackgroundColor3 = Color3.fromRGB(28, 6, 255)
+SW_OpenButton.Image = "rbxassetid://131767061823177"
+SW_OpenButton.Size = UDim2.new(0.09412, 0, 0.1637, 0)
+SW_OpenButton.Name = "ButtonRezise"
+SW_OpenButton.Position = UDim2.new(0.13287, 0, 0.0341, 0)
+SW_OpenButton.Parent = SW_OpenGui
+
+local SW_OpenCorner = Instance.new("UICorner", SW_OpenButton)
+SW_OpenCorner.CornerRadius = UDim.new(0.5, 0)
+
+local SW_OpenAspect = Instance.new("UIAspectRatioConstraint", SW_OpenButton)
+SW_OpenAspect.AspectRatio = 1
+
+SW_OpenButton.MouseButton1Click:Connect(function()
+    SW_OpenButton.Visible = false
+    Window:Open()
+end)
+
+Window:OnClose(function()
+    SW_OpenButton.Visible = IsMobile
+end)
+
+Window:OnDestroy(function()
+    SW_OpenButton.Visible = false
+end)
 
 task.spawn(function()
     allTrees = workspace:WaitForChild("AllPlantedTrees",30)
@@ -271,13 +311,10 @@ local function getHudCard()
     end
 end
 
--- ── ESP (Corner Box) ──
--- ดีไซน์ใหม่: กรอบมุม 4 มุม (corner bracket) แทนโครงกระดูก อ่านง่าย เบากว่า ไม่รกจอ
+-- ── ESP ──
 local ESPObjects     = {}
 local _espPartCache  = {}
-local _espCacheBuild = {}
 local Z_MARGIN       = 0.5  -- Z-buffer margin: kills edge-of-camera flicker
-local CORNER_RATIO   = 0.25 -- ความยาวแขนกรอบมุม เทียบกับด้านที่สั้นกว่าของกล่อง
 
 local ESP_EXCLUDE_PATHS = {
     {"System", "[Server] Npc_Seal"},
@@ -312,6 +349,27 @@ local function newText(size, color)
     local d=Drawing.new("Text"); d.Size=size; d.Color=color; d.Outline=true; d.Center=true; d.Visible=false; return d
 end
 
+local RIG_BONES_R15 = {
+    {"Head","UpperTorso"}, {"UpperTorso","LowerTorso"},
+    {"UpperTorso","LeftUpperArm"}, {"LeftUpperArm","LeftLowerArm"}, {"LeftLowerArm","LeftHand"},
+    {"UpperTorso","RightUpperArm"}, {"RightUpperArm","RightLowerArm"}, {"RightLowerArm","RightHand"},
+    {"LowerTorso","LeftUpperLeg"}, {"LeftUpperLeg","LeftLowerLeg"}, {"LeftLowerLeg","LeftFoot"},
+    {"LowerTorso","RightUpperLeg"}, {"RightUpperLeg","RightLowerLeg"}, {"RightLowerLeg","RightFoot"},
+}
+local RIG_BONES_R6 = {
+    {"Head","Torso"},
+    {"Torso","Left Arm"}, {"Torso","Right Arm"},
+    {"Torso","Left Leg"}, {"Torso","Right Leg"},
+}
+
+local function detectRigType(model)
+    local hum = model:FindFirstChildOfClass("Humanoid")
+    if hum then
+        return hum.RigType == Enum.HumanoidRigType.R15
+    end
+    return model:FindFirstChild("UpperTorso") ~= nil
+end
+
 local function buildPartCache(model)
     local parts = {}
     for _, p in ipairs(model:GetDescendants()) do
@@ -320,25 +378,15 @@ local function buildPartCache(model)
     _espPartCache[model] = parts
 end
 
--- HP-based color: เขียว (เลือดเต็ม) ไล่ไปแดง (เลือดใกล้หมด) อ่านง่ายในสถานการณ์จริง
-local function hpToColor(hpR)
-    if hpR > 0.5 then
-        return Color3.fromRGB(m_floor(255*(1-hpR)*2), 255, 60)
-    else
-        return Color3.fromRGB(255, m_floor(255*hpR*2), 60)
-    end
-end
-
 local function makeESP(model, isNPC)
     if ESPObjects[model] then return end
-    -- 4 มุม x 2 เส้นต่อมุม (แนวนอน+แนวตั้ง) = 8 เส้น
-    local corners = {}
-    for i=1,8 do corners[i]=newLine(CFG.BoxThickness, CFG.BoxColor) end
+    local isR15 = detectRigType(model)
+    local bones = isR15 and RIG_BONES_R15 or RIG_BONES_R6
+    local skeleton={}; for i=1,#bones do skeleton[i]=newLine(CFG.BoxThickness, CFG.BoxColor) end
     ESPObjects[model]={
-        corners=corners, isNPC=isNPC or false,
+        skeleton=skeleton, bones=bones, jointCache=nil, jointScreen=nil, isNPC=isNPC or false,
         hpBar    = newLine(CFG.HPBarWidth, Color3.new(0,1,0)),
-        hpBarBg  = newLine(CFG.HPBarWidth + 2, Color3.fromRGB(15,12,24)),
-        nameLabel= newText(CFG.NameSize,   Color3.fromRGB(235,232,252)),
+        nameLabel= newText(CFG.NameSize,   Color3.fromRGB(185,170,240)),
         distLabel= newText(11,             Color3.fromRGB(140,130,175)),
         hpText   = newText(16,             Color3.fromRGB(110,255,165)),
         lastPos3 = nil, lastTopPos3 = nil, lastBotPos3 = nil,
@@ -349,8 +397,8 @@ end
 
 local function removeESP(model)
     local obj=ESPObjects[model]; if not obj then return end
-    for _,l in ipairs(obj.corners) do pcall(function() l:Remove() end) end
-    for _,k in ipairs({"hpBar","hpBarBg","nameLabel","distLabel","hpText"}) do
+    for _,l in ipairs(obj.skeleton) do pcall(function() l:Remove() end) end
+    for _,k in ipairs({"hpBar","nameLabel","distLabel","hpText"}) do
         pcall(function() obj[k]:Remove() end)
     end
     ESPObjects[model]=nil
@@ -362,8 +410,8 @@ end
 local function setVisible(obj, v)
     if obj._vis == v then return end
     obj._vis = v
-    for i=1, #obj.corners do obj.corners[i].Visible = v end
-    obj.hpBar.Visible=v; obj.hpBarBg.Visible=v; obj.nameLabel.Visible=v
+    for i=1, #obj.skeleton do obj.skeleton[i].Visible = v end
+    obj.hpBar.Visible=v; obj.nameLabel.Visible=v
     obj.distLabel.Visible=v; obj.hpText.Visible=v
 end
 
@@ -463,50 +511,58 @@ local function updateESPObject(model, obj, Camera, myRoot, myPos)
     local w  = h * 0.6
     local x1, x2 = cx - w/2, cx + w/2
 
+    local joints = obj.jointCache
+    if not joints then joints={}; obj.jointCache=joints end
+    for _,bone in ipairs(obj.bones) do
+        for _,jname in ipairs(bone) do
+            -- FIX: ถ้า part ที่ cache ไว้โดน Destroy/หลุดออกจาก model ไปแล้ว (Parent เป็น nil)
+            -- ต้องหาใหม่ ไม่งั้น Position จะค้างอยู่ค่าสุดท้ายก่อนโดนทำลาย ทำให้เส้นโครงกระดูกลอยค้างจุดเดิม
+            local cached = joints[jname]
+            if not cached or not cached.Parent then
+                joints[jname] = model:FindFirstChild(jname)
+            end
+        end
+    end
+
+    local jointScreen = obj.jointScreen
+    if not jointScreen then jointScreen={}; obj.jointScreen=jointScreen end
+    for jname, part in pairs(joints) do
+        if part and part.Parent then
+            local vp = Camera:WorldToViewportPoint(part.Position)
+            jointScreen[jname] = (vp.Z > 0) and vp or nil
+        else
+            jointScreen[jname] = nil
+        end
+    end
+
+    for i, bone in ipairs(obj.bones) do
+        local line = obj.skeleton[i]
+        local v1, v2 = jointScreen[bone[1]], jointScreen[bone[2]]
+        if v1 and v2 then
+            if line.Thickness ~= CFG.BoxThickness then line.Thickness = CFG.BoxThickness end
+            if line.Color ~= CFG.BoxColor then line.Color = CFG.BoxColor end
+            line.From = v2_new(v1.X, v1.Y); line.To = v2_new(v2.X, v2.Y)
+            line.Visible = true
+        else
+            if line.Visible then line.Visible = false end
+        end
+    end
+
     local hpR = m_clamp(hum.Health / m_max(hum.MaxHealth, 1), 0, 1)
-    local hpColor = hpToColor(hpR)
-
-    -- ── Corner Box: กรอบมุม 4 มุม สีไล่ตาม HP อ่านง่ายด้วยตาเปล่า ──
-    local armLen = m_max(4, m_min(w, h) * CORNER_RATIO)
-    if CFG.BoxColor and CFG.BoxColor ~= Color3.fromRGB(255,255,255) then
-        -- ผู้ใช้ตั้งสีกรอบเองจาก settings ให้เคารพค่านั้น
-        hpColor = CFG.BoxColor
-    end
-    local c = obj.corners
-    -- มุมบนซ้าย
-    c[1].From=v2_new(x1,y1); c[1].To=v2_new(x1+armLen,y1)
-    c[2].From=v2_new(x1,y1); c[2].To=v2_new(x1,y1+armLen)
-    -- มุมบนขวา
-    c[3].From=v2_new(x2,y1); c[3].To=v2_new(x2-armLen,y1)
-    c[4].From=v2_new(x2,y1); c[4].To=v2_new(x2,y1+armLen)
-    -- มุมล่างซ้าย
-    c[5].From=v2_new(x1,y2); c[5].To=v2_new(x1+armLen,y2)
-    c[6].From=v2_new(x1,y2); c[6].To=v2_new(x1,y2-armLen)
-    -- มุมล่างขวา
-    c[7].From=v2_new(x2,y2); c[7].To=v2_new(x2-armLen,y2)
-    c[8].From=v2_new(x2,y2); c[8].To=v2_new(x2,y2-armLen)
-    for i=1,8 do
-        if c[i].Thickness ~= CFG.BoxThickness then c[i].Thickness = CFG.BoxThickness end
-        if c[i].Color ~= hpColor then c[i].Color = hpColor end
-        c[i].Visible = true
-    end
-
-    -- ── HP Bar แนวตั้งด้านซ้ายกล่อง (อ่านง่าย ไม่บังตัวละคร) ──
-    local barX = x1 - 6
-    obj.hpBarBg.From = v2_new(barX, y1)
-    obj.hpBarBg.To   = v2_new(barX, y2)
-    obj.hpBarBg.Visible = CFG.ShowHP
-
+    local hpColor = hpR > 0.5
+        and Color3.fromRGB(m_floor(255*(1-hpR)*2), 255, 0)
+        or  Color3.fromRGB(255, m_floor(255*hpR*2), 0)
+        
     if obj.hpBar.Color ~= hpColor then obj.hpBar.Color = hpColor end
-    obj.hpBar.From = v2_new(barX, y2)
-    obj.hpBar.To   = v2_new(barX, y2 - h*hpR)
+    obj.hpBar.From = v2_new(x1, y2+4)
+    obj.hpBar.To = v2_new(x1+(x2-x1)*hpR, y2+4)
     obj.hpBar.Visible = CFG.ShowHP
 
     if CFG.ShowName then
         local nameStr = plr and plr.Name or model.Name
         if obj.nameLabel.Text ~= nameStr then obj.nameLabel.Text = nameStr end
         if obj.nameLabel.Size ~= CFG.NameSize then obj.nameLabel.Size = CFG.NameSize end
-        obj.nameLabel.Position = v2_new(cx, y1-CFG.NameSize-4)
+        obj.nameLabel.Position = v2_new(cx, y1-CFG.NameSize-2)
         obj.nameLabel.Visible = true
     else
         obj.nameLabel.Visible = false
@@ -518,7 +574,7 @@ local function updateESPObject(model, obj, Camera, myRoot, myPos)
             obj.distLabel.Text = distStr
             obj.lastDistStr = distStr
         end
-        obj.distLabel.Position = v2_new(cx, y2+22)
+        obj.distLabel.Position = v2_new(cx, y2+30)
         obj.distLabel.Visible = true
     else
         obj.distLabel.Visible = false
@@ -526,15 +582,15 @@ local function updateESPObject(model, obj, Camera, myRoot, myPos)
 
     if CFG.ShowHPText then
         local hpPct = m_floor(hpR*100)
-        local hpStr = hpPct.."%"
+        local hpStr = hpPct.."%  ("..m_floor(hum.Health).."/"..m_floor(hum.MaxHealth)..")"
         if obj.lastHpStr ~= hpStr then
             obj.hpText.Text = hpStr
             obj.lastHpStr = hpStr
         end
-        local dynSize = m_clamp(m_floor(20 - dist/16), 10, 20)
+        local dynSize = m_clamp(m_floor(22 - dist/14), 11, 22)
         if obj.hpText.Size ~= dynSize then obj.hpText.Size = dynSize end
         if obj.hpText.Color ~= hpColor then obj.hpText.Color = hpColor end
-        obj.hpText.Position = v2_new(cx, y2+6)
+        obj.hpText.Position = v2_new(cx, y2+12)
         obj.hpText.Visible = true
     else
         obj.hpText.Visible = false
