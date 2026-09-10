@@ -11,7 +11,7 @@ Library.__index = Library
 Library.Flags = {}
 Library.Themes = {}
 Library.CurrentTheme = "Midnight"
-Library.Version = "6.7.6"
+Library.Version = "6.8.0"
 
 -- ============ FLAG SYSTEM (ต่อขยาย: registry + event สำหรับ Config save/load และ dependency) ============
 Library.FlagElements = {}                    -- ชื่อ Flag -> element object (ใช้ตอน LoadConfig เพื่อ Set ค่ากลับเข้า UI จริง)
@@ -801,6 +801,128 @@ function Library:CreateWindow(config)
                 inst.Color = ColorSequence.new(Theme.AccentA, Theme.AccentB)
             end
         end
+    end
+
+    -- ============ TOOLTIP SYSTEM ============
+    -- ScreenGui แยกต่างหาก DisplayOrder สูงสุด กันโดน Dropdown/ColorPicker popup อื่นบังตอนเด้ง
+    local TooltipGui = Instance.new("ScreenGui")
+    TooltipGui.Name = "TooltipGui"
+    TooltipGui.ResetOnSpawn = false
+    TooltipGui.IgnoreGuiInset = true
+    TooltipGui.DisplayOrder = 1000
+    TooltipGui.Parent = UiParent
+
+    local TooltipFrame = Instance.new("Frame")
+    TooltipFrame.Name = "Tooltip"
+    TooltipFrame.AutomaticSize = Enum.AutomaticSize.X
+    TooltipFrame.Size = UDim2.new(0, 0, 0, 28)
+    TooltipFrame.BackgroundTransparency = 1
+    TooltipFrame.Visible = false
+    TooltipFrame.ZIndex = 10000
+    applyThemeColor(TooltipFrame, "Topbar")
+    corner(TooltipFrame, 6)
+    local TooltipStroke = stroke(TooltipFrame, "Stroke", 1)
+    TooltipStroke.Transparency = 1
+    TooltipFrame.Parent = TooltipGui
+
+    local TooltipPad = Instance.new("UIPadding")
+    TooltipPad.PaddingLeft = UDim.new(0, 9)
+    TooltipPad.PaddingRight = UDim.new(0, 9)
+    TooltipPad.PaddingTop = UDim.new(0, 6)
+    TooltipPad.PaddingBottom = UDim.new(0, 6)
+    TooltipPad.Parent = TooltipFrame
+
+    local TooltipLabel = Instance.new("TextLabel")
+    TooltipLabel.BackgroundTransparency = 1
+    TooltipLabel.AutomaticSize = Enum.AutomaticSize.X
+    TooltipLabel.Size = UDim2.new(0, 0, 1, 0)
+    TooltipLabel.Font = Enum.Font.GothamMedium
+    TooltipLabel.TextSize = 12
+    TooltipLabel.TextTransparency = 1
+    TooltipLabel.ZIndex = 10001
+    applyThemeColor(TooltipLabel, "Text", "TextColor3")
+    TooltipLabel.Parent = TooltipFrame
+
+    local tooltipToken, tooltipVisible = 0, false
+
+    -- กันเด้งทะลุขอบจอ: สลับฝั่งเป็นซ้าย/บนของเมาส์ถ้าเด้งฝั่งขวา/ล่างแล้วล้นจอ
+    local function positionTooltip(mousePos)
+        if not mousePos then return end
+        local screenSize = ScreenGui.AbsoluteSize
+        local ttSize = TooltipFrame.AbsoluteSize
+        local x, y = mousePos.X + 16, mousePos.Y + 20
+        if x + ttSize.X > screenSize.X - 6 then x = mousePos.X - ttSize.X - 14 end
+        if y + ttSize.Y > screenSize.Y - 6 then y = mousePos.Y - ttSize.Y - 10 end
+        TooltipFrame.Position = UDim2.new(0, math.max(6, x), 0, math.max(6, y))
+    end
+
+    local function hideTooltip()
+        tooltipToken += 1
+        if not tooltipVisible then return end
+        tooltipVisible = false
+        local myToken = tooltipToken
+        TweenService:Create(TooltipFrame, TI.d014_Sine_Out, {BackgroundTransparency = 1}):Play()
+        TweenService:Create(TooltipStroke, TI.d014_Sine_Out, {Transparency = 1}):Play()
+        local tw = TweenService:Create(TooltipLabel, TI.d014_Sine_Out, {TextTransparency = 1})
+        tw:Play()
+        tw.Completed:Connect(function()
+            if tooltipToken == myToken then TooltipFrame.Visible = false end
+        end)
+    end
+
+    -- แสดง tooltip ตรงๆ ที่ตำแหน่งเมาส์ (เรียกเองได้จาก custom element นอกเหนือจาก AttachTooltip)
+    function Library:ShowTooltip(text, mousePos)
+        if not text or text == "" then return end
+        tooltipToken += 1
+        local myToken = tooltipToken
+        TooltipLabel.Text = text
+        TooltipFrame.Visible = true
+        mousePos = mousePos or UserInputService:GetMouseLocation()
+        positionTooltip(mousePos)
+        task.defer(function()
+            if tooltipToken == myToken then positionTooltip(mousePos) end
+        end)
+        tooltipVisible = true
+        TweenService:Create(TooltipFrame, TI.d014_Sine_Out, {BackgroundTransparency = 0.05}):Play()
+        TweenService:Create(TooltipStroke, TI.d014_Sine_Out, {Transparency = 0.5}):Play()
+        TweenService:Create(TooltipLabel, TI.d014_Sine_Out, {TextTransparency = 0}):Play()
+    end
+
+    function Library:HideTooltip()
+        hideTooltip()
+    end
+
+    local TOOLTIP_HOVER_DELAY = 0.45
+    -- ผูก tooltip เข้ากับ GuiObject ไหนก็ได้ — ใช้ได้ทั้งกับ element ของ Library เองและ custom GuiObject
+    -- text รับเป็น string ตรงๆ หรือ function() return string end (เผื่ออยาก dynamic ตาม flag/state ปัจจุบัน)
+    function Library:AttachTooltip(inst, text, opts)
+        if not text then return end
+        opts = type(opts) == "table" and opts or {}
+        local hoverToken, moveConn = 0, nil
+        inst.MouseEnter:Connect(function()
+            hoverToken += 1
+            local myHover = hoverToken
+            task.delay(opts.Delay or TOOLTIP_HOVER_DELAY, function()
+                if hoverToken ~= myHover then return end
+                local resolved = text
+                if type(text) == "function" then
+                    local ok, result = pcall(text)
+                    resolved = ok and result or nil
+                end
+                Library:ShowTooltip(resolved, UserInputService:GetMouseLocation())
+            end)
+            moveConn = inst.MouseMoved:Connect(function(x, y)
+                if tooltipVisible then positionTooltip(Vector2.new(x, y)) end
+            end)
+        end)
+        inst.MouseLeave:Connect(function()
+            hoverToken += 1
+            if moveConn then moveConn:Disconnect(); moveConn = nil end
+            hideTooltip()
+        end)
+        inst.Destroying:Connect(function()
+            if moveConn then moveConn:Disconnect() end
+        end)
     end
 
     -- ============ Notification layer ============
@@ -3359,6 +3481,7 @@ function Library:CreateWindow(config)
                 safeCallback(c.Callback)
             end
             Btn.MouseButton1Click:Connect(runButtonAction)
+            if c.Tooltip then Library:AttachTooltip(Btn, c.Tooltip) end
 
             if c.Command ~= false then
                 Library:RegisterCommand({
@@ -3455,6 +3578,7 @@ function Library:CreateWindow(config)
             applyState(state, false)
 
             Switch.MouseButton1Click:Connect(function() applyState(not state, true) end)
+            if c.Tooltip then Library:AttachTooltip(Frame, c.Tooltip) end
 
             if c.Command ~= false then
                 Library:RegisterCommand({
@@ -3577,6 +3701,7 @@ function Library:CreateWindow(config)
                     stopSliderDrag()
                 end
             end)
+            if c.Tooltip then Library:AttachTooltip(Frame, c.Tooltip) end
 
             return newElement(Frame, function() return val end, function(_, newVal)
                 newVal = math.clamp(newVal, min, max)
@@ -3604,6 +3729,7 @@ function Library:CreateWindow(config)
             local dropStroke = stroke(Drop)
             dropStroke.Thickness = 1.2
             dropStroke.Transparency = 0.75
+            if c.Tooltip then Library:AttachTooltip(Drop, c.Tooltip) end
 
             local Label = Instance.new("TextLabel")
             Label.Size = UDim2.new(1, -44, 1, 0)
@@ -4005,6 +4131,7 @@ function Library:CreateWindow(config)
             corner(Btn, 9)
             applyHoverEffect(Btn, "Element", "ElementHover")
             applyGlowOnHover(Btn)
+            if c.Tooltip then Library:AttachTooltip(Btn, c.Tooltip) end
 
             local Label = Instance.new("TextLabel")
             Label.Size = UDim2.new(1, -48, 1, 0)
@@ -4369,6 +4496,7 @@ function Library:CreateWindow(config)
             Pad.Parent = Box
             
             applyGlowOnHover(Box)
+            if c.Tooltip then Library:AttachTooltip(Box, c.Tooltip) end
             Box.FocusLost:Connect(function()
                 Library.Flags[c.Flag or ""] = Box.Text
                 safeCallback(c.Callback, Box.Text)
@@ -4406,6 +4534,7 @@ function Library:CreateWindow(config)
             local waiting, bindConn, pulseConn = false, nil, nil
             local waitStroke = stroke(Btn, "AccentA", 1.2)
             waitStroke.Transparency = 1
+            if c.Tooltip then Library:AttachTooltip(Btn, c.Tooltip) end
             Btn.MouseButton1Click:Connect(function()
                 if waiting then return end
                 if bindConn then bindConn:Disconnect(); bindConn = nil end
@@ -4458,6 +4587,7 @@ function Library:CreateWindow(config)
             Label.TextWrapped = true
             Label.TextXAlignment = Enum.TextXAlignment.Left
             Label.Parent = TabContent
+            if c.Tooltip then Library:AttachTooltip(Label, c.Tooltip) end
             return newElement(Label, function() return Label.Text end, function(_, newText) Label.Text = newText end)
         end
 
