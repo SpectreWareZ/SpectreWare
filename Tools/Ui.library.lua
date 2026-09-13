@@ -1,6 +1,12 @@
 --[[
-    Pro Mobile & PC UI Library v6.9.0 (Split TabBar + Heavy FX Update)
+    Pro Mobile & PC UI Library v6.10.0 (Range/String Slider Update)
     ====================================================================
+    อัปเดตจาก v6.9.0:
+    - เพิ่ม Tab:CreateRangeSlider(c) — slider 2 หัวลาก (Min/Max พร้อมกัน)
+      คืนค่า Flag เป็น {Min = ..., Max = ...}, Callback(minVal, maxVal)
+    - เพิ่ม Tab:CreateStringSlider(c) — slider ที่ค่าเป็น string จาก list
+      (c.Values = {"1","5","10","inf"}) แทนตัวเลขต่อเนื่อง, Callback(stringVal, index)
+
     อัปเดตจาก v6.8.0:
     - เปลี่ยนแท็บจาก Sidebar แนวตั้ง -> TabBar แนวนอนใต้ TopBar แบ่ง 2 กลุ่ม
       ซ้าย/ขวา คั่นด้วยเส้น Divider เรืองแสงตรงกลาง (สไตล์ "แท็บ 1 | 2")
@@ -15,7 +21,7 @@ Library.__index = Library
 Library.Flags = {}
 Library.Themes = {}
 Library.CurrentTheme = "Midnight"
-Library.Version = "6.9.0"
+Library.Version = "6.10.0"
 
 -- ============ FLAG SYSTEM (ต่อขยาย: registry + event สำหรับ Config save/load และ dependency) ============
 Library.FlagElements = {}                    -- ชื่อ Flag -> element object (ใช้ตอน LoadConfig เพื่อ Set ค่ากลับเข้า UI จริง)
@@ -3884,6 +3890,280 @@ function Library:CreateWindow(config)
                 newVal = math.clamp(newVal, min, max)
                 local percent = (newVal - min) / (max - min)
                 updateFromPos(Bar.AbsolutePosition.X + percent * Bar.AbsoluteSize.X, true)
+            end, nil, c.Flag)
+        end
+
+        -- ============ Range Slider: 2 หัวลาก (Min/Max พร้อมกัน) ============
+        function Tab:CreateRangeSlider(c)
+            c = type(c) == "table" and c or {}
+            local min, max = c.Min or 0, c.Max or 100
+            local places = c.Places or 0
+            local suffix = c.Suffix or ""
+            local lowVal = math.clamp(c.DefaultMin or min, min, max)
+            local highVal = math.clamp(c.DefaultMax or max, min, max)
+            if lowVal > highVal then lowVal, highVal = highVal, lowVal end
+
+            local function fireFlag()
+                bindFlag(c.Flag, {Min = lowVal, Max = highVal})
+            end
+
+            local Frame = Instance.new("Frame")
+            Frame.Size = UDim2.new(1, 0, 0, 50)
+            applyThemeColor(Frame, "Element")
+            Frame.Active = true
+            Frame.Parent = TabContent
+            corner(Frame, 9)
+            applyGlowOnHover(Frame)
+
+            local Label = Instance.new("TextLabel")
+            Label.Size = UDim2.new(1, -20, 0, 20)
+            Label.Position = UDim2.new(0, 10, 0, 5)
+            Label.BackgroundTransparency = 1
+            local function formatLabel()
+                return (c.Text or "Range Slider") .. ": " .. string.format("%." .. places .. "f", lowVal) .. suffix
+                    .. " - " .. string.format("%." .. places .. "f", highVal) .. suffix
+            end
+            Label.Text = formatLabel()
+            applyThemeColor(Label, "Text", "TextColor3")
+            Label.Font = Enum.Font.GothamSemibold
+            Label.TextSize = 14
+            Label.TextXAlignment = Enum.TextXAlignment.Left
+            Label.Parent = Frame
+
+            local Bar = Instance.new("Frame")
+            Bar.Size = UDim2.new(1, -20, 0, 8)
+            Bar.Position = UDim2.new(0, 10, 0, 33)
+            applyThemeColor(Bar, "Background")
+            Bar.Active = true
+            Bar.Parent = Frame
+            corner(Bar, 4)
+
+            local Fill = Instance.new("Frame") -- แถบสีระหว่างสอง handle
+            applyThemeColor(Fill, "AccentA")
+            Fill.Parent = Bar
+            corner(Fill, 4)
+            accentGradient(Fill, 0)
+
+            local HandleLow = Instance.new("Frame")
+            HandleLow.Size = UDim2.new(0, 14, 0, 14)
+            HandleLow.AnchorPoint = Vector2.new(0.5, 0.5)
+            HandleLow.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            HandleLow.ZIndex = 2
+            HandleLow.Parent = Bar
+            corner(HandleLow, 7)
+
+            local HandleHigh = Instance.new("Frame")
+            HandleHigh.Size = UDim2.new(0, 14, 0, 14)
+            HandleHigh.AnchorPoint = Vector2.new(0.5, 0.5)
+            HandleHigh.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            HandleHigh.ZIndex = 2
+            HandleHigh.Parent = Bar
+
+            local function percentOf(v) return (v - min) / (max - min) end
+            local function redraw()
+                local lp, hp = percentOf(lowVal), percentOf(highVal)
+                Fill.Position = UDim2.new(lp, 0, 0, 0)
+                Fill.Size = UDim2.new(math.max(hp - lp, 0), 0, 1, 0)
+                HandleLow.Position = UDim2.new(lp, 0, 0.5, 0)
+                HandleHigh.Position = UDim2.new(hp, 0, 0.5, 0)
+            end
+            redraw()
+
+            local function setValues(newLow, newHigh, fireCallback)
+                newLow = math.clamp(newLow, min, max)
+                newHigh = math.clamp(newHigh, min, max)
+                if newLow > newHigh then newLow, newHigh = newHigh, newLow end
+                newLow = math.floor(newLow * (10 ^ places)) / (10 ^ places)
+                newHigh = math.floor(newHigh * (10 ^ places)) / (10 ^ places)
+                lowVal, highVal = newLow, newHigh
+                Label.Text = formatLabel()
+                redraw()
+                fireFlag()
+                if fireCallback then safeCallback(c.Callback, lowVal, highVal) end
+            end
+
+            -- คลิกที่ Bar เลือก handle ที่ใกล้ตำแหน่งคลิกที่สุดมาลาก (กันปัญหา hit-test ซ้อนกันของ 2 handle)
+            local dragging, activeType, activeHandle = false, nil, nil
+            local rangePush, rangeRSStart, rangeRSStop = createRenderSyncedDrag(function(xPos)
+                local pos = xPos - Bar.AbsolutePosition.X
+                local percent = math.clamp(pos / Bar.AbsoluteSize.X, 0, 1)
+                local value = min + (max - min) * percent
+                if activeHandle == "low" then
+                    setValues(math.min(value, highVal), highVal, true)
+                else
+                    setValues(lowVal, math.max(value, lowVal), true)
+                end
+            end)
+
+            local inputChangedConn, inputEndedConn = nil, nil
+            local function stopRangeDrag()
+                dragging = false; activeType = nil; activeHandle = nil
+                TabContent.ScrollingEnabled = true
+                if inputChangedConn then inputChangedConn:Disconnect(); inputChangedConn = nil end
+                if inputEndedConn then inputEndedConn:Disconnect(); inputEndedConn = nil end
+                rangeRSStop()
+            end
+
+            Bar.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                    local pos = input.Position.X - Bar.AbsolutePosition.X
+                    local percent = math.clamp(pos / Bar.AbsoluteSize.X, 0, 1)
+                    local value = min + (max - min) * percent
+                    activeHandle = (math.abs(value - lowVal) <= math.abs(value - highVal)) and "low" or "high"
+                    dragging = true
+                    activeType = input.UserInputType
+                    TabContent.ScrollingEnabled = false
+                    rangeRSStart()
+
+                    inputChangedConn = UserInputService.InputChanged:Connect(function(input2)
+                        if not dragging then return end
+                        if activeType == Enum.UserInputType.Touch and input2.UserInputType == Enum.UserInputType.Touch then
+                            rangePush(input2.Position.X)
+                        elseif activeType == Enum.UserInputType.MouseButton1 and input2.UserInputType == Enum.UserInputType.MouseMovement then
+                            rangePush(input2.Position.X)
+                        end
+                    end)
+                    inputEndedConn = UserInputService.InputEnded:Connect(function(input2)
+                        if dragging and input2.UserInputType == activeType then
+                            stopRangeDrag()
+                        end
+                    end)
+                end
+            end)
+            Bar.InputEnded:Connect(function(input)
+                if input.UserInputType == activeType then
+                    stopRangeDrag()
+                end
+            end)
+
+            if c.Tooltip then Library:AttachTooltip(Frame, c.Tooltip) end
+
+            return newElement(Frame, function() return {Min = lowVal, Max = highVal} end, function(_, newVal)
+                newVal = type(newVal) == "table" and newVal or {}
+                setValues(newVal.Min or lowVal, newVal.Max or highVal, true)
+            end, nil, c.Flag)
+        end
+
+        -- ============ String Slider: ค่าเป็นข้อความจาก list (เช่น {"1","5","10","inf"}) ไม่ใช่ตัวเลขต่อเนื่อง ============
+        function Tab:CreateStringSlider(c)
+            c = type(c) == "table" and c or {}
+            local values = (type(c.Values) == "table" and #c.Values > 0) and c.Values or {"0"}
+            local n = #values
+
+            local function indexOf(v)
+                for i, val in ipairs(values) do
+                    if val == v then return i end
+                end
+                return 1
+            end
+
+            local idx = c.Default ~= nil and indexOf(c.Default) or (c.DefaultIndex or 1)
+            idx = math.clamp(idx, 1, n)
+            bindFlag(c.Flag, values[idx])
+
+            local Frame = Instance.new("Frame")
+            Frame.Size = UDim2.new(1, 0, 0, 50)
+            applyThemeColor(Frame, "Element")
+            Frame.Active = true
+            Frame.Parent = TabContent
+            corner(Frame, 9)
+            applyGlowOnHover(Frame)
+
+            local Label = Instance.new("TextLabel")
+            Label.Size = UDim2.new(1, -20, 0, 20)
+            Label.Position = UDim2.new(0, 10, 0, 5)
+            Label.BackgroundTransparency = 1
+            Label.Text = (c.Text or "String Slider") .. ": " .. tostring(values[idx])
+            applyThemeColor(Label, "Text", "TextColor3")
+            Label.Font = Enum.Font.GothamSemibold
+            Label.TextSize = 14
+            Label.TextXAlignment = Enum.TextXAlignment.Left
+            Label.Parent = Frame
+
+            local Bar = Instance.new("Frame")
+            Bar.Size = UDim2.new(1, -20, 0, 8)
+            Bar.Position = UDim2.new(0, 10, 0, 33)
+            applyThemeColor(Bar, "Background")
+            Bar.Active = true
+            Bar.Parent = Frame
+            corner(Bar, 4)
+
+            local function percentOf(i) return n > 1 and (i - 1) / (n - 1) or 0 end
+
+            local Fill = Instance.new("Frame")
+            Fill.Size = UDim2.new(percentOf(idx), 0, 1, 0)
+            applyThemeColor(Fill, "AccentA")
+            Fill.Parent = Bar
+            corner(Fill, 4)
+            accentGradient(Fill, 0)
+
+            local Handle = Instance.new("Frame")
+            Handle.Size = UDim2.new(0, 14, 0, 14)
+            Handle.AnchorPoint = Vector2.new(1, 0.5)
+            Handle.Position = UDim2.new(1, 0, 0.5, 0)
+            Handle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            Handle.Parent = Fill
+            corner(Handle, 7)
+
+            local function updateFromPos(xPos, fireCallback)
+                local pos = xPos - Bar.AbsolutePosition.X
+                local percent = math.clamp(pos / Bar.AbsoluteSize.X, 0, 1)
+                local newIdx = math.clamp(math.floor(percent * (n - 1) + 0.5) + 1, 1, n)
+                idx = newIdx
+                Fill.Size = UDim2.new(percentOf(idx), 0, 1, 0)
+                Label.Text = (c.Text or "String Slider") .. ": " .. tostring(values[idx])
+                bindFlag(c.Flag, values[idx])
+                if fireCallback then safeCallback(c.Callback, values[idx], idx) end
+            end
+
+            local dragging, activeType = false, nil
+            local sliderPush, sliderRSStart, sliderRSStop = createRenderSyncedDrag(function(xPos)
+                updateFromPos(xPos, true)
+            end)
+
+            local inputChangedConn, inputEndedConn = nil, nil
+            local function stopSliderDrag()
+                dragging = false; activeType = nil
+                TabContent.ScrollingEnabled = true
+                if inputChangedConn then inputChangedConn:Disconnect(); inputChangedConn = nil end
+                if inputEndedConn then inputEndedConn:Disconnect(); inputEndedConn = nil end
+                sliderRSStop()
+            end
+
+            Bar.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                    dragging = true
+                    activeType = input.UserInputType
+                    TabContent.ScrollingEnabled = false
+                    updateFromPos(input.Position.X, true)
+                    sliderRSStart()
+
+                    inputChangedConn = UserInputService.InputChanged:Connect(function(input2)
+                        if not dragging then return end
+                        if activeType == Enum.UserInputType.Touch and input2.UserInputType == Enum.UserInputType.Touch then
+                            sliderPush(input2.Position.X)
+                        elseif activeType == Enum.UserInputType.MouseButton1 and input2.UserInputType == Enum.UserInputType.MouseMovement then
+                            sliderPush(input2.Position.X)
+                        end
+                    end)
+                    inputEndedConn = UserInputService.InputEnded:Connect(function(input2)
+                        if dragging and input2.UserInputType == activeType then
+                            stopSliderDrag()
+                        end
+                    end)
+                end
+            end)
+            Bar.InputEnded:Connect(function(input)
+                if input.UserInputType == activeType then
+                    stopSliderDrag()
+                end
+            end)
+
+            if c.Tooltip then Library:AttachTooltip(Frame, c.Tooltip) end
+
+            return newElement(Frame, function() return values[idx] end, function(_, newVal)
+                local newIdx = indexOf(newVal)
+                updateFromPos(Bar.AbsolutePosition.X + percentOf(newIdx) * Bar.AbsoluteSize.X, true)
             end, nil, c.Flag)
         end
 
