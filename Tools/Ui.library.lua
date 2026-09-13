@@ -1,9 +1,13 @@
 --[[
-    Pro Mobile & PC UI Library v6.1 (Massive Icon Update)
-    =====================================================
-    อัปเดตจาก v6:
-    - เพิ่มระบบไอคอนเป็นจำนวนมาก (Navigation, System, Game, Social, etc.)
-    - ใช้ Asset ID คุณภาพสูงแบบเดียวกับ WindUI/Fluent
+    Pro Mobile & PC UI Library v6.9.0 (Split TabBar + Heavy FX Update)
+    ====================================================================
+    อัปเดตจาก v6.8.0:
+    - เปลี่ยนแท็บจาก Sidebar แนวตั้ง -> TabBar แนวนอนใต้ TopBar แบ่ง 2 กลุ่ม
+      ซ้าย/ขวา คั่นด้วยเส้น Divider เรืองแสงตรงกลาง (สไตล์ "แท็บ 1 | 2")
+      -> Window:CreateTab(name, icon, group) โดย group = "Main" (ปกติ) หรือ "Extra"
+    - เพิ่มชุด Animation ระดับหนักสุด: particle burst ตอนคลิกแท็บ,
+      glow เรืองแสง pulse วนที่แท็บ active, เส้นพลังงานวิ่งบน TopBar,
+      อนุภาคลอยพื้นหลังแบบต่อเนื่องหลัง Content
 ]]
 
 local Library = {}
@@ -11,7 +15,7 @@ Library.__index = Library
 Library.Flags = {}
 Library.Themes = {}
 Library.CurrentTheme = "Midnight"
-Library.Version = "6.8.0"
+Library.Version = "6.9.0"
 
 -- ============ FLAG SYSTEM (ต่อขยาย: registry + event สำหรับ Config save/load และ dependency) ============
 Library.FlagElements = {}                    -- ชื่อ Flag -> element object (ใช้ตอน LoadConfig เพื่อ Set ค่ากลับเข้า UI จริง)
@@ -192,6 +196,7 @@ local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 local StatsService = game:GetService("Stats")
+local TextService = game:GetService("TextService")
 
 -- ============ CACHED TWEENINFO (avoid re-allocating identical TweenInfo objects on every hover/click) ============
 local TI = {
@@ -689,6 +694,87 @@ local function pulseRing(inst, colorKey, radiusInst)
     })
     tw:Play()
     tw.Completed:Connect(function() pulse:Destroy() end)
+end
+
+-- ============ PARTICLE BURST (สะเก็ดอนุภาคกระจายออกจากจุด ใช้ตอนคลิกแท็บ/เปิดหน้าต่าง โหมด Animation หนักสุด) ============
+local function particleBurst(parent, colorKey, originPos, count, spreadRadius)
+    count = count or 10
+    spreadRadius = spreadRadius or 40
+    local color = Theme[colorKey or "AccentA"]
+    for _ = 1, count do
+        local p = Instance.new("Frame")
+        p.AnchorPoint = Vector2.new(0.5, 0.5)
+        p.Position = originPos or UDim2.new(0.5, 0, 0.5, 0)
+        local size = math.random(3, 6)
+        p.Size = UDim2.new(0, size, 0, size)
+        p.BackgroundColor3 = color
+        p.BackgroundTransparency = 0.1
+        p.BorderSizePixel = 0
+        p.ZIndex = (parent.ZIndex or 1) + 8
+        p.Parent = parent
+        corner(p, 99)
+        local angle = math.rad(math.random(0, 360))
+        local dist = math.random(math.floor(spreadRadius * 0.5), spreadRadius)
+        local offsetX, offsetY = math.cos(angle) * dist, math.sin(angle) * dist
+        local basePos = p.Position
+        local tw = TweenService:Create(p, TweenInfo.new(0.5 + math.random() * 0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+            Position = UDim2.new(basePos.X.Scale, basePos.X.Offset + offsetX, basePos.Y.Scale, basePos.Y.Offset + offsetY),
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, 1, 0, 1),
+        })
+        tw:Play()
+        tw.Completed:Connect(function() p:Destroy() end)
+    end
+end
+
+-- ============ LOOP PULSE (วนพัลส์คุณสมบัติใดๆ ไป-กลับไม่จำกัดรอบ ใช้กับ glow ของแท็บ Active ที่ต้อง start/stop ได้) ============
+local activeLoopTweens = setmetatable({}, {__mode = "k"})
+local function startLoopPulse(inst, prop, val1, val2, tweenInfo)
+    if activeLoopTweens[inst] then activeLoopTweens[inst]:Cancel() end
+    inst[prop] = val1
+    local tw = TweenService:Create(inst, tweenInfo, {[prop] = val2})
+    activeLoopTweens[inst] = tw
+    tw:Play()
+end
+local function stopLoopPulse(inst)
+    if activeLoopTweens[inst] then
+        activeLoopTweens[inst]:Cancel()
+        activeLoopTweens[inst] = nil
+    end
+end
+
+-- ============ AMBIENT PARTICLES (จุดแสงลอยขึ้นเบาๆ ต่อเนื่องหลัง Content โหมด Animation หนักสุด) ============
+local function ambientParticles(parent, count)
+    count = count or 9
+    task.spawn(function()
+        while parent and parent.Parent do
+            local ok = pcall(function()
+                local colorKey = (math.random() > 0.5) and "AccentA" or "AccentB"
+                local dot = Instance.new("Frame")
+                dot.AnchorPoint = Vector2.new(0.5, 0.5)
+                local startX = math.random(4, 96) / 100
+                dot.Position = UDim2.new(startX, 0, 1, 12)
+                local size = math.random(2, 4)
+                dot.Size = UDim2.new(0, size, 0, size)
+                dot.BackgroundColor3 = Theme[colorKey]
+                dot.BackgroundTransparency = 0.55
+                dot.BorderSizePixel = 0
+                dot.ZIndex = 0
+                dot.Parent = parent
+                corner(dot, 99)
+                local driftX = math.clamp(startX + (math.random(-6, 6) / 100), 0, 1)
+                local dur = math.random(45, 85) / 10
+                local tw = TweenService:Create(dot, TweenInfo.new(dur, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {
+                    Position = UDim2.new(driftX, 0, -0.06, 0),
+                    BackgroundTransparency = 1,
+                })
+                tw:Play()
+                tw.Completed:Connect(function() dot:Destroy() end)
+                task.wait(dur / count)
+            end)
+            if not ok then task.wait(0.5) end
+        end
+    end)
 end
 
 local function isPointOverGui(pos, guiObject)
@@ -1543,6 +1629,17 @@ function Library:CreateWindow(config)
     sheenGradient.Rotation = 100
     sheenGradient.Parent = Sheen
 
+    -- ชั้นอนุภาคลอยพื้นหลัง (เห็นลอดผ่าน ContentArea ที่โปร่งใส) โหมด Animation หนักสุด
+    local AmbientLayer = Instance.new("Frame")
+    AmbientLayer.Name = "AmbientLayer"
+    AmbientLayer.Size = UDim2.new(1, 0, 1, 0)
+    AmbientLayer.BackgroundTransparency = 1
+    AmbientLayer.ClipsDescendants = true
+    AmbientLayer.ZIndex = 0
+    AmbientLayer.Parent = MainFrame
+    corner(AmbientLayer, 14)
+    ambientParticles(AmbientLayer, 10)
+
     local topBarH = config.SubTitle and 50 or 42
     local TopBar = Instance.new("Frame")
     TopBar.Size = UDim2.new(1, 0, 0, topBarH)
@@ -1581,6 +1678,15 @@ function Library:CreateWindow(config)
     })
     stripGrad:SetAttribute("IsAccent", true)
     stripGrad.Parent = TopAccentStrip
+    -- เส้นพลังงานวิ่งไป-มาต่อเนื่องบนแถบ accent บนสุด (ลูปเบาๆ ตราบเท่าที่หน้าต่างยังอยู่)
+    task.spawn(function()
+        local scanT = 0
+        while TopAccentStrip and TopAccentStrip.Parent do
+            scanT = (scanT + 0.012) % 1
+            stripGrad.Offset = Vector2.new(scanT, 0)
+            task.wait()
+        end
+    end)
 
     local TopBarLine = Instance.new("Frame")
     TopBarLine.Name = "TopBarLine"
@@ -1949,25 +2055,86 @@ function Library:CreateWindow(config)
         end)
     end
 
+    -- ============ TAB BAR แนวนอน แบ่ง 2 กลุ่ม ซ้าย(Main) | ขวา(Extra) คั่นด้วยเส้นเรืองแสงตรงกลาง ============
+    local tabBarH = 46
     local TabContainer = Instance.new("Frame")
-    TabContainer.Size = UDim2.new(0, 118, 1, -topBarH)
+    TabContainer.Name = "TabBar"
+    TabContainer.Size = UDim2.new(1, 0, 0, tabBarH)
     TabContainer.Position = UDim2.new(0, 0, 0, topBarH)
     applyThemeColor(TabContainer, "Sidebar")
     TabContainer.BackgroundTransparency = 1
     TabContainer.BorderSizePixel = 0
     TabContainer.Active = true
     TabContainer.Parent = MainContent
-    corner(TabContainer, 12)
+    corner(TabContainer, 0)
+    local tabBarLine = Instance.new("Frame")
+    tabBarLine.Size = UDim2.new(1, 0, 0, 1)
+    tabBarLine.Position = UDim2.new(0, 0, 1, 0)
+    applyThemeColor(tabBarLine, "Stroke")
+    tabBarLine.BackgroundTransparency = 0.4
+    tabBarLine.BorderSizePixel = 0
+    tabBarLine.Parent = TabContainer
 
-    -- ============ ช่องค้นหาแท็บ (sticky อยู่บนสุดของ Sidebar) ============
+    -- กลุ่มซ้าย "Main"
+    local TabListMain = Instance.new("Frame")
+    TabListMain.Name = "TabListMain"
+    TabListMain.Size = UDim2.new(0.5, -18, 1, -12)
+    TabListMain.Position = UDim2.new(0, 10, 0, 6)
+    TabListMain.BackgroundTransparency = 1
+    TabListMain.ClipsDescendants = true
+    TabListMain.Parent = TabContainer
+    local TabListMainLayout = Instance.new("UIListLayout")
+    TabListMainLayout.FillDirection = Enum.FillDirection.Horizontal
+    TabListMainLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    TabListMainLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    TabListMainLayout.Padding = UDim.new(0, 6)
+    TabListMainLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    TabListMainLayout.Parent = TabListMain
+
+    -- เส้นแบ่งกลางเรืองแสง แบบ "แท็บ 1 | 2"
+    local TabDivider = Instance.new("Frame")
+    TabDivider.Name = "TabDivider"
+    TabDivider.AnchorPoint = Vector2.new(0.5, 0.5)
+    TabDivider.Position = UDim2.new(0.5, 0, 0.5, 0)
+    TabDivider.Size = UDim2.new(0, 2, 0, 22)
+    applyThemeColor(TabDivider, "AccentA")
+    TabDivider.BackgroundTransparency = 0.35
+    TabDivider.BorderSizePixel = 0
+    TabDivider.Parent = TabContainer
+    corner(TabDivider, 2)
+    accentGradient(TabDivider, 90)
+    local tabDividerGlow = stroke(TabDivider, "AccentA", 2)
+    tabDividerGlow.Transparency = 0.5
+    -- พัลส์เรืองแสงวนตลอดเวลาที่เส้นแบ่งกลาง โหมด Animation หนักสุด
+    startLoopPulse(tabDividerGlow, "Transparency", 0.2, 0.75, TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true))
+
+    -- กลุ่มขวา "Extra" (เว้นที่ 46px ทางขวาให้ช่องค้นหาที่ย่อ/ขยายได้)
+    local TabListExtra = Instance.new("Frame")
+    TabListExtra.Name = "TabListExtra"
+    TabListExtra.Size = UDim2.new(0.5, -56, 1, -12)
+    TabListExtra.Position = UDim2.new(0.5, 8, 0, 6)
+    TabListExtra.BackgroundTransparency = 1
+    TabListExtra.ClipsDescendants = true
+    TabListExtra.Parent = TabContainer
+    local TabListExtraLayout = Instance.new("UIListLayout")
+    TabListExtraLayout.FillDirection = Enum.FillDirection.Horizontal
+    TabListExtraLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    TabListExtraLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    TabListExtraLayout.Padding = UDim.new(0, 6)
+    TabListExtraLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    TabListExtraLayout.Parent = TabListExtra
+
+    -- ============ ช่องค้นหาแท็บ: ไอคอนกลมมุมขวา ขยายเป็นแถบเมื่อโฟกัส (ลอยทับกลุ่ม Extra ได้) ============
     local TabSearchWrap = Instance.new("Frame")
-    TabSearchWrap.Size = UDim2.new(1, -12, 0, 30)
-    TabSearchWrap.Position = UDim2.new(0, 6, 0, 6)
+    TabSearchWrap.Size = UDim2.new(0, 30, 0, 30)
+    TabSearchWrap.AnchorPoint = Vector2.new(1, 0.5)
+    TabSearchWrap.Position = UDim2.new(1, -8, 0.5, 0)
     applyThemeColor(TabSearchWrap, "Background")
     TabSearchWrap.BackgroundTransparency = 0.15
     TabSearchWrap.ClipsDescendants = true
+    TabSearchWrap.ZIndex = 8
     TabSearchWrap.Parent = TabContainer
-    corner(TabSearchWrap, 14) -- โค้งมนแบบแคปซูล ดูทันสมัยขึ้น
+    corner(TabSearchWrap, 15) -- วงกลมตอนพัก ยืดเป็นแคปซูลตอนโฟกัส
     local tabSearchStroke = stroke(TabSearchWrap)
     tabSearchStroke.Thickness = 1
     tabSearchStroke.Transparency = 0.75
@@ -2028,14 +2195,14 @@ function Library:CreateWindow(config)
     TabSearchBox.Focused:Connect(function()
         TweenService:Create(tabSearchStroke, TI.d015_Sine_Out, {Transparency = 0.3}):Play()
         TweenService:Create(tabSearchGlow, TI.d02_Sine_Out, {Transparency = 0.35}):Play()
-        TweenService:Create(TabSearchWrap, TI.d015_Sine_Out, {BackgroundTransparency = 0}):Play()
+        TweenService:Create(TabSearchWrap, TI.d02_Back_Out, {Size = UDim2.new(0, 168, 0, 30), BackgroundTransparency = 0}):Play()
         TweenService:Create(TabSearchIcon, TI.d015_Sine_Out, {ImageTransparency = 0}):Play()
         TweenService:Create(tabSearchScale, TI.d02_Back_Out, {Scale = 1.015}):Play()
     end)
     TabSearchBox.FocusLost:Connect(function()
         TweenService:Create(tabSearchStroke, TI.d015_Sine_Out, {Transparency = 0.75}):Play()
         TweenService:Create(tabSearchGlow, TI.d015_Sine_Out, {Transparency = 1}):Play()
-        TweenService:Create(TabSearchWrap, TI.d015_Sine_Out, {BackgroundTransparency = 0.15}):Play()
+        TweenService:Create(TabSearchWrap, TI.d02_Back_Out, {Size = UDim2.new(0, 30, 0, 30), BackgroundTransparency = 0.15}):Play()
         TweenService:Create(TabSearchIcon, TI.d015_Sine_Out, {ImageTransparency = 0.2}):Play()
         TweenService:Create(tabSearchScale, TI.d02_Back_Out, {Scale = 1}):Play()
     end)
@@ -2043,32 +2210,20 @@ function Library:CreateWindow(config)
         TweenService:Create(TabSearchClear, TI.d012_Sine_Out, {ImageTransparency = TabSearchBox.Text == "" and 1 or 0.1}):Play()
     end)
 
-    local TabList = Instance.new("ScrollingFrame")
-    TabList.Size = UDim2.new(1, -12, 1, -46)
-    TabList.Position = UDim2.new(0, 6, 0, 40)
-    TabList.BackgroundTransparency = 1
-    TabList.ScrollBarThickness = 2
-    applyThemeColor(TabList, "AccentA", "ScrollBarImageColor3")
-    TabList.Active = true
-    TabList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    TabList.CanvasSize = UDim2.new(0, 0, 0, 0)
-    TabList.Parent = TabContainer
-    local TabLayout = Instance.new("UIListLayout")
-    TabLayout.Padding = UDim.new(0, 4)
-    TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    TabLayout.Parent = TabList
-
-    -- registry ของแท็บทั้งหมด (ใช้กรองตอนค้นหา) + label "ไม่พบแท็บ"
+    -- registry ของแท็บทั้งหมด (ทั้ง 2 กลุ่ม ใช้กรองตอนค้นหา) + label "ไม่พบแท็บ" กลางแถบ
     local allTabs = {}
     local TabEmptyLbl = Instance.new("TextLabel")
-    TabEmptyLbl.Size = UDim2.new(1, 0, 0, 30)
+    TabEmptyLbl.AnchorPoint = Vector2.new(0.5, 0.5)
+    TabEmptyLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
+    TabEmptyLbl.Size = UDim2.new(0, 160, 0, 20)
     TabEmptyLbl.BackgroundTransparency = 1
     TabEmptyLbl.Text = "ไม่พบแท็บ"
     applyThemeColor(TabEmptyLbl, "SubText", "TextColor3")
     TabEmptyLbl.Font = Enum.Font.GothamSemibold
     TabEmptyLbl.TextSize = 12
     TabEmptyLbl.Visible = false
-    TabEmptyLbl.Parent = TabList
+    TabEmptyLbl.ZIndex = 9
+    TabEmptyLbl.Parent = TabContainer
 
     local function applyTabFilter(query)
         query = (query or ""):lower()
@@ -2085,8 +2240,8 @@ function Library:CreateWindow(config)
     end)
 
     local ContentArea = Instance.new("Frame")
-    ContentArea.Size = UDim2.new(1, -118, 1, -topBarH)
-    ContentArea.Position = UDim2.new(0, 118, 0, topBarH)
+    ContentArea.Size = UDim2.new(1, 0, 1, -topBarH - tabBarH)
+    ContentArea.Position = UDim2.new(0, 0, 0, topBarH + tabBarH)
     ContentArea.BackgroundTransparency = 1
     ContentArea.Active = true
     ContentArea.Parent = MainContent
@@ -3058,37 +3213,48 @@ function Library:CreateWindow(config)
         return tab
     end
 
-    function Window:CreateTab(name, icon)
+    function Window:CreateTab(name, icon, group)
         local Tab = {}
+        -- group: "Main" (ปกติ/ค่าเริ่มต้น, ซ้าย) หรือ "Extra" (ขวา) -> เลือกฝั่งของ TabBar
+        local isExtra = (group == "Extra" or group == "Right" or group == 2)
+        local hostList = isExtra and TabListExtra or TabListMain
+
+        local textBounds = TextService:GetTextSize(name, 13, Enum.Font.GothamSemibold, Vector2.new(400, 40))
+        local btnWidth = math.floor(textBounds.X) + (icon and 46 or 26)
+
         local TabBtn = Instance.new("TextButton")
-        TabBtn.Size = UDim2.new(1, 0, 0, 36)
+        TabBtn.Size = UDim2.new(0, btnWidth, 0, 34)
         applyThemeColor(TabBtn, "Element")
         TabBtn.BackgroundTransparency = 1
         TabBtn.AutoButtonColor = false
         TabBtn.Text = ""
-        TabBtn.Parent = TabList
+        TabBtn.Parent = hostList
         tabOrderCounter = tabOrderCounter + 1
         TabBtn.LayoutOrder = tabOrderCounter
-        corner(TabBtn, 8)
-        applyPressAnimation(TabBtn, 0.96)
+        corner(TabBtn, 10)
+        applyPressAnimation(TabBtn, 0.94)
         ripple(TabBtn, "AccentA")
 
-        local iconOffset = 10
+        -- กรอบเรืองแสงรอบปุ่ม โผล่ + พัลส์วนตอนเป็นแท็บ active (โหมด Animation หนักสุด)
+        local tabGlow = stroke(TabBtn, "AccentA", 1.2)
+        tabGlow.Transparency = 1
+
+        local iconOffset = 12
         if icon then
             local IconImg = Instance.new("ImageLabel")
-            IconImg.Size = UDim2.new(0, 18, 0, 18)
-            IconImg.Position = UDim2.new(0, 10, 0.5, 0)
+            IconImg.Size = UDim2.new(0, 16, 0, 16)
+            IconImg.Position = UDim2.new(0, 12, 0.5, 0)
             IconImg.AnchorPoint = Vector2.new(0, 0.5)
             IconImg.BackgroundTransparency = 1
             IconImg.Image = Library.Icons[icon] or icon
             IconImg.ScaleType = Enum.ScaleType.Fit
             applyThemeColor(IconImg, "SubText", "ImageColor3")
             IconImg.Parent = TabBtn
-            iconOffset = 36
+            iconOffset = 34
         end
 
         local TabTitle = Instance.new("TextLabel")
-        TabTitle.Size = UDim2.new(1, -iconOffset - 10, 1, 0)
+        TabTitle.Size = UDim2.new(1, -iconOffset - 12, 1, 0)
         TabTitle.Position = UDim2.new(0, iconOffset, 0, 0)
         TabTitle.BackgroundTransparency = 1
         TabTitle.Text = name
@@ -3098,15 +3264,17 @@ function Library:CreateWindow(config)
         TabTitle.TextXAlignment = Enum.TextXAlignment.Left
         TabTitle.Parent = TabBtn
 
+        -- ActiveBar: ขีดเรืองแสงใต้แท็บแนวนอน (แทนแท่งซ้ายแบบ Sidebar เดิม)
+        local activeBarW = math.max(btnWidth - 20, 10)
         local ActiveBar = Instance.new("Frame")
-        ActiveBar.Size = UDim2.new(0, 3, 0, 0)
-        ActiveBar.Position = UDim2.new(0, 0, 0.5, 0)
-        ActiveBar.AnchorPoint = Vector2.new(0, 0.5)
+        ActiveBar.AnchorPoint = Vector2.new(0.5, 1)
+        ActiveBar.Position = UDim2.new(0.5, 0, 1, -3)
+        ActiveBar.Size = UDim2.new(0, 0, 0, 3)
         applyThemeColor(ActiveBar, "AccentA")
         ActiveBar.BorderSizePixel = 0
         ActiveBar.Parent = TabBtn
         corner(ActiveBar, 2)
-        accentGradient(ActiveBar, 90)
+        accentGradient(ActiveBar, 0)
 
         table.insert(allTabs, {btn = TabBtn, name = name})
         if TabSearchBox and TabSearchBox.Text ~= "" then
@@ -3148,7 +3316,7 @@ function Library:CreateWindow(config)
                 BackgroundTransparency = active and 0.85 or 1,
                 BackgroundColor3 = active and Theme.AccentA or Theme.Element
             }):Play()
-            TweenService:Create(ActiveBar, TI.d018_Sine_Out, {Size = UDim2.new(0, 3, 0, active and 20 or 0)}):Play()
+            TweenService:Create(ActiveBar, TI.d022_Back_Out, {Size = UDim2.new(0, active and activeBarW or 0, 0, 3)}):Play()
             TabTitle.TextColor3 = active and Theme.Text or Theme.SubText
             if icon then
                 local iconImg = TabBtn:FindFirstChildOfClass("ImageLabel")
@@ -3156,10 +3324,19 @@ function Library:CreateWindow(config)
                     TweenService:Create(iconImg, TI.d018_Sine_Out, {ImageColor3 = active and Theme.Text or Theme.SubText}):Play()
                 end
             end
+            if active then
+                -- เรืองแสงวนรอบปุ่ม ping-pong ไม่จำกัดรอบ ตราบเท่าที่แท็บนี้ active
+                startLoopPulse(tabGlow, "Transparency", 0.35, 0.75, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true))
+            else
+                stopLoopPulse(tabGlow)
+                TweenService:Create(tabGlow, TI.d02_Sine_Out, {Transparency = 1}):Play()
+            end
         end
 
         local function activateTab()
             closeActivePopup()
+            -- ระเบิดสะเก็ดอนุภาคออกจากปุ่มแท็บตอนคลิก (โหมด Animation หนักสุด)
+            particleBurst(TabBtn, "AccentA", UDim2.new(0.5, 0, 1, -3), 14, 36)
             for _, t in ipairs(Tabs) do
                 local isThis = (t.Btn == TabBtn)
                 t.SetActive(isThis)
