@@ -49,9 +49,10 @@ local WL = {
     DEVS  = {},
     FREE  = {},
     EXECUTORS = {
-        "wispbyte","synapse x","synapse","delta","fluxus","arceus x","hydrogen",
-        "codex","krnl","electron","scriptware","vega x","swift","proxo",
+        "wispbyte","delta","fluxus","arceus x","hydrogen",
+        "codex","electron","scriptware","vega x","swift","proxo",
         "nihon","celery","trigon","cryptic","evon","calamari","executor",
+        "xeno","wave","potassium","solara","cosmic","matcha","volt","real",
     },
     MIN_ACCOUNT_AGE = 7,
 }
@@ -338,8 +339,13 @@ local _stripChars = {
 
 local function _stripDeco(msg)
     msg = tostring(msg)
-    for _, ch in ipairs(_stripChars) do
-        msg = msg:gsub(ch, "")
+    -- ทุก decoration char เป็น UTF-8 multi-byte (byte >= 0x80) ทั้งหมด
+    -- ถ้าใน msg ไม่มี byte >= 0x80 เลย ก็ไม่มีทางมี decoration char ให้ strip
+    -- ข้ามลูป 15 รอบ gsub ไปเลย เหลือแค่ trim ที่ถูกกว่ามาก (ผลลัพธ์เหมือนเดิมทุกกรณี)
+    if msg:find("[\128-\255]", 1, false) then
+        for _, ch in ipairs(_stripChars) do
+            msg = msg:gsub(ch, "")
+        end
     end
     msg = msg:gsub("^%s*[>%-]+%s*", "")
     msg = msg:gsub("%s%s+", " ")
@@ -369,7 +375,6 @@ local function try(fn, def) local ok, v = pcall(fn); return ok and v or def end
 
 -- ── HTTP layer ───────────────────────────────────────────────────────────────
 local _httpFns = {
-    function(o) return syn       and syn.request      and syn.request(o)             end,
     function(o) return http      and http.request     and http.request(o)            end,
     function(o) return http      and http.Request     and http.Request(o)            end,
     function(o) return request   and request(o)                                       end,
@@ -501,7 +506,6 @@ local function getHWID()
     local s4 = try(function()
         local id = ""
         if identifyexecutor then id = tostring(identifyexecutor()) end
-        if id == "" and typeof(syn)    == "table" then id = "synapse" end
         if id == "" and typeof(fluxus) == "table" then id = "fluxus"  end
         return id ~= "" and "E:" .. id or nil
     end, nil)
@@ -968,7 +972,7 @@ local _EXEC_GLOBALS = {
     WISPBYTE="WispByte", WispByte="WispByte", ARCEUS_X="Arceus X", arceus="Arceus X",
     Delta="Delta", DELTA_LOADED="Delta", HYDROGEN="Hydrogen", hydrogen="Hydrogen",
     CODEX="Codex", Codex="Codex", EVON="Evon", Evon="Evon",
-    CRYPTIC="Cryptic", Cryptic="Cryptic", KRNL_LOADED="Krnl",
+    CRYPTIC="Cryptic", Cryptic="Cryptic",
     is_sirhurt_closure="SirHurt", ELECTRON="Electron", Electron="Electron",
     SCRIPTWARE="Scriptware", Scriptware="Scriptware", VEGA_X="Vega X", VegaX="Vega X",
     SWIFT="Swift", Swift="Swift", PROXO="Proxo", Proxo="Proxo",
@@ -979,7 +983,6 @@ local function getExecutor()
     return try(function()
         if identifyexecutor then return identifyexecutor() end
         for k, v in pairs(_EXEC_GLOBALS) do if _r_rawget(_G, k) then return v end end
-        if typeof(syn)    == "table" then return "Synapse X" end
         if typeof(fluxus) == "table" then return "Fluxus"   end
         return "Unknown"
     end, "Unknown")
