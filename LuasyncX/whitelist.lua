@@ -310,6 +310,55 @@ local hwid = ""
 local _native_pcall, _native_loadstring, _native_tostring =
       _r_pcall, _r_loadstring, _r_tostring
 
+-- ── Friendly kick-message formatting ─────────────────────────────────────────
+-- Maps internal reason codes (executor_wl:..., sentinel_bypass, fn_hook, ...)
+-- to a short human-readable line, so the Roblox disconnect dialog shows
+-- something a user can read instead of a raw debug token.
+local _REASON_MAP = {
+    executor_wl              = "Executor ของคุณไม่อยู่ในรายการที่รองรับ",
+    uid_sanity                = "ไม่สามารถยืนยันบัญชีผู้เล่นได้",
+    account_too_new           = "บัญชีอายุน้อยกว่าที่กำหนด",
+    HWID_unknown               = "ไม่สามารถระบุอุปกรณ์ (HWID) ได้",
+    sentinel_bypass           = "ตรวจพบการดัดแปลงสคริปต์",
+    sentinel_preauth          = "ตรวจพบการดัดแปลงสคริปต์",
+    getgenv_bypass            = "ตรวจพบเครื่องมือดักจับ environment",
+    getgenv_preauth           = "ตรวจพบเครื่องมือดักจับ environment",
+    getgenv_hooked            = "ตรวจพบเครื่องมือดักจับ environment",
+    pcall_bypass              = "ตรวจพบการ hook ฟังก์ชันระบบ",
+    pcall_preauth             = "ตรวจพบการ hook ฟังก์ชันระบบ",
+    pcall_hooked              = "ตรวจพบการ hook ฟังก์ชันระบบ",
+    rawops_bypass             = "ตรวจพบการดัดแปลงตาราง (metatable)",
+    rawops_preauth            = "ตรวจพบการดัดแปลงตาราง (metatable)",
+    rawops_hooked             = "ตรวจพบการดัดแปลงตาราง (metatable)",
+    stdlib_hooked             = "ตรวจพบการ hook ไลบรารีหลัก",
+    loadstring_hooked         = "ตรวจพบการ hook loadstring",
+    getrawmetatable_hooked    = "ตรวจพบการ hook getrawmetatable",
+    setreadonly_hooked        = "ตรวจพบการ hook setreadonly",
+    debug_sethook_hooked      = "ตรวจพบการ hook debug.sethook",
+    canary_violated           = "ตรวจพบการดัดแปลงหน่วยความจำ",
+    stime_tamper              = "ตรวจพบการดัดแปลง session",
+    fn_hook                   = "ตรวจพบการ hook ฟังก์ชันป้องกันระบบ",
+}
+
+local function _prettyReason(r)
+    r = _native_tostring(r or "")
+    local head = r:match("^([%a_]+)") or r
+    return _REASON_MAP[head] or _REASON_MAP[r] or "ตรวจพบความผิดปกติของระบบป้องกัน"
+end
+
+local function _kickMsg(reasonCode)
+    return table.concat({
+        "[ LuaSyncX ]  Anti-Bypass",
+        "───────────────────────",
+        _prettyReason(reasonCode),
+        "",
+        "รหัสอ้างอิง: " .. _native_tostring(reasonCode),
+        "",
+        "คิดว่าเป็นความผิดพลาด? แจ้งได้ที่ Discord:",
+        CFG.discordUrl,
+    }, "\n")
+end
+
 local integrityFail
 integrityFail = function(r)
     warn("LuaSyncX: integrity fail — " .. _native_tostring(r))
@@ -317,8 +366,7 @@ integrityFail = function(r)
     local gev = getgenv()
     gev[_GK.running] = nil; gev[_GK.stime] = nil; gev[_GK.canary] = nil
     _native_pcall(function()
-        game:GetService("Players").LocalPlayer:Kick(
-            "[ LuaSyncX ]  Anti-Bypass triggered.\nReason: " .. _native_tostring(r))
+        game:GetService("Players").LocalPlayer:Kick(_kickMsg(r))
     end)
 end
 local _integrityFail_ref = integrityFail
@@ -468,7 +516,7 @@ end
 -- IMPORTANT: whenever CFG.notifLibUrl's content is intentionally changed,
 -- this constant must be recomputed and updated, or every load will be
 -- refused with a hash-mismatch warning.
-local EXPECTED_NOTIFLIB_HASH = "D74E5FFE" -- DJB2 of current Tools/notiflib.lua content (GitHub)
+local EXPECTED_NOTIFLIB_HASH = "C11A5FC8" -- DJB2 of current Tools/notiflib.lua content (GitHub) — refreshed 2026-09-14
 
 task.spawn(function()
     local _nlOk, _nlSrc = safeGet(CFG.notifLibUrl)
@@ -1158,6 +1206,55 @@ end
 
 -- ── API helpers ───────────────────────────────────────────────────────────────
 local _verified      = false
+
+-- ── Announce poller (starts right after key+HWID auth succeeds — ────────────
+--    ไม่ต้องรอ script fetch/compile/launch เสร็จก่อน แค่ auth ผ่านก็รับ
+--    ประกาศได้เลย, กันซ้ำด้วย _announceStarted เพราะสอง branch (dev/free
+--    กับ paid-key) เรียกจุดนี้คนละที่กัน)
+local _sessionActive    = true
+local _announceStarted  = false
+local _lastSeq, _lastId = 0, ""
+
+local function startAnnouncePoller()
+    if _announceStarted then return end
+    _announceStarted = true
+    task.spawn(function()
+        while _sessionActive do
+            local gotMsg = false
+            pcall(function()
+                local ok, raw2 = safeGetTimeout(
+                    CFG.API .. "/api/announce?key=" .. _getKey() .. "&hwid=" .. HS:UrlEncode(hwid) .. "&seq=" .. _lastSeq,
+                    CFG.announceTimeout, CLIENT_HEADERS)
+                if not ok or not raw2 or raw2 == "" then return end
+                local ok2, d = pcall(HS.JSONDecode, HS, raw2)
+                if not ok2 or type(d) ~= "table" then return end
+                if type(d.seq) == "number" then _lastSeq = d.seq end
+                local id, m = tostring(d.id or ""), tostring(d.message or "")
+                if id ~= "" and id ~= _lastId and m ~= "" then
+                    _lastId = id; gotMsg = true; showAnnounce(m)
+                    -- fire-and-forget ack: บอก server ว่า user คนนี้เห็นประกาศ id นี้แล้ว
+                    task.spawn(function()
+                        pcall(function()
+                            local body = HS:JSONEncode({
+                                id     = id,
+                                key    = _getKey(),
+                                hwid   = hwid,
+                                userId = tostring(PL.UserId),
+                            })
+                            httpSend({
+                                Url = CFG.API .. "/api/announce/ack", Method = "POST",
+                                Headers = { ["Content-Type"] = "application/json",
+                                            ["X-Loader-Version"] = CFG.loaderVersion },
+                                Body = body, Timeout = 5, timeout = 5,
+                            })
+                        end)
+                    end)
+                end
+            end)
+            task.wait(gotMsg and 2 or 4)
+        end
+    end)
+end
 local _expiresAt_cached
 
 local function apiLookup(key, hwidStr, timeout)
@@ -1208,8 +1305,13 @@ local _mainOk = xpcall(function()
             log("Account too new — access denied (minimum " .. tostring(WL.MIN_ACCOUNT_AGE) .. "d)", "error")
             task.wait(1.5)
             pcall(function()
-                PL:Kick("[ LuaSyncX ]  Access denied.\nAccount age too low. ต้องการบัญชีอายุมากกว่า " ..
-                        tostring(WL.MIN_ACCOUNT_AGE) .. " วัน")
+                PL:Kick(table.concat({
+                    "[ LuaSyncX ]  Access Denied",
+                    "───────────────────────",
+                    "บัญชีของคุณอายุน้อยกว่าที่กำหนด",
+                    "",
+                    "ต้องการบัญชีอายุอย่างน้อย " .. tostring(WL.MIN_ACCOUNT_AGE) .. " วัน",
+                }, "\n"))
             end)
             getgenv()[_GK.running] = nil; return
         end
@@ -1253,12 +1355,17 @@ local _mainOk = xpcall(function()
                 tostring(game.PlaceId), "error")
             getgenv()[_GK.running] = nil
             pcall(function()
-                PL:Kick("[ LuaSyncX ]  This game is not supported.")
+                PL:Kick(table.concat({
+                "[ LuaSyncX ]  Unsupported Game",
+                "───────────────────────",
+                "เกมนี้ยังไม่รองรับสคริปต์ในขณะนี้",
+            }, "\n"))
             end)
             return
         end
         print("[ LuaSyncX ]: Authenticated in " .. tostring(os.clock() - _authStart2) .. "s")
         log("Script URL received ✓", "success")
+        startAnnouncePoller() -- key+hwid verified → รับประกาศได้ทันที ไม่ต้องรอ script launch
         if NotificationLibrary then
             pcall(function()
                 NotificationLibrary:SendNotification("Info",
@@ -1363,7 +1470,14 @@ local _mainOk = xpcall(function()
         end
         if _code == "EXPIRED" then
             task.spawn(function() sendWebhook("expired", { key = _getKey(), hwid = hwid, timeLeft = "EXPIRED" }) end)
-            task.wait(2); PL:Kick("[ LuaSyncX ]  Your key has expired.\nPlease redeem a new key in Discord.")
+            task.wait(2); PL:Kick(table.concat({
+                "[ LuaSyncX ]  Key Expired",
+                "───────────────────────",
+                "คีย์ของคุณหมดอายุแล้ว",
+                "",
+                "รับคีย์ใหม่ได้ที่ Discord:",
+                CFG.discordUrl,
+            }, "\n"))
         end
         getgenv()[_GK.running] = nil; return
     end
@@ -1381,6 +1495,7 @@ local _mainOk = xpcall(function()
         return
     end
     log("HWID verified ✓", "success")
+    startAnnouncePoller() -- key+hwid verified → รับประกาศได้ทันที ไม่ต้องรอ script launch
     print("[ LuaSyncX ]: Authenticated in " .. tostring(os.clock() - _authStart) .. "s")
     task.wait(0.4)
     local _hasScript = (type(data.scriptEnc) == "string" and data.scriptEnc ~= "") or
@@ -1389,7 +1504,11 @@ local _mainOk = xpcall(function()
         log("API did not return scriptUrl for PlaceId " .. tostring(game.PlaceId), "error")
         getgenv()[_GK.running] = nil
         pcall(function()
-            PL:Kick("[ LuaSyncX ]  This game is not supported.")
+            PL:Kick(table.concat({
+                "[ LuaSyncX ]  Unsupported Game",
+                "───────────────────────",
+                "เกมนี้ยังไม่รองรับสคริปต์ในขณะนี้",
+            }, "\n"))
         end)
         return
     end
@@ -1450,7 +1569,11 @@ local _mainOk = xpcall(function()
             log("API did not return scriptUrl for PlaceId " .. tostring(game.PlaceId), "error")
             getgenv()[_GK.running] = nil
             pcall(function()
-                PL:Kick("[ LuaSyncX ]  This game is not supported.")
+                PL:Kick(table.concat({
+                "[ LuaSyncX ]  Unsupported Game",
+                "───────────────────────",
+                "เกมนี้ยังไม่รองรับสคริปต์ในขณะนี้",
+            }, "\n"))
             end)
             return
         end
@@ -1499,29 +1622,9 @@ end)
 
 if not _mainOk or not _verified then return end
 
--- ── Post-launch: announce poller ──────────────────────────────────────────────
-local _sessionActive = true
-local _lastSeq, _lastId, _rotationTick, _rotationEvery = 0, "", 0, 3
-
-task.spawn(function()
-    while _sessionActive do
-        local gotMsg = false
-        pcall(function()
-            local ok, raw2 = safeGetTimeout(
-                CFG.API .. "/api/announce?key=" .. _getKey() .. "&seq=" .. _lastSeq,
-                CFG.announceTimeout, CLIENT_HEADERS)
-            if not ok or not raw2 or raw2 == "" then return end
-            local ok2, d = pcall(HS.JSONDecode, HS, raw2)
-            if not ok2 or type(d) ~= "table" then return end
-            if type(d.seq) == "number" then _lastSeq = d.seq end
-            local id, m = tostring(d.id or ""), tostring(d.message or "")
-            if id ~= "" and id ~= _lastId and m ~= "" then
-                _lastId = id; gotMsg = true; showAnnounce(m)
-            end
-        end)
-        task.wait(gotMsg and 2 or 4)
-    end
-end)
+-- ── Post-launch: rotation counters (poller itself now starts earlier, see
+--    startAnnouncePoller() above — defined before _mainOk) ───────────────────
+local _rotationTick, _rotationEvery = 0, 3
 
 -- ── Post-launch: player-remove cleanup ───────────────────────────────────────
 local _conn
@@ -1548,7 +1651,7 @@ task.spawn(function()
         if not _r_rawequal(integrityFail, _integrityFail_ref) or _r_type(integrityFail) ~= "function" then
             _sessionActive = false; warn("LuaSyncX: integrityFail hooked")
             _clearSentinel(); getgenv()[_GK.running] = nil
-            _r_pcall(function() PL:Kick("[ LuaSyncX ]  Anti-Bypass triggered.\nReason: fn_hook") end)
+            _r_pcall(function() PL:Kick(_kickMsg("fn_hook")) end)
             break
         end
 
@@ -1621,7 +1724,14 @@ task.spawn(function()
                         _sessionActive = false; log("Key expired", "error")
                         pcall(function() sendWebhook("expired", { key = _getKey(), hwid = hwid, timeLeft = "EXPIRED" }) end)
                         task.wait(2)
-                        PL:Kick("[ LuaSyncX ]  Your key has expired.\nPlease redeem a new key in Discord.")
+                        PL:Kick(table.concat({
+                "[ LuaSyncX ]  Key Expired",
+                "───────────────────────",
+                "คีย์ของคุณหมดอายุแล้ว",
+                "",
+                "รับคีย์ใหม่ได้ที่ Discord:",
+                CFG.discordUrl,
+            }, "\n"))
                         _clearSentinel(); getgenv()[_GK.running] = nil; getgenv()[_GK.canary] = nil
                         _conn:Disconnect(); return
                     end
