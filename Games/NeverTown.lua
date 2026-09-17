@@ -7,6 +7,12 @@ local VirtualUser= game:GetService("VirtualUser")
 local Lighting   = game:GetService("Lighting")
 local LP         = Players.LocalPlayer
 
+-- ── ESP Access Lock ──
+-- เฉพาะ UserId ที่อยู่ในลิสต์นี้เท่านั้นที่ใช้ ESP ได้ คนอื่นแท็บจะถูกล็อค กดแล้วไม่ทำงาน
+-- และมีการเช็คซ้ำใน RenderStepped ด้วย เพื่อไม่ให้ ESP รันได้จริงไม่ว่าจะพยายามเปิดผ่านช่องทางไหน
+local ESP_ALLOWED_USERIDS = {[8514985969]=true}
+local IsESPAuthorized = ESP_ALLOWED_USERIDS[LP.UserId] == true
+
 -- Localize common functions for faster access
 local t_insert, t_sort, ipairs, pairs = table.insert, table.sort, ipairs, pairs
 local m_floor, m_min, m_max, m_clamp, m_huge = math.floor, math.min, math.max, math.clamp, math.huge
@@ -80,7 +86,7 @@ if not ok or not _Cfg then LP:Kick("Failed to load Config. Rejoin!") return end
 local CFG, SaveCFG, LoadCFG, OnCFGLoaded = _Cfg.new(
     "SpectreWare.json",
     {"Enabled","NPCSESP","ShowHP","ShowHPText","ShowName","ShowDist","BypassAntiESP","HideDeadESP","HideFriends"},
-    {"BoxThickness","HPBarWidth","NameSize","MaxDist"},
+    {"BoxThickness","HPBarWidth","NameSize","MaxDist","ESPDetailDist"},
     {"BoxColor"},
     {
         Enabled=false, NPCSESP=false,
@@ -89,6 +95,7 @@ local CFG, SaveCFG, LoadCFG, OnCFGLoaded = _Cfg.new(
         ShowName=true, NameSize=13,
         ShowDist=true, MaxDist=600,
         BypassAntiESP=true, HideDeadESP=true, HideFriends=false,
+        ESPDetailDist=120, -- ในระยะนี้วาดโครงกระดูกเต็ม ไกลกว่านี้วาดกรอบสี่เหลี่ยมง่ายๆแทน (ลดจำนวน WorldToViewportPoint ต่อเฟรมเยอะมากเวลามีคน/NPC เยอะ)
     }
 )
 
@@ -110,54 +117,9 @@ local Window = WindUI:CreateWindow({
     Resizable=true, SideBarWidth=200, BackgroundImageTransparency=0.42,
     HideSearchBar=true, ScrollBarEnabled=false,
 })
-Window:EditOpenButton({
-    Title="SpectreWare", Icon="monitor", CornerRadius=UDim.new(0,16),
-    StrokeThickness=2,
-    Color=ColorSequence.new(Color3.fromRGB(123,142,200), Color3.fromRGB(107,47,160)),
-    OnlyMobile=true, Enabled=false, Draggable=true,
-})
 Window:Tag({Title="v1.6.12", Icon="github", Color=Color3.fromRGB(123,142,200), Radius=13})
 Window:SetIconSize(80)
-
--- ── Custom Circular Open Button (Mobile Only, no flash) ──
-local UserInputService = game:GetService("UserInputService")
-local IsMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
-
-local SW_OpenGui = Instance.new("ScreenGui")
-SW_OpenGui.Name = "SW_OpenButtonGui"
-SW_OpenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-SW_OpenGui.ResetOnSpawn = false
-SW_OpenGui.Parent = LP.PlayerGui
-
-local SW_OpenButton = Instance.new("ImageButton")
-SW_OpenButton.Visible = false
-SW_OpenButton.BorderSizePixel = 0
-SW_OpenButton.Draggable = true
-SW_OpenButton.BackgroundColor3 = Color3.fromRGB(28, 6, 255)
-SW_OpenButton.Image = "rbxassetid://131767061823177"
-SW_OpenButton.Size = UDim2.new(0.09412, 0, 0.1637, 0)
-SW_OpenButton.Name = "ButtonRezise"
-SW_OpenButton.Position = UDim2.new(0.13287, 0, 0.0341, 0)
-SW_OpenButton.Parent = SW_OpenGui
-
-local SW_OpenCorner = Instance.new("UICorner", SW_OpenButton)
-SW_OpenCorner.CornerRadius = UDim.new(0.5, 0)
-
-local SW_OpenAspect = Instance.new("UIAspectRatioConstraint", SW_OpenButton)
-SW_OpenAspect.AspectRatio = 1
-
-SW_OpenButton.MouseButton1Click:Connect(function()
-    SW_OpenButton.Visible = false
-    Window:Open()
-end)
-
-Window:OnClose(function()
-    SW_OpenButton.Visible = IsMobile
-end)
-
-Window:OnDestroy(function()
-    SW_OpenButton.Visible = false
-end)
+Window:EditOpenButton({ Title="SpectreWare" }) -- ตัดชื่อบนปุ่มเปิดให้สั้นลง (ตัวเต็ม "SpectreWare | NEVER TOWN" ยาวเกินจอมือถือ)
 
 task.spawn(function()
     allTrees = workspace:WaitForChild("AllPlantedTrees",30)
@@ -311,10 +273,25 @@ local function getHudCard()
     end
 end
 
+
 -- ── ESP ──
 local ESPObjects     = {}
+-- OPTIMIZE: frame-stride throttle. Far/off-screen-ish targets don't need a fresh
+-- WorldToViewportPoint projection every single RenderStepped — reusing last frame's
+-- screen box for 2-4 frames is visually lossless at range but skips the priciest calls
+-- in the hot loop (this is what actually chokes framerate once 15-20+ ESP boxes stack up).
+local _frameCounter  = 0
+local _staggerCounter = 0
 local _espPartCache  = {}
 local Z_MARGIN       = 0.5  -- Z-buffer margin: kills edge-of-camera flicker
+
+-- FIX (ESP ติดจอ/กะพริบตอนหมุนกล้องเร็ว): ตอนกล้องหมุนเร็ว จุดที่ cache ไว้ (skipProjection)
+-- จะไม่ถูกเช็คว่ายังอยู่ในจอไหม เลยค้างตำแหน่งเดิมไว้ก่อนจะกระโดดไปตำแหน่งจริง/หายวับ ๆ
+-- แก้โดยวัดมุมที่กล้องหมุนต่อเฟรม ถ้าหมุนเร็วเกิน threshold ให้บังคับรีเฟรช (ยิง WorldToViewportPoint ใหม่)
+-- ทุกตัวทุกเฟรมชั่วคราว จนกว่าจะหมุนช้าลงถึงจะกลับไปใช้ stride ประหยัดเฟรมตามเดิม
+local _lastCamLook = nil
+local _fastRotate  = false
+local ROTATE_ANGLE_THRESHOLD = 0.035 -- เรเดียนต่อเฟรม (~2 องศา) กะไว้ให้หมุนดูรอบตัวปกติไม่โดน แต่หมุนหนี/สะบัดเร็วโดน
 
 local ESP_EXCLUDE_PATHS = {
     {"System", "[Server] Npc_Seal"},
@@ -390,8 +367,10 @@ local function makeESP(model, isNPC)
         distLabel= newText(11,             Color3.fromRGB(140,130,175)),
         hpText   = newText(16,             Color3.fromRGB(110,255,165)),
         lastPos3 = nil, lastTopPos3 = nil, lastBotPos3 = nil,
-        _vis = false, lastDistStr = "", lastHpStr = ""
+        _vis = false, lastDistStr = "", lastHpStr = "",
+        staggerId = _staggerCounter % 4
     }
+    _staggerCounter = _staggerCounter + 1
     if CFG.BypassAntiESP then buildPartCache(model) end
 end
 
@@ -415,10 +394,30 @@ local function setVisible(obj, v)
     obj.distLabel.Visible=v; obj.hpText.Visible=v
 end
 
+-- OPTIMIZE: no per-frame table alloc for the far-mode box (was allocating 1 outer + 4 inner tables every object every frame)
+local function applyBoxLine(obj, i, ax, ay, bx, by)
+    local line = obj.skeleton[i]
+    if not line then return end
+    if line.Thickness ~= CFG.BoxThickness then line.Thickness = CFG.BoxThickness end
+    if line.Color ~= CFG.BoxColor then line.Color = CFG.BoxColor end
+    line.From = v2_new(ax, ay); line.To = v2_new(bx, by)
+    line.Visible = true
+end
+
 -- OPTIMIZE: Massive Performance Boost
-local function updateESPObject(model, obj, Camera, myRoot, myPos)
-    local root = model:FindFirstChild("HumanoidRootPart")
-    local hum  = model:FindFirstChildOfClass("Humanoid")
+local function updateESPObject(model, obj, Camera, myRoot, myPos, fastRotate)
+    -- OPTIMIZE: cache root/humanoid on the obj instead of FindFirstChild every frame;
+    -- only re-look-up when the cached ref went stale (character respawned/parts swapped)
+    local root = obj.rootCache
+    if not root or not root.Parent then
+        root = model:FindFirstChild("HumanoidRootPart")
+        obj.rootCache = root
+    end
+    local hum = obj.humCache
+    if not hum or not hum.Parent then
+        hum = model:FindFirstChildOfClass("Humanoid")
+        obj.humCache = hum
+    end
     local isValid = myRoot ~= nil
 
     if not root or not hum then isValid = false end
@@ -467,20 +466,46 @@ local function updateESPObject(model, obj, Camera, myRoot, myPos)
 
     local pos3, topPos3, botPos3
 
-    if isValid then
+    -- OPTIMIZE: distance-tiered frame stride. Close targets (where flicker/lag would
+    -- actually be noticeable) still project every frame. Mid/far targets reuse last
+    -- frame's screen-space box and only re-project every 2nd/4th frame — cuts
+    -- WorldToViewportPoint calls (the single most expensive op in this loop) by
+    -- roughly half to three-quarters once the lobby/farm gets crowded.
+    local stride = 1
+    if not fastRotate then
+        if dist > 260 then stride = 4
+        elseif dist > 130 then stride = 2 end
+    end
+    local skipProjection = stride > 1 and obj.lastPos3 ~= nil
+        and ((_frameCounter + obj.staggerId) % stride ~= 0)
+
+    if isValid and skipProjection then
+        pos3, topPos3, botPos3 = obj.lastPos3, obj.lastTopPos3, obj.lastBotPos3
+    elseif isValid then
+        local vp = Camera.ViewportSize
         local tempPos3 = Camera:WorldToViewportPoint(root.Position)
 
-        if tempPos3.Z <= 0 then
+        -- FIX v2: the "onScreen" 2nd return value from WorldToViewportPoint turned out to still
+        -- report true in some edge cases (grazing angles) on this executor, so don't rely on it
+        -- alone — manually check the projected X/Y actually land inside the camera's pixel
+        -- rectangle. This is what was still letting ESP get pinned to the screen edge.
+        if tempPos3.Z <= Z_MARGIN or tempPos3.X < 0 or tempPos3.X > vp.X or tempPos3.Y < 0 or tempPos3.Y > vp.Y then
             isValid = false
         else
             pos3 = tempPos3
             obj.lastPos3 = pos3
 
-            local head = model:FindFirstChild("Head") or root
+            local head = obj.headCache
+            if not head or not head.Parent then
+                head = model:FindFirstChild("Head") or root
+                obj.headCache = head
+            end
             local tempTop = Camera:WorldToViewportPoint(head.Position + v3_new(0, head.Size.Y / 2 + 0.3, 0))
             local tempBot = Camera:WorldToViewportPoint(root.Position - v3_new(0, 3, 0))
 
-            if tempTop.Z <= 0 or tempBot.Z <= 0 then
+            if tempTop.Z <= Z_MARGIN or tempBot.Z <= Z_MARGIN
+                or tempTop.X < 0 or tempTop.X > vp.X or tempTop.Y < 0 or tempTop.Y > vp.Y
+                or tempBot.X < 0 or tempBot.X > vp.X or tempBot.Y < 0 or tempBot.Y > vp.Y then
                 isValid = false
             else
                 topPos3 = tempTop
@@ -511,48 +536,95 @@ local function updateESPObject(model, obj, Camera, myRoot, myPos)
     local w  = h * 0.6
     local x1, x2 = cx - w/2, cx + w/2
 
-    local joints = obj.jointCache
-    if not joints then joints={}; obj.jointCache=joints end
-    for _,bone in ipairs(obj.bones) do
-        for _,jname in ipairs(bone) do
-            -- FIX: ถ้า part ที่ cache ไว้โดน Destroy/หลุดออกจาก model ไปแล้ว (Parent เป็น nil)
-            -- ต้องหาใหม่ ไม่งั้น Position จะค้างอยู่ค่าสุดท้ายก่อนโดนทำลาย ทำให้เส้นโครงกระดูกลอยค้างจุดเดิม
-            local cached = joints[jname]
-            if not cached or not cached.Parent then
-                joints[jname] = model:FindFirstChild(jname)
+    -- LOD: โครงกระดูกเต็มรูปแบบต้องคำนวณ WorldToViewportPoint เพิ่มอีก ~14 จุดต่อตัวต่อเฟรม
+    -- (นอกเหนือจาก 3 จุดที่คำนวณไปแล้วข้างบนสำหรับเช็คความถูกต้อง) ถ้ามีคน/NPC เยอะพร้อมกันนี่คือจุดที่กินเฟรมสุด
+    -- เลยจำกัดไว้แค่ระยะใกล้ (CFG.ESPDetailDist) ไกลกว่านั้นวาดกรอบสี่เหลี่ยมง่ายๆจาก 4 จุดที่มีอยู่แล้วพอ ไม่ต้องยิง WorldToViewportPoint เพิ่มเลย
+    local detailDist = CFG.ESPDetailDist or 120 -- fallback เผื่อ CFG.json เก่าที่ยังไม่มี field นี้
+    local useDetail = dist <= detailDist
+
+    -- OPTIMIZE (แก้ตามที่คุย): โครงกระดูกคือจุดที่แพงสุดต่อ object (~14 WorldToViewportPoint
+    -- เพิ่มต่อเฟรม) ตัวที่อยู่ไกลหน่อย (แต่ยังอยู่ในระยะ detail) ไม่จำเป็นต้อง refresh ทุกเฟรม
+    -- reuse jointScreen เดิมแล้ววาดเส้นซ้ำ — ใกล้มากๆ (DETAIL_CLOSE_RANGE) ยัง refresh ทุกเฟรมเหมือนเดิม
+    -- เพื่อไม่ให้เห็นการหน่วงตอนประชิดตัว
+    local DETAIL_CLOSE_RANGE = 25
+    local detailStride = (fastRotate or dist <= DETAIL_CLOSE_RANGE) and 1 or 3
+    local skipDetailRefresh = useDetail and detailStride > 1
+        and obj.jointScreen ~= nil
+        and ((_frameCounter + obj.staggerId) % detailStride ~= 0)
+
+    if useDetail and not skipDetailRefresh then
+        local joints = obj.jointCache
+        if not joints then joints={}; obj.jointCache=joints end
+        for _,bone in ipairs(obj.bones) do
+            for _,jname in ipairs(bone) do
+                -- FIX: ถ้า part ที่ cache ไว้โดน Destroy/หลุดออกจาก model ไปแล้ว (Parent เป็น nil)
+                -- ต้องหาใหม่ ไม่งั้น Position จะค้างอยู่ค่าสุดท้ายก่อนโดนทำลาย ทำให้เส้นโครงกระดูกลอยค้างจุดเดิม
+                local cached = joints[jname]
+                if not cached or not cached.Parent then
+                    joints[jname] = model:FindFirstChild(jname)
+                end
             end
         end
-    end
 
-    local jointScreen = obj.jointScreen
-    if not jointScreen then jointScreen={}; obj.jointScreen=jointScreen end
-    for jname, part in pairs(joints) do
-        if part and part.Parent then
-            local vp = Camera:WorldToViewportPoint(part.Position)
-            jointScreen[jname] = (vp.Z > 0) and vp or nil
-        else
-            jointScreen[jname] = nil
+        local jointScreen = obj.jointScreen
+        if not jointScreen then jointScreen={}; obj.jointScreen=jointScreen end
+        for jname, part in pairs(joints) do
+            if part and part.Parent then
+                local vp = Camera:WorldToViewportPoint(part.Position)
+                jointScreen[jname] = (vp.Z > 0) and vp or nil
+            else
+                jointScreen[jname] = nil
+            end
         end
-    end
 
-    for i, bone in ipairs(obj.bones) do
-        local line = obj.skeleton[i]
-        local v1, v2 = jointScreen[bone[1]], jointScreen[bone[2]]
-        if v1 and v2 then
-            if line.Thickness ~= CFG.BoxThickness then line.Thickness = CFG.BoxThickness end
-            if line.Color ~= CFG.BoxColor then line.Color = CFG.BoxColor end
-            line.From = v2_new(v1.X, v1.Y); line.To = v2_new(v2.X, v2.Y)
-            line.Visible = true
-        else
-            if line.Visible then line.Visible = false end
+        for i, bone in ipairs(obj.bones) do
+            local line = obj.skeleton[i]
+            local v1, v2 = jointScreen[bone[1]], jointScreen[bone[2]]
+            if v1 and v2 then
+                if line.Thickness ~= CFG.BoxThickness then line.Thickness = CFG.BoxThickness end
+                if line.Color ~= CFG.BoxColor then line.Color = CFG.BoxColor end
+                line.From = v2_new(v1.X, v1.Y); line.To = v2_new(v2.X, v2.Y)
+                line.Visible = true
+            else
+                if line.Visible then line.Visible = false end
+            end
+        end
+    elseif useDetail then
+        -- เฟรมที่ไม่ refresh: ใช้ jointScreen เดิมวาดซ้ำ (ไม่ยิง WorldToViewportPoint เพิ่ม)
+        local jointScreen = obj.jointScreen
+        for i, bone in ipairs(obj.bones) do
+            local line = obj.skeleton[i]
+            local v1, v2 = jointScreen[bone[1]], jointScreen[bone[2]]
+            if v1 and v2 then
+                line.From = v2_new(v1.X, v1.Y); line.To = v2_new(v2.X, v2.Y)
+                line.Visible = true
+            else
+                if line.Visible then line.Visible = false end
+            end
+        end
+    else
+        -- โหมดไกล: ใช้แค่ 4 เส้นแรกของ skeleton array วาดเป็นกรอบสี่เหลี่ยม จาก x1,y1,x2,y2 ที่มีอยู่แล้ว
+        -- OPTIMIZE: เขียนตรงแทนสร้าง table ชั่วคราว (boxPts) ทุกเฟรมทุกตัว ลด GC churn ตอนมีคน/NPC ไกลๆ เยอะ
+        applyBoxLine(obj, 1, x1,y1, x2,y1) -- บน
+        applyBoxLine(obj, 2, x2,y1, x2,y2) -- ขวา
+        applyBoxLine(obj, 3, x2,y2, x1,y2) -- ล่าง
+        applyBoxLine(obj, 4, x1,y2, x1,y1) -- ซ้าย
+        for i=5, #obj.skeleton do
+            if obj.skeleton[i].Visible then obj.skeleton[i].Visible = false end
         end
     end
 
     local hpR = m_clamp(hum.Health / m_max(hum.MaxHealth, 1), 0, 1)
-    local hpColor = hpR > 0.5
-        and Color3.fromRGB(m_floor(255*(1-hpR)*2), 255, 0)
-        or  Color3.fromRGB(255, m_floor(255*hpR*2), 0)
-        
+    -- OPTIMIZE: skip recomputing Color3.fromRGB when the rounded hp% hasn't moved since last frame
+    local hpBucket = m_floor(hpR*200) -- 0.5% buckets, plenty smooth for a color gradient
+    local hpColor = obj.lastHpBucket == hpBucket and obj.lastHpColor or nil
+    if not hpColor then
+        hpColor = hpR > 0.5
+            and Color3.fromRGB(m_floor(255*(1-hpR)*2), 255, 0)
+            or  Color3.fromRGB(255, m_floor(255*hpR*2), 0)
+        obj.lastHpBucket = hpBucket
+        obj.lastHpColor = hpColor
+    end
     if obj.hpBar.Color ~= hpColor then obj.hpBar.Color = hpColor end
     obj.hpBar.From = v2_new(x1, y2+4)
     obj.hpBar.To = v2_new(x1+(x2-x1)*hpR, y2+4)
@@ -569,10 +641,12 @@ local function updateESPObject(model, obj, Camera, myRoot, myPos)
     end
 
     if CFG.ShowDist then
-        local distStr = string.format("%.0f studs", dist)
-        if obj.lastDistStr ~= distStr then
-            obj.distLabel.Text = distStr
-            obj.lastDistStr = distStr
+        -- OPTIMIZE: เทียบค่าตัวเลขก่อน ไม่เรียก string.format ทุกเฟรมถ้าค่าปัดแล้วเท่าเดิม
+        local distRounded = m_floor(dist + 0.5)
+        if obj.lastDistRounded ~= distRounded then
+            obj.lastDistRounded = distRounded
+            obj.lastDistStr = distRounded.." studs"
+            obj.distLabel.Text = obj.lastDistStr
         end
         obj.distLabel.Position = v2_new(cx, y2+30)
         obj.distLabel.Visible = true
@@ -582,10 +656,11 @@ local function updateESPObject(model, obj, Camera, myRoot, myPos)
 
     if CFG.ShowHPText then
         local hpPct = m_floor(hpR*100)
-        local hpStr = hpPct.."%  ("..m_floor(hum.Health).."/"..m_floor(hum.MaxHealth)..")"
-        if obj.lastHpStr ~= hpStr then
-            obj.hpText.Text = hpStr
-            obj.lastHpStr = hpStr
+        local healthI, maxHealthI = m_floor(hum.Health), m_floor(hum.MaxHealth)
+        -- OPTIMIZE: เทียบตัวเลขดิบก่อน ไม่ต่อ string ทุกเฟรมถ้าเลขเดิม (ลด GC churn ตอน ESP เยอะ)
+        if obj.lastHpPct ~= hpPct or obj.lastHealthI ~= healthI or obj.lastMaxHealthI ~= maxHealthI then
+            obj.lastHpPct, obj.lastHealthI, obj.lastMaxHealthI = hpPct, healthI, maxHealthI
+            obj.hpText.Text = hpPct.."%  ("..healthI.."/"..maxHealthI..")"
         end
         local dynSize = m_clamp(m_floor(22 - dist/14), 11, 22)
         if obj.hpText.Size ~= dynSize then obj.hpText.Size = dynSize end
@@ -598,17 +673,33 @@ local function updateESPObject(model, obj, Camera, myRoot, myPos)
 end
 
 RunService.RenderStepped:Connect(function()
+    if not IsESPAuthorized then return end
     if not CFG.Enabled then return end
+    _frameCounter = _frameCounter + 1
     local Camera = workspace.CurrentCamera
     local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     local myPos = myRoot and myRoot.Position
+
+    -- FIX: วัดมุมที่กล้องหมุนเทียบกับเฟรมก่อนหน้า ถ้าหมุนเร็วเกิน threshold ให้ปิด stride-cache
+    -- ชั่วคราวทั้งหมด (ดูฟังก์ชัน updateESPObject) ไม่งั้น ESP จะติดจอ/กะพริบตอนหมุนกล้องแรง ๆ
+    _fastRotate = false
+    if Camera then
+        local ok, look = pcall(function() return Camera.CFrame.LookVector end)
+        if ok and look then
+            if _lastCamLook then
+                local dot = m_clamp(look:Dot(_lastCamLook), -1, 1)
+                _fastRotate = math.acos(dot) > ROTATE_ANGLE_THRESHOLD
+            end
+            _lastCamLook = look
+        end
+    end
 
     for model, obj in pairs(ESPObjects) do
         if not model.Parent then
             -- OPTIMIZE/FIX: โมเดลถูกลบ/ออกจากเกมไปแล้วแต่ event cleanup ไม่ทัน -> เก็บกวาดทิ้งเลย ไม่ปล่อยให้ ESP ค้างจอ
             removeESP(model)
         else
-            pcall(updateESPObject, model, obj, Camera, myRoot, myPos)
+            pcall(updateESPObject, model, obj, Camera, myRoot, myPos, _fastRotate)
         end
     end
 end)
@@ -648,6 +739,7 @@ for _,plr in ipairs(Players:GetPlayers()) do trackPlayer(plr) end
 
 local esp = {}
 function esp:FireScan()
+    if not IsESPAuthorized then return end
     if not CFG.Enabled then
         for _,obj in pairs(ESPObjects) do setVisible(obj,false) end; return
     end
@@ -656,6 +748,7 @@ function esp:FireScan()
     end
 end
 function esp:ScanWorkspace()
+    if not IsESPAuthorized then return end
     local all = workspace:GetDescendants()
     local count = 0
     for _,obj in ipairs(all) do
@@ -818,7 +911,7 @@ local CustomMaxSet   = false
 local UserSelectedItem = false
 local ItemDropdown   = nil
 local _suppressItemCallback = false
-local FarmSection    = FarmTab:Section({Title="⚙️ ตั้งค่าของที่จะเก็บใส่ตู้", Opened=true})
+local FarmSection    = FarmTab:Section({Title="ตั้งค่าของที่จะเก็บใส่ตู้", Opened=true})
 local AutoFarmToggle
 
 local function setInSafe(text)
@@ -884,12 +977,18 @@ end
 
 task.spawn(function()
     local _labelConnected = setmetatable({}, {__mode = "k"})
-    LP.PlayerGui.DescendantAdded:Connect(function(obj)
+    -- OPTIMIZE: เดิมดัก DescendantAdded จาก LP.PlayerGui ทั้งก้อน ซึ่งรวม GUI อื่นๆทั้งหมดในเกม
+    -- (chat, popup, GUI ของเกมเอง ฯลฯ) ทำให้ handler นี้ถูกเรียกถี่มากตลอดเวลาเล่นทั้งที่จริงๆสนใจแค่ label
+    -- ที่ WindUI สร้างเอง เลยเปลี่ยนไปดักเฉพาะใน WindUIGui ที่จับไว้ตอนโหลด lib (ลด event ที่ไม่เกี่ยวข้องไปเกือบทั้งหมด)
+    local listenTarget = WindUIGui or LP.PlayerGui
+    listenTarget.DescendantAdded:Connect(function(obj)
         if not obj:IsA("TextLabel") then return end
-        local sg = obj:FindFirstAncestorWhichIsA("ScreenGui")
-        if not sg then return end
-        local n = sg.Name
-        if not (n == "WindUI" or n:sub(1,7) == "WindUI/") then return end
+        if listenTarget == LP.PlayerGui then
+            local sg = obj:FindFirstAncestorWhichIsA("ScreenGui")
+            if not sg then return end
+            local n = sg.Name
+            if not (n == "WindUI" or n:sub(1,7) == "WindUI/") then return end
+        end
         if FarmItemMap[obj.Text] then task.delay(0.05, injectIconsIntoDropdown) end
         if _labelConnected[obj] then return end
         _labelConnected[obj] = true
@@ -1100,7 +1199,7 @@ AutoFarmToggle = FarmSection:Toggle({
                 if   noItem and noAmt then msg="กรุณาเลือกของ และกรอกจำนวนก่อนเปิด Auto Deposit"
                 elseif noItem         then msg="กรุณาเลือกของที่จะเก็บก่อนเปิด Auto Deposit"
                 else                       msg="กรุณากรอกจำนวนของที่จะเก็บก่อนเปิด Auto Deposit" end
-                WindUI:Notify({Title="🔒 เปิดไม่ได้", Content=msg, Duration=4})
+                WindUI:Notify({Title="เปิดไม่ได้", Icon="lock", Content=msg, Duration=4})
                 return
             end
         end
@@ -1117,10 +1216,10 @@ AutoFarmToggle = FarmSection:Toggle({
             end
             if not DepositRemote then
                 FarmRunning=false
-                WindUI:Notify({Title="❌ Auto Deposit หยุด", Content="ไม่พบ DepositRemote กรุณา Rejoin", Duration=5})
+                WindUI:Notify({Title="Auto Deposit หยุด", Icon="x-circle", Content="ไม่พบ DepositRemote กรุณา Rejoin", Duration=5})
                 return
             end
-            WindUI:Notify({Title="🟢 Auto Deposit เปิด", Content="กำลังเก็บใส่ตู้: "..SelectedItem.value, Duration=3})
+            WindUI:Notify({Title="Auto Deposit เปิด", Icon="check-circle", Content="กำลังเก็บใส่ตู้: "..SelectedItem.value, Duration=3})
             local farmScrolling
             while FarmRunning do
                 pcall(function()
@@ -1140,7 +1239,7 @@ AutoFarmToggle = FarmSection:Toggle({
 })
 
 -- ── SECTION: AUTO WATER ──
-local WaterSection = FarmTab:Section({Title="🌿 ต้นแคนดี้ - Auto Water", Opened=true})
+local WaterSection = FarmTab:Section({Title="ต้นแคนดี้ - Auto Water", Opened=true})
 local autoWaterEnabled, selectedWaterFolders, waterPickDropdown, waterFolderMap = false, {}, nil, {}
 
 local function buildFolderLabel(folder)
@@ -1203,22 +1302,49 @@ local WATER_REACH_DIST = 15
 
 local function walkToTarget(model)
     local part=model:FindFirstChildWhichIsA("BasePart",true)
+    if not part then return false, "ไม่พบตำแหน่งของต้นไม้ (BasePart)" end
     local hum2=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-    if not part or not hum2 then return false end
+    if not hum2 then return false, "ไม่พบ Humanoid ของตัวละคร (อาจกำลัง Respawn)" end
+    if hum2.Health<=0 then return false, "ตัวละครตายอยู่ รอ Respawn ก่อน" end
     local origSpeed=hum2.WalkSpeed
-    hum2.WalkSpeed=32
-    hum2:MoveTo(part.Position)
+    local moveOk=pcall(function()
+        hum2.WalkSpeed=32
+        hum2:MoveTo(part.Position)
+    end)
+    if not moveOk then return false, "สั่งเดินไม่สำเร็จ (ตัวละครถูกทำลายระหว่างเดิน)" end
     local arrived=false
     local conn=hum2.MoveToFinished:Connect(function(reached) arrived=reached end)
     local t=os.clock()
-    repeat task.wait(0.1) until arrived or (os.clock()-t)>8
+    repeat
+        task.wait(0.1)
+    until arrived or (os.clock()-t)>8 or hum2.Health<=0 or not hum2.Parent
     conn:Disconnect()
-    hum2.WalkSpeed=origSpeed
+    pcall(function() hum2.WalkSpeed=origSpeed end)
+    if hum2.Health<=0 or not hum2.Parent then return false, "ตัวละครตายหรือถูกทำลายระหว่างเดิน" end
+    if not arrived then return false, "เดินไม่ถึงภายในเวลาที่กำหนด (อาจติดสิ่งกีดขวาง/ทางตัน)" end
     local hrp=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     if hrp then
-        return (hrp.Position - part.Position).Magnitude <= WATER_REACH_DIST
+        if (hrp.Position - part.Position).Magnitude > WATER_REACH_DIST then
+            return false, "เดินถึงจุดแล้วแต่ยังอยู่นอกระยะรดน้ำ ("..WATER_REACH_DIST.." studs)"
+        end
+        return true
     end
-    return arrived
+    return arrived, (arrived and nil or "ไม่พบ HumanoidRootPart")
+end
+
+local _walkFailNotifyAt = setmetatable({}, {__mode="k"})
+local WALK_FAIL_NOTIFY_COOLDOWN = 10
+local function notifyWalkFail(tree, reason)
+    local now = os.clock()
+    local last = _walkFailNotifyAt[tree]
+    if last and (now - last) < WALK_FAIL_NOTIFY_COOLDOWN then return end
+    _walkFailNotifyAt[tree] = now
+    WindUI:Notify({
+        Title = "เดินไปรดน้ำไม่ได้",
+        Icon = "footprints",
+        Content = (tree and tree.Name or "?")..": "..(reason or "ไม่ทราบสาเหตุ"),
+        Duration = 4,
+    })
 end
 
 local _controls
@@ -1234,74 +1360,104 @@ local function setWaterInputLock(state)
 end
 
 local function checkAndWater(tree)
+    if not tree or not tree.Parent then return end
     local stats=tree:FindFirstChild("Stats"); if not stats then return end
     local wv=stats:FindFirstChild("Water");  if not wv or not giveWaterRemote then return end
     if m_floor(wv.Value)>=100 then return end
     local treePart=tree:FindFirstChildWhichIsA("BasePart",true)
-    if not walkToTarget(tree) then return end
+    local walked, walkFailReason = walkToTarget(tree)
+    if not walked then
+        notifyWalkFail(tree, walkFailReason)
+        return
+    end
     local hrp=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if treePart and hrp and (hrp.Position-treePart.Position).Magnitude > WATER_REACH_DIST then return end
+    if treePart and hrp and (hrp.Position-treePart.Position).Magnitude > WATER_REACH_DIST then
+        notifyWalkFail(tree, "อยู่นอกระยะรดน้ำ ("..WATER_REACH_DIST.." studs)")
+        return
+    end
     local tries=0
-    while m_floor(wv.Value)<100 and autoWaterEnabled do
+    while autoWaterEnabled and tree.Parent and wv.Parent and m_floor(wv.Value)<100 do
         giveWaterRemote:FireServer(tree); task.wait(0.3)
         tries=tries+1; if tries>60 then break end
     end
 end
 
-WaterSection:Toggle({
+local waterRunId = 0
+local AutoWaterToggle
+
+AutoWaterToggle = WaterSection:Toggle({
     Title="Auto Water", Desc="รดน้ำอัตโนมัติเมื่อน้ำต่ำกว่า 50% (เรียงใกล้→ไกล)", Value=false,
     Callback=function(state)
-        autoWaterEnabled=state; setWaterInputLock(state); if not state then return end
+        waterRunId = waterRunId + 1
+        local myRunId = waterRunId
+        autoWaterEnabled=state; setWaterInputLock(state)
+        if not state then return end
         if #selectedWaterFolders==0 then
-            autoWaterEnabled=false; setWaterInputLock(false); return
+            autoWaterEnabled=false; setWaterInputLock(false)
+            task.spawn(function() pcall(function() AutoWaterToggle:Set(false) end) end)
+            WindUI:Notify({Title="เปิดไม่ได้", Icon="lock", Content="กรุณาเลือกผู้เล่นที่จะรดน้ำก่อนเปิด Auto Water", Duration=4})
+            return
         end
         task.spawn(function()
-            while autoWaterEnabled do
-                local orderedFolders, ownFolder = {}, nil
-                for _,folder in ipairs(selectedWaterFolders) do
-                    if folder and folder.Parent then
-                        if folder.Name == folderName then
-                            ownFolder = folder
-                        else
-                            t_insert(orderedFolders, folder)
+            local function isCurrent() return autoWaterEnabled and waterRunId==myRunId end
+            local ok, err = pcall(function()
+                while isCurrent() do
+                    local orderedFolders, ownFolder = {}, nil
+                    for _,folder in ipairs(selectedWaterFolders) do
+                        if folder and folder.Parent then
+                            if folder.Name == folderName then
+                                ownFolder = folder
+                            else
+                                t_insert(orderedFolders, folder)
+                            end
                         end
                     end
-                end
-                if ownFolder then t_insert(orderedFolders, 1, ownFolder) end
+                    if ownFolder then t_insert(orderedFolders, 1, ownFolder) end
 
-                local hrp=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+                    for _,folder in ipairs(orderedFolders) do
+                        if not isCurrent() then break end
 
-                for _,folder in ipairs(orderedFolders) do
-                    if not autoWaterEnabled then break end
-
-                    local treeList={}
-                    for _,tree in pairs(folder:GetChildren()) do
-                        local stats=tree:FindFirstChild("Stats")
-                        local wv=stats and stats:FindFirstChild("Water")
-                        if wv and wv.Value<=49 then t_insert(treeList,tree) end
-                    end
-
-                    if hrp and #treeList>1 then
-                        local posCache={}
-                        for _,tree in ipairs(treeList) do
-                            local p=tree:FindFirstChildWhichIsA("BasePart",true); posCache[tree]=p and p.Position
-                        end
-                        local myPos=hrp.Position
-                        t_sort(treeList, function(a,b)
-                            local pa,pb=posCache[a],posCache[b]
-                            return (pa and (myPos-pa).Magnitude or m_huge) < (pb and (myPos-pb).Magnitude or m_huge)
+                        local treeList={}
+                        pcall(function()
+                            for _,tree in pairs(folder:GetChildren()) do
+                                local stats=tree:FindFirstChild("Stats")
+                                local wv=stats and stats:FindFirstChild("Water")
+                                if wv and wv.Value<=49 then t_insert(treeList,tree) end
+                            end
                         end)
+
+                        local hrp=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+                        if hrp and #treeList>1 then
+                            local posCache={}
+                            for _,tree in ipairs(treeList) do
+                                local p=tree:FindFirstChildWhichIsA("BasePart",true); posCache[tree]=p and p.Position
+                            end
+                            local myPos=hrp.Position
+                            t_sort(treeList, function(a,b)
+                                local pa,pb=posCache[a],posCache[b]
+                                return (pa and (myPos-pa).Magnitude or m_huge) < (pb and (myPos-pb).Magnitude or m_huge)
+                            end)
+                        end
+
+                        for _,tree in ipairs(treeList) do
+                            if not isCurrent() then break end
+                            pcall(function() checkAndWater(tree) end)
+                        end
                     end
 
-                    for _,tree in ipairs(treeList) do
-                        if not autoWaterEnabled then break end
-                        pcall(function() checkAndWater(tree) end)
-                    end
+                    task.wait(5)
                 end
-
-                task.wait(5)
+            end)
+            if not ok then
+                pcall(function()
+                    WindUI:Notify({Title="Auto Water หยุดทำงาน", Icon="alert-triangle", Content="เกิดข้อผิดพลาด: "..tostring(err), Duration=5})
+                end)
             end
-            setWaterInputLock(false)
+            if waterRunId == myRunId then
+                autoWaterEnabled = false
+                setWaterInputLock(false)
+                if not ok then pcall(function() AutoWaterToggle:Set(false) end) end
+            end
         end)
     end,
 })
@@ -1317,15 +1473,137 @@ task.spawn(function()
     end
 end)
 
+-- ── Floating Candy Status Panel (toggleable, draggable, separate from WindUI tab) ──
+local CandyGui = Instance.new("ScreenGui")
+CandyGui.Name = "CandyStatusUI"
+CandyGui.ResetOnSpawn = false
+CandyGui.IgnoreGuiInset = true
+CandyGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+CandyGui.DisplayOrder = 50
+pcall(function() CandyGui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end)
+if not CandyGui.Parent then CandyGui.Parent = LP:WaitForChild("PlayerGui") end
+
+local CandyMain = Instance.new("Frame")
+CandyMain.Name = "MainFrame"
+CandyMain.Size = UDim2.new(0, 300, 0, 220)
+CandyMain.Position = UDim2.new(0, 20, 0, 120)
+CandyMain.BackgroundColor3 = Color3.fromRGB(18, 16, 28)
+CandyMain.BackgroundTransparency = 0.08
+CandyMain.BorderSizePixel = 0
+CandyMain.Active = true
+CandyMain.Draggable = true
+CandyMain.Visible = false
+CandyMain.Parent = CandyGui
+Instance.new("UICorner", CandyMain).CornerRadius = UDim.new(0, 14)
+local CandyStroke = Instance.new("UIStroke", CandyMain)
+CandyStroke.Color = SpectreAccent
+CandyStroke.Transparency = 0.55
+CandyStroke.Thickness = 1
+
+local CandyHeader = Instance.new("TextLabel")
+CandyHeader.BackgroundTransparency = 1
+CandyHeader.Size = UDim2.new(1, -40, 0, 30)
+CandyHeader.Position = UDim2.new(0, 12, 0, 6)
+CandyHeader.Font = Enum.Font.GothamBold
+CandyHeader.TextSize = 15
+CandyHeader.TextColor3 = Color3.fromRGB(235, 232, 252)
+CandyHeader.TextXAlignment = Enum.TextXAlignment.Left
+CandyHeader.Text = "🌳 สถานะต้นแคนดี้"
+CandyHeader.Parent = CandyMain
+
+local CandyCloseBtn = Instance.new("TextButton")
+CandyCloseBtn.Size = UDim2.new(0, 24, 0, 24)
+CandyCloseBtn.Position = UDim2.new(1, -32, 0, 8)
+CandyCloseBtn.BackgroundColor3 = Color3.fromRGB(55, 46, 90)
+CandyCloseBtn.TextColor3 = Color3.fromRGB(235, 232, 252)
+CandyCloseBtn.Font = Enum.Font.GothamBold
+CandyCloseBtn.TextSize = 14
+CandyCloseBtn.Text = "×"
+CandyCloseBtn.AutoButtonColor = true
+CandyCloseBtn.Parent = CandyMain
+Instance.new("UICorner", CandyCloseBtn).CornerRadius = UDim.new(0, 8)
+
+local CandyList = Instance.new("ScrollingFrame")
+CandyList.BackgroundTransparency = 1
+CandyList.BorderSizePixel = 0
+CandyList.Size = UDim2.new(1, -16, 1, -46)
+CandyList.Position = UDim2.new(0, 8, 0, 40)
+CandyList.ScrollBarThickness = 3
+CandyList.ScrollBarImageColor3 = SpectreAccent
+CandyList.CanvasSize = UDim2.new(0, 0, 0, 0)
+CandyList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+CandyList.Parent = CandyMain
+local CandyListLayout = Instance.new("UIListLayout", CandyList)
+CandyListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+CandyListLayout.Padding = UDim.new(0, 4)
+
+
+
+local function clearCandyList()
+    for _, c in ipairs(CandyList:GetChildren()) do
+        if not c:IsA("UIListLayout") then c:Destroy() end
+    end
+end
+
+local function addCandyHeaderRow(text, order)
+    local lbl = Instance.new("TextLabel")
+    lbl.BackgroundTransparency = 1
+    lbl.Size = UDim2.new(1, 0, 0, 18)
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 13
+    lbl.TextColor3 = SpectreAccent
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Text = text
+    lbl.LayoutOrder = order
+    lbl.Parent = CandyList
+end
+
+local function addCandyTreeRow(name, w, f, g, order)
+    local row = Instance.new("Frame")
+    row.BackgroundTransparency = 1
+    row.Size = UDim2.new(1, 0, 0, 18)
+    row.LayoutOrder = order
+    row.Parent = CandyList
+
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.Size = UDim2.new(0.36, 0, 1, 0)
+    nameLbl.Font = Enum.Font.Code
+    nameLbl.TextSize = 13
+    nameLbl.TextColor3 = Color3.fromRGB(235, 232, 252)
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.Text = name
+    nameLbl.Parent = row
+
+    local function stat(icon, val, posX)
+        local l = Instance.new("TextLabel")
+        l.BackgroundTransparency = 1
+        l.Size = UDim2.new(0.21, 0, 1, 0)
+        l.Position = UDim2.new(posX, 0, 0, 0)
+        l.Font = Enum.Font.Code
+        l.TextSize = 13
+        l.TextColor3 = Color3.fromRGB(210, 205, 230)
+        l.TextXAlignment = Enum.TextXAlignment.Left
+        l.Text = icon .. " " .. m_floor(val) .. "%"
+        l.Parent = row
+    end
+    stat("💧", w, 0.36)
+    stat("🍬", f, 0.62)
+    stat("📈", g, 0.84)
+end
+
 local function refreshTreeStatus()
     pcall(function()
         if not allTrees then return end
         local lines={}
+        clearCandyList()
+        local order = 0
         for _,folder in pairs(allTrees:GetChildren()) do
             local uid=tonumber(folder.Name:match("PlantedTrees_(%d+)"))
             local dname=uid and ((Players:GetPlayerByUserId(uid) or {}).Name or tostring(uid)) or folder.Name
             local header=folder.Name==folderName and ("👤 ของฉัน ("..dname..")") or ("👥 "..dname)
             local treeLines={}
+            local treeRows={}
             for _,tree in pairs(folder:GetChildren()) do
                 local stats=tree:FindFirstChild("Stats")
                 if stats then
@@ -1338,11 +1616,18 @@ local function refreshTreeStatus()
                         f and m_floor(f.Value) or 0,
                         g and m_floor(g.Value) or 0
                     ))
+                    t_insert(treeRows, {tree.Name, w and w.Value or 0, f and f.Value or 0, g and g.Value or 0})
                 end
             end
             if #treeLines>0 then
                 t_insert(lines, header)
                 for _,l in ipairs(treeLines) do t_insert(lines,l) end
+                order = order + 1
+                addCandyHeaderRow(header, order)
+                for _,r in ipairs(treeRows) do
+                    order = order + 1
+                    addCandyTreeRow(r[1], r[2], r[3], r[4], order)
+                end
             end
         end
         if TreeStatusDescLabel and TreeStatusDescLabel.Parent then
@@ -1350,6 +1635,27 @@ local function refreshTreeStatus()
         end
     end)
 end
+
+local CandyPanelToggle
+CandyCloseBtn.MouseButton1Click:Connect(function()
+    CandyMain.Visible = false
+    pcall(function() CandyPanelToggle:Set(false) end)
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(4)
+        if CandyMain.Visible then pcall(refreshTreeStatus) end
+    end
+end)
+
+CandyPanelToggle = WaterSection:Toggle({
+    Title="แสดง UI สถานะต้นแคนดี้", Desc="เปิด/ปิดแผงลอยแสดงสถานะต้นไม้ (ลากย้ายตำแหน่งได้)", Value=false,
+    Callback=function(state)
+        CandyMain.Visible = state
+        if state then pcall(refreshTreeStatus) end
+    end,
+})
 
 WaterSection:Button({
     Title="Reload Candy", Desc="โหลดข้อมูลต้นแคนดี้ใหม่ + รีเฟรชรายชื่อผู้เล่น", Icon="refresh-cw",
@@ -1359,13 +1665,13 @@ WaterSection:Button({
             parentFolder=allTrees and allTrees:FindFirstChild(folderName) or nil
             task.wait(0.3); buildWaterPickDropdown()
             refreshTreeStatus()
-            WindUI:Notify({Title="🔄 รีเฟรชแล้ว", Content="อัพเดทรายชื่อผู้เล่นสำเร็จ", Duration=3})
+            WindUI:Notify({Title="รีเฟรชแล้ว", Icon="refresh-cw", Content="อัพเดทรายชื่อผู้เล่นสำเร็จ", Duration=3})
         end)
     end,
 })
 
 -- ── SECTION: DISCORD WEBHOOK NOTIFY ──
-local NotifySection = FarmTab:Section({Title="🔔 แจ้งเตือนน้ำเหลือน้อย", Opened=false})
+local NotifySection = FarmTab:Section({Title="แจ้งเตือนน้ำเหลือน้อย", Opened=false})
 
 local growthNotifyEnabled = false
 local webhookURL, mentionUserId = "", ""
@@ -1387,7 +1693,7 @@ local function sendWaterLowWebhook(tree, waterValue)
     if webhookURL=="" then return end
     local reqFn = getRequestFn()
     if not reqFn then
-        WindUI:Notify({Title="⚠️ ส่ง Webhook ไม่ได้", Content="Executor นี้ไม่มีฟังก์ชัน request/http_request", Duration=4})
+        WindUI:Notify({Title="ส่ง Webhook ไม่ได้", Icon="alert-triangle", Content="Executor นี้ไม่มีฟังก์ชัน request/http_request", Duration=4})
         return
     end
     local mentionText = (mentionUserId~="") and ("<@"..mentionUserId..">") or ""
@@ -1452,12 +1758,12 @@ task.spawn(function()
 end)
 
 NotifySection:Toggle({
-    Title="เปิดแจ้งเตือน Discord", Desc="ส่ง webhook เมื่อน้ำต้นแคนดี้ของเราลดลงถึงเกณฑ์ที่ตั้งไว้",
+    Title="เปิดแจ้งเตือน Discord", Desc="ส่ง webhook เมื่อน้ำต้นแคนดี้ของเราลดลงถึงเกณฑ์ที่ตั้งไว้", Icon="bell",
     Value=false,
     Callback=function(s)
         growthNotifyEnabled = s
         if s and webhookURL=="" then
-            WindUI:Notify({Title="⚠️ ยังไม่ใส่ Webhook URL", Content="กรอก Webhook URL ก่อนถึงจะส่งแจ้งเตือนได้", Duration=4})
+            WindUI:Notify({Title="ยังไม่ใส่ Webhook URL", Icon="alert-triangle", Content="กรอก Webhook URL ก่อนถึงจะส่งแจ้งเตือนได้", Duration=4})
         end
     end,
 })
@@ -1469,24 +1775,80 @@ NotifySection:Slider({
 })
 
 NotifySection:Input({
-    Title="Webhook URL", Desc="วาง Discord Webhook URL", Placeholder="https://discord.com/api/webhooks/...",
+    Title="Webhook URL", Desc="วาง Discord Webhook URL", Icon="link", Placeholder="https://discord.com/api/webhooks/...",
     Value="",
     Callback=function(v) webhookURL = v end,
 })
 
 NotifySection:Input({
-    Title="Discord User ID (แท็ก)", Desc="ใส่ User ID ถ้าอยากแท็กคนใดคนหนึ่ง (เว้นว่างได้ถ้าไม่แท็ก)",
+    Title="Discord User ID (แท็ก)", Desc="ใส่ User ID ถ้าอยากแท็กคนใดคนหนึ่ง (เว้นว่างได้ถ้าไม่แท็ก)", Icon="at-sign",
     Placeholder="เช่น 123456789012345678",
     Value="",
     Callback=function(v) mentionUserId = v:match("^%s*(.-)%s*$") or "" end,
 })
 
 
-local ESPTab  = Window:Tab({Title="ESP", Icon="eye", Locked=false})
-local ESPMain = ESPTab:Section({Title="⚙️ ตั้งค่า ESP", Opened=true})
+-- FIX: ล็อคแท็บ ESP ทั้งแท็บสำหรับ UserId ที่ไม่ได้อยู่ใน ESP_ALLOWED_USERIDS
+-- (Locked=true ทำให้แท็บกดไม่ได้/เทาไว้จาก WindUI เอง) และ "ตัวมันเอง" ก็เช็คซ้ำที่ esp:FireScan/
+-- esp:ScanWorkspace/RenderStepped ด้านบนอีกชั้น เผื่อมีทางกดเข้ามาได้บ้างช่องทางใดช่องทางหนึ่ง
+local ESPTab = Window:Tab({Title="ESP", Icon = IsESPAuthorized and "eye" or "lock", Locked = not IsESPAuthorized})
+
+local function notifyESPMaintenance()
+    pcall(function()
+        WindUI:Notify({Title="ปิดปรับปรุง", Icon="wrench", Content="ระบบ ESP กำลังปิดปรับปรุงชั่วคราว กรุณารอการอัปเดตครั้งถัดไป", Duration=4})
+    end)
+end
+
+if not IsESPAuthorized then
+    -- แสดง notify เมื่อกดที่ตัวแท็บ ESP เอง (ไม่ใช่แค่ปุ่ม/สวิตช์ข้างใน) เพราะแท็บถูกล็อคไว้กดเข้าไม่ได้อยู่แล้ว
+    task.spawn(function()
+        task.wait(1)
+        local tabBtn
+        pcall(function()
+            local lbl = findLabelByText("ESP")
+            if lbl then
+                local p = lbl
+                for i=1,6 do
+                    if not p then break end
+                    if p:IsA("GuiButton") then tabBtn = p; break end
+                    p = p.Parent
+                end
+                if not tabBtn then tabBtn = lbl.Parent end
+            end
+        end)
+        if tabBtn then
+            pcall(function()
+                if tabBtn:IsA("GuiButton") then
+                    tabBtn.MouseButton1Click:Connect(notifyESPMaintenance)
+                else
+                    tabBtn.InputBegan:Connect(function(input)
+                        if input.UserInputType == Enum.UserInputType.MouseButton1
+                        or input.UserInputType == Enum.UserInputType.Touch then
+                            notifyESPMaintenance()
+                        end
+                    end)
+                end
+            end)
+        end
+    end)
+    -- แสดงแค่หน้าตาแท็บ ไม่มีอะไรทำงานได้จริง ทุกปุ่ม/สวิตช์แค่เด้งแจ้งเตือนแล้วดีดกลับ
+    local LockedSection = ESPTab:Section({Title="ตั้งค่า ESP", Opened=true})
+    local lockedToggle
+    lockedToggle = LockedSection:Toggle({
+        Title="Enable ESP", Desc="เปิด/ปิด ESP ทั้งหมด", Icon="lock", Value=false,
+        Callback=function(s)
+            notifyESPMaintenance()
+            if s then pcall(function() lockedToggle:SetValue(false) end) end
+        end,
+    })
+    LockedSection:Button({Title="ระบบปิดปรับปรุงอยู่", Desc="ESP ไม่พร้อมใช้งานในขณะนี้", Icon="shield-off",
+        Callback=function() notifyESPMaintenance() end})
+else
+
+local ESPMain = ESPTab:Section({Title="ตั้งค่า ESP", Opened=true})
 
 ESPMain:Toggle({
-    Title="Enable ESP", Desc="เปิด/ปิด ESP ทั้งหมด", Value=CFG.Enabled,
+    Title="Enable ESP", Desc="เปิด/ปิด ESP ทั้งหมด", Icon="eye", Value=CFG.Enabled,
     Callback=function(s)
         CFG.Enabled=s
         if not s then pcall(function() esp:Clear() end); pcall(function() esp:RemoveAll() end)
@@ -1513,6 +1875,12 @@ ESPMain:Slider({Title="ระยะสูงสุด", Desc="ไม่แสด
     Step=10, Value={Min=50, Max=2000, Default=CFG.MaxDist},
     Callback=function(v) CFG.MaxDist=v; DebouncedSaveCFG() end})
 
+ESPMain:Slider({Title="ระยะโครงกระดูกเต็ม", Desc="ใกล้กว่านี้วาดโครงกระดูกเต็มรูปแบบ ไกลกว่านี้วาดกรอบสี่เหลี่ยมแทน (ลดกระตุกตอนคน/NPC เยอะ)", Icon="bone",
+    Step=10, Value={Min=30, Max=500, Default=CFG.ESPDetailDist or 120},
+    Callback=function(v) CFG.ESPDetailDist=v; DebouncedSaveCFG() end})
+
+end -- IsESPAuthorized
+
 -- ── TAB: TELEPORT ──
 local TeleportTab = Window:Tab({Title="Teleport", Icon="map-pin", Locked=false})
 
@@ -1534,7 +1902,7 @@ local LocationTitles, LocationMap = {}, {}
 for _,loc in ipairs(Locations) do t_insert(LocationTitles,loc.Title); LocationMap[loc.Title]=loc end
 local SelectedLocation = Locations[1]
 
-TeleportTab:Dropdown({Title="เลือกสถานที่", Desc="เลือกตำแหน่งที่ต้องการ Teleport",
+TeleportTab:Dropdown({Title="เลือกสถานที่", Desc="เลือกตำแหน่งที่ต้องการ Teleport", Icon="map-pin",
     Values=LocationTitles, Value=LocationTitles[1],
     Callback=function(opt) SelectedLocation=LocationMap[opt] end})
 
@@ -1613,17 +1981,17 @@ local function setFullbright(state)
 end
 
 local GameplaySettings = SettingsTab:Section({Title="Gameplay", Opened=true})
-GameplaySettings:Toggle({Title="Anti AFK", Desc="ป้องกันถูกเตะออกเกมตอนไม่ได้เล่น", Value=AntiAFKEnabled, Callback=function(s) AntiAFKEnabled=s; DebouncedSaveCFG() end})
-GameplaySettings:Toggle({Title="Fullbright", Desc="ทำให้มองเห็นชัดในที่มืด ลบ fog/shadow/bloom", Value=false, Callback=setFullbright})
+GameplaySettings:Toggle({Title="Anti AFK", Desc="ป้องกันถูกเตะออกเกมตอนไม่ได้เล่น", Icon="moon", Value=AntiAFKEnabled, Callback=function(s) AntiAFKEnabled=s; DebouncedSaveCFG() end})
+GameplaySettings:Toggle({Title="Fullbright", Desc="ทำให้มองเห็นชัดในที่มืด ลบ fog/shadow/bloom", Icon="sun-medium", Value=false, Callback=setFullbright})
 
 local UISettings = SettingsTab:Section({Title="UI Configuration", Opened=true})
-UISettings:Keybind({Flag="UIKeybind", Title="Toggle Menu Key", Value="LeftControl",
+UISettings:Keybind({Flag="UIKeybind", Title="Toggle Menu Key", Icon="keyboard", Value="LeftControl",
     Callback=function(v) if Window.SetToggleKey then Window:SetToggleKey(Enum.KeyCode[v]) end end})
 
 local themes={}
 if WindUI.Themes then for name in pairs(WindUI.Themes) do t_insert(themes,name) end end
 if #themes==0 then themes={"Dark"} end
-UISettings:Dropdown({Flag="UITheme", Title="UI Theme", Values=themes, Default="Dark",
+UISettings:Dropdown({Flag="UITheme", Title="UI Theme", Icon="palette", Values=themes, Default="Dark",
     Callback=function(t) pcall(function() WindUI:SetTheme(t) end) end})
 
 OnCFGLoaded(function(cfg)
