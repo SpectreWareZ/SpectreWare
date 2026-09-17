@@ -647,6 +647,9 @@ end
 local function _showHWIDResetUI(currentHwid, kickDelay)
     kickDelay = kickDelay or 5
     local _ok, _err = pcall(function()
+        local TS = game:GetService("TweenService")
+        local Lighting = game:GetService("Lighting")
+
         local pgOk, pg = pcall(function() return game:GetService("CoreGui") end)
         if not pgOk or not pg then
             pg = PL:WaitForChild("PlayerGui", 3)
@@ -655,6 +658,16 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
 
         local existing = pg:FindFirstChild("SW_HWIDGui")
         if existing then existing:Destroy() end
+        pcall(function()
+            local oldBlur = Lighting:FindFirstChild("SW_HWIDBlur")
+            if oldBlur then oldBlur:Destroy() end
+        end)
+
+        local blur = Instance.new("BlurEffect")
+        blur.Name = "SW_HWIDBlur"
+        blur.Size = 0
+        pcall(function() blur.Parent = Lighting end)
+        pcall(function() TS:Create(blur, TweenInfo.new(0.35, Enum.EasingStyle.Quad), { Size = 14 }):Play() end)
 
         local gui = Instance.new("ScreenGui")
         gui.Name            = "SW_HWIDGui"
@@ -662,6 +675,18 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
         gui.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
         gui.IgnoreGuiInset  = true
         pcall(function() gui.DisplayOrder = 999 end)
+
+        gui.Destroying:Connect(function()
+            pcall(function()
+                local b = Lighting:FindFirstChild("SW_HWIDBlur")
+                if b then
+                    TS:Create(b, TweenInfo.new(0.25, Enum.EasingStyle.Quad), { Size = 0 }):Play()
+                    task.delay(0.3, function()
+                        pcall(function() if b and b.Parent then b:Destroy() end end)
+                    end)
+                end
+            end)
+        end)
 
         local function mk(cls, props, par)
             local i = Instance.new(cls)
@@ -674,12 +699,13 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
             i.Parent = par or gui; return i
         end
 
-        mk("Frame", {
+        local overlay = mk("Frame", {
             Size = UDim2.new(1,0,1,0),
             BackgroundColor3 = Color3.fromRGB(0,0,0),
-            BackgroundTransparency = 0.5,
+            BackgroundTransparency = 1,
             ZIndex = 10,
         })
+        TS:Create(overlay, TweenInfo.new(0.3, Enum.EasingStyle.Quad), { BackgroundTransparency = 0.55 }):Play()
 
         -- ขยายการ์ดให้ใหญ่ขึ้นเพื่อรองรับรูปภาพที่ใหญ่ขึ้น
         local card = mk("Frame", {
@@ -687,7 +713,9 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
             Position    = UDim2.new(0.5, 0, 0.5, 0),
             AnchorPoint = Vector2.new(0.5, 0.5),
             BackgroundColor3 = Color3.fromRGB(20, 20, 27),
+            BackgroundTransparency = 1,
             BorderSizePixel  = 0,
+            ClipsDescendants = true,
             ZIndex = 11,
         }, gui)
         mk("UISizeConstraint", {
@@ -696,24 +724,33 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
         
         -- ระบบย่อ-ขยายอัตโนมัติขนาดตามจอ (ถ้าจอเล็กกว่าการ์ด จะย่อลงมาพอดี)
         local uiScale = mk("UIScale", { Scale = 1 }, card)
-        local function _updateScale()
+        local function _targetScale()
             local requiredH = 520
             local viewH = workspace.CurrentCamera.ViewportSize.Y
             if viewH < requiredH then
-                uiScale.Scale = math.max(0.1, viewH / requiredH)
+                return math.max(0.1, viewH / requiredH)
+            end
+            return 1
+        end
+        local function _updateScale(animate)
+            local target = _targetScale()
+            if animate then
+                TS:Create(uiScale, TweenInfo.new(0.2, Enum.EasingStyle.Quad), { Scale = target }):Play()
             else
-                uiScale.Scale = 1
+                uiScale.Scale = target
             end
         end
-        _updateScale()
-        workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(_updateScale)
+        local _entranceTarget = _targetScale()
+        uiScale.Scale = _entranceTarget * 0.88
+        workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function() _updateScale(true) end)
 
-        mk("UICorner", { CornerRadius = UDim.new(0, 12) }, card)
-        mk("UIStroke", {
-            Color = Color3.fromRGB(60, 60, 75),
+        mk("UICorner", { CornerRadius = UDim.new(0, 14) }, card)
+        local cardStroke = mk("UIStroke", {
+            Color = Color3.fromRGB(120, 60, 65),
             Thickness = 1,
-            Transparency = 0.5,
+            Transparency = 0.35,
         }, card)
+        TS:Create(cardStroke, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Transparency = 0.75 }):Play()
 
         local layout = mk("UIListLayout", {
             Padding = UDim.new(0, 12),
@@ -750,18 +787,25 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
         }, headerFrame)
 
         local headerIcon = mk("TextLabel", {
-            Size = UDim2.new(0, 30, 0, 30),
-            BackgroundColor3 = Color3.fromRGB(45, 20, 25),
+            Size = UDim2.new(0, 34, 0, 34),
+            BackgroundColor3 = Color3.fromRGB(50, 22, 26),
             Text = "⚠",
-            TextColor3 = Color3.fromRGB(255, 100, 100),
+            TextColor3 = Color3.fromRGB(255, 120, 120),
             TextSize = 18,
             Font = Enum.Font.GothamBold,
             LayoutOrder = 1,
         }, headerFrame)
         mk("UICorner", { CornerRadius = UDim.new(1, 0) }, headerIcon)
+        mk("UIGradient", {
+            Rotation = 90,
+            Color = ColorSequence.new(Color3.fromRGB(60, 28, 32), Color3.fromRGB(40, 17, 21)),
+        }, headerIcon)
+        mk("UIStroke", {
+            Color = Color3.fromRGB(235, 90, 90), Thickness = 1, Transparency = 0.55,
+        }, headerIcon)
 
         local titleBox = mk("Frame", {
-            Size = UDim2.new(1, -40, 1, 0),
+            Size = UDim2.new(1, -44, 1, 0),
             BackgroundTransparency = 1,
             LayoutOrder = 2,
         }, headerFrame)
@@ -808,7 +852,7 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
             BorderSizePixel = 0,
             LayoutOrder = 4,
         }, card)
-        mk("UICorner", { CornerRadius = UDim.new(0, 6) }, hwidBox)
+        mk("UICorner", { CornerRadius = UDim.new(0, 8) }, hwidBox)
         mk("UIStroke", {
             Color = Color3.fromRGB(45, 45, 60), Thickness = 1, Transparency = 0.2,
         }, hwidBox)
@@ -830,7 +874,7 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
         }, hwidBox)
 
         local btn = mk("TextButton", {
-            Size = UDim2.new(1, 0, 0, 42),
+            Size = UDim2.new(1, 0, 0, 44),
             BackgroundColor3 = Color3.fromRGB(88, 101, 242),
             AutoButtonColor = false,
             BorderSizePixel = 0,
@@ -840,13 +884,24 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
             Font = Enum.Font.GothamBold,
             LayoutOrder = 5,
         }, card)
-        mk("UICorner", { CornerRadius = UDim.new(0, 8) }, btn)
+        mk("UICorner", { CornerRadius = UDim.new(0, 10) }, btn)
         mk("UIGradient", {
             Rotation = 90,
             Color = ColorSequence.new(Color3.fromRGB(98, 111, 250), Color3.fromRGB(69, 78, 205)),
         }, btn)
-        btn.MouseEnter:Connect(function() btn.BackgroundColor3 = Color3.fromRGB(110, 120, 255) end)
-        btn.MouseLeave:Connect(function() btn.BackgroundColor3 = Color3.fromRGB(88, 101, 242) end)
+        local btnScale = mk("UIScale", { Scale = 1 }, btn)
+        btn.MouseEnter:Connect(function()
+            TS:Create(btn, TweenInfo.new(0.12, Enum.EasingStyle.Quad), { BackgroundColor3 = Color3.fromRGB(110, 120, 255) }):Play()
+        end)
+        btn.MouseLeave:Connect(function()
+            TS:Create(btn, TweenInfo.new(0.12, Enum.EasingStyle.Quad), { BackgroundColor3 = Color3.fromRGB(88, 101, 242) }):Play()
+        end)
+        btn.MouseButton1Down:Connect(function()
+            TS:Create(btnScale, TweenInfo.new(0.08, Enum.EasingStyle.Quad), { Scale = 0.96 }):Play()
+        end)
+        btn.MouseButton1Up:Connect(function()
+            TS:Create(btnScale, TweenInfo.new(0.12, Enum.EasingStyle.Quad), { Scale = 1 }):Play()
+        end)
 
         local statusPill = mk("Frame", {
             Size = UDim2.new(1, 0, 0, 28),
@@ -855,7 +910,7 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
             LayoutOrder = 6,
         }, card)
         mk("UICorner", { CornerRadius = UDim.new(0, 14) }, statusPill)
-        mk("UIStroke", {
+        local statusStroke = mk("UIStroke", {
             Color = Color3.fromRGB(80, 65, 40), Thickness = 1, Transparency = 0.5,
         }, statusPill)
         local cdLabel = mk("TextLabel", {
@@ -912,14 +967,17 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
             pcall(function() gui.Parent = PL:WaitForChild("PlayerGui", 3) end)
         end
 
+        TS:Create(card, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { BackgroundTransparency = 0 }):Play()
+        TS:Create(uiScale, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = _entranceTarget }):Play()
+
         btn.MouseButton1Click:Connect(function()
             pcall(function() setclipboard(CFG.discordUrl) end)
             btn.Text = "✔  คัดลอกลิงก์แล้ว!"
-            btn.BackgroundColor3 = Color3.fromRGB(55, 170, 95)
+            TS:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quad), { BackgroundColor3 = Color3.fromRGB(55, 170, 95) }):Play()
             task.delay(2, function()
                 if btn and btn.Parent then
                     btn.Text = "💬  คัดลอก Discord Link"
-                    btn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+                    TS:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quad), { BackgroundColor3 = Color3.fromRGB(88, 101, 242) }):Play()
                 end
             end)
         end)
@@ -951,6 +1009,8 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
                             if success and not stillMismatch then
                                 cdLabel.Text = "✅  รีเซ็ต HWID สำเร็จ — กรุณารีจอย"
                                 cdLabel.TextColor3 = Color3.fromRGB(90, 210, 130)
+                                TS:Create(statusPill, TweenInfo.new(0.25, Enum.EasingStyle.Quad), { BackgroundColor3 = Color3.fromRGB(18, 32, 22) }):Play()
+                                TS:Create(statusStroke, TweenInfo.new(0.25, Enum.EasingStyle.Quad), { Color = Color3.fromRGB(60, 130, 80) }):Play()
                                 btn.Visible = false
                                 pcall(function()
                                     game:GetService("StarterGui"):SetCore("SendNotification", {
