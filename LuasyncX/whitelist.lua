@@ -23,7 +23,7 @@ local CFG = {
     splashImageId       = "71815202801684",
     announceDisplayTime = 5,
     announceSound       = "6518811702",
-    announceTimeout     = 32, -- ต้อง >= server long-poll TIMEOUT (28s ใน announce_store.js) ไม่งั้น client bail ก่อน server push ประกาศทัน
+    announceTimeout     = 6,
     apiSessionTimeout   = 10,
     discordUrl          = "https://discord.gg/KJHk8c2Q65",
     notifLibUrl         = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Tools/notiflib.lua",
@@ -454,13 +454,6 @@ local function _normalizeRes(res)
     local code = res.StatusCode or res.statusCode
     if type(body) == "table" then body = tostring(body) end
     if not body or body == "" then return nil end
-    -- Some executors report a "successful" request even on 404/429/5xx and just
-    -- put the error page in Body (e.g. GitHub raw returns "404: Not Found",
-    -- 15 bytes). Without this check that error text sails through as if it
-    -- were the real script, lands under the 32-byte floor below, and fires
-    -- the Anti-Bypass "script too short" kick — a fetch failure misreported
-    -- as tampering. Reject it here so the caller retries / fails cleanly instead.
-    if code and (code < 200 or code >= 300) then return nil end
     res.Body = body; res.body = body
     res.StatusCode = code; res.statusCode = code
     return res
@@ -1543,32 +1536,24 @@ local _mainOk = xpcall(function()
     task.delay(1, function() _notifyWL(timeLeft, "KEY") end)
     task.spawn(function() sendWebhook("login", { key = _getKey(), hwid = hwid, timeLeft = timeLeft, expiresAt = expiresAt }) end)
     local scriptSrc
-    local _srcPath = "unknown" -- DEBUG: which of the 3 branches below actually filled scriptSrc
     -- PLACE_MAP (ตั้งจาก gateway.lua) มีสิทธิ์เหนือ scriptEnc ของ server เสมอ —
     -- ถ้า placeId นี้ถูก map ไว้ ให้ดึงจาก URL ใน map ตรงๆ โดยไม่สนใจว่า server
     -- จะส่ง scriptEnc มาด้วยหรือไม่
     local _mapUrl = _lookupPlaceScript(game.PlaceId)
     if _mapUrl and _mapUrl ~= "" then
-        _srcPath = "PLACE_MAP:" .. tostring(_mapUrl) -- DEBUG
         log("Loading script from PLACE_MAP override...", "loading")
         task.wait(0.3)
         local scriptOk
         for i = 1, 3 do
             log(("Fetching mapped script... (%d/3)"):format(i), "loading")
-            -- cache-buster: raw.githubusercontent.com is CDN-cached per exact URL,
-            -- so a script you just pushed can come back stale/near-empty without this
-            local _bustUrl = _mapUrl .. (_mapUrl:find("?", 1, true) and "&" or "?") .. "_cb=" .. tostring(os.time())
-            scriptOk, scriptSrc = safeGetTimeout(_bustUrl, 8)
+            scriptOk, scriptSrc = safeGetTimeout(_mapUrl, 8)
             if scriptOk and scriptSrc and scriptSrc ~= "" then break end
             if i < 3 then task.wait(1 * i) end
         end
         if not scriptOk or not scriptSrc or scriptSrc == "" then
-            warn("[SW DEBUG] mapped fetch failed — url=" .. tostring(_mapUrl) -- DEBUG
-                .. " ok=" .. tostring(scriptOk) .. " bytes=" .. tostring(scriptSrc and #scriptSrc or 0))
             log("Failed to fetch mapped script after 3 attempts", "error"); getgenv()[_GK.running] = nil; return
         end
     elseif type(data.scriptEnc) == "string" and data.scriptEnc ~= "" then
-        _srcPath = "scriptEnc (backend, XOR)" -- DEBUG
         -- decrypt key มาจาก server (data.loaderXk) ไม่ใช่ _xorKey ของ session เอง —
         -- server สุ่ม key ใหม่ทุก request แล้วส่งมาคู่กับ scriptEnc เสมอ
         local _srvXk = type(data.loaderXk) == "string" and data.loaderXk or ""
@@ -1579,7 +1564,6 @@ local _mainOk = xpcall(function()
         log("Script decrypted ✓", "success")
         task.wait(0.3)
     else
-        _srcPath = "scriptUrl (backend)" -- DEBUG
         local SCRIPT = data.scriptUrl
         if not SCRIPT or SCRIPT == "" then
             log("API did not return scriptUrl for PlaceId " .. tostring(game.PlaceId), "error")
@@ -1607,12 +1591,6 @@ local _mainOk = xpcall(function()
         end
     end
     if not scriptSrc or #scriptSrc < 32 then
-        -- DEBUG: dump exactly what we got and where it came from, so "script too short"
-        -- stops being a black box. Check the executor's console after a kick.
-        warn("[SW DEBUG] scriptSrc too short — path=" .. tostring(_srcPath)
-            .. " placeId=" .. tostring(game.PlaceId)
-            .. " bytes=" .. tostring(scriptSrc and #scriptSrc or 0)
-            .. " raw=[" .. tostring(scriptSrc) .. "]")
         log("Script source too short — aborting", "error"); integrityFail("script too short"); return
     end
     if type(data.scriptHash) == "string" and data.scriptHash ~= "" then
