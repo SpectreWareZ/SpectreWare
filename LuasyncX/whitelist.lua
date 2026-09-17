@@ -454,6 +454,13 @@ local function _normalizeRes(res)
     local code = res.StatusCode or res.statusCode
     if type(body) == "table" then body = tostring(body) end
     if not body or body == "" then return nil end
+    -- Some executors report a "successful" request even on 404/429/5xx and just
+    -- put the error page in Body (e.g. GitHub raw returns "404: Not Found",
+    -- 15 bytes). Without this check that error text sails through as if it
+    -- were the real script, lands under the 32-byte floor below, and fires
+    -- the Anti-Bypass "script too short" kick — a fetch failure misreported
+    -- as tampering. Reject it here so the caller retries / fails cleanly instead.
+    if code and (code < 200 or code >= 300) then return nil end
     res.Body = body; res.body = body
     res.StatusCode = code; res.statusCode = code
     return res
