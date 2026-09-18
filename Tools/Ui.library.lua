@@ -188,6 +188,25 @@ end
 
 
 local UserInputService = game:GetService("UserInputService")
+
+-- ============ FONT SYSTEM (อังกฤษคมชัด + รองรับไทยอัตโนมัติ) ============
+-- Enum.Font.Gotham* ถูก Roblox ประกาศเลิกใช้ไปแล้วและถูก map ไปที่ Montserrat โดยอัตโนมัติ
+-- (บางเครื่อง/บางจอเรนเดอร์แล้วดูไม่คมเท่าที่ควร โดยเฉพาะบนมือถือจอละเอียดสูง)
+-- เปลี่ยนมาใช้ Builder Sans ซึ่งเป็นฟอนต์ระบบตัวล่าสุดที่ Roblox ใช้เองในหน้า UI ปัจจุบัน คมชัดกว่า
+-- หมายเหตุสำคัญ: Roblox ยังไม่มีฟอนต์ built-in ตัวไหนที่ออกแบบมาคู่กับภาษาไทยโดยเฉพาะ
+-- ตัวอักษรไทยจะ fallback ไปฟอนต์ระบบของเครื่องนั้นๆ เสมอไม่ว่าจะตั้ง FontFace เป็นอะไร
+-- ถ้าต้องการให้ไทย-อังกฤษเป็นฟอนต์เดียวกันจริงๆ (เช่น Kanit/Sarabun/IBM Plex Sans Thai)
+-- ต้องอัปโหลดฟอนต์นั้นผ่าน Studio Font Uploader เอง แล้วเอา rbxassetid ที่ได้มาแทนที่ BUILDER_FAMILY ด้านล่างนี้
+local BUILDER_FAMILY = "rbxasset://fonts/families/BuilderSans.json"
+local FONT_WEIGHTS = {
+    Regular  = Enum.FontWeight.Regular,
+    Medium   = Enum.FontWeight.Medium,
+    SemiBold = Enum.FontWeight.SemiBold,
+    Bold     = Enum.FontWeight.Bold,
+}
+local function UI_Font(weightName)
+    return Font.new(BUILDER_FAMILY, FONT_WEIGHTS[weightName] or Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+end
 local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
@@ -865,7 +884,7 @@ function Library:CreateWindow(config)
     TooltipLabel.BackgroundTransparency = 1
     TooltipLabel.AutomaticSize = Enum.AutomaticSize.X
     TooltipLabel.Size = UDim2.new(0, 0, 1, 0)
-    TooltipLabel.Font = Enum.Font.GothamMedium
+    TooltipLabel.FontFace = UI_Font("Medium")
     TooltipLabel.TextSize = 12
     TooltipLabel.TextTransparency = 1
     TooltipLabel.ZIndex = 10001
@@ -1153,7 +1172,7 @@ function Library:CreateWindow(config)
         TypeChip.BackgroundTransparency = 1
         TypeChip.Position = UDim2.new(0, 54, 0, 14)
         TypeChip.Size = UDim2.new(1, -92, 0, 11)
-        TypeChip.Font = Enum.Font.GothamBold
+        TypeChip.FontFace = UI_Font("Bold")
         TypeChip.TextSize = 10.5
         TypeChip.TextColor3 = color
         TypeChip.TextTransparency = 1
@@ -1167,7 +1186,7 @@ function Library:CreateWindow(config)
         TitleLbl.BackgroundTransparency = 1
         TitleLbl.Position = UDim2.new(0, 54, 0, 26)
         TitleLbl.Size = UDim2.new(1, -92, 0, 16)
-        TitleLbl.Font = Enum.Font.GothamBold
+        TitleLbl.FontFace = UI_Font("Bold")
         TitleLbl.TextSize = 13.5
         applyThemeColor(TitleLbl, "Text", "TextColor3")
         TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -1182,7 +1201,7 @@ function Library:CreateWindow(config)
         ContentLbl.Position = UDim2.new(0, 54, 0, 44)
         ContentLbl.Size = UDim2.new(1, -66, 0, 0)
         ContentLbl.AutomaticSize = Enum.AutomaticSize.Y
-        ContentLbl.Font = Enum.Font.GothamMedium
+        ContentLbl.FontFace = UI_Font("Medium")
         ContentLbl.TextSize = 12
         ContentLbl.LineHeight = 1.35
         applyThemeColor(ContentLbl, "SubText", "TextColor3")
@@ -1397,7 +1416,7 @@ function Library:CreateWindow(config)
         TitleLbl.BackgroundTransparency = 1
         TitleLbl.Text = opts.Title or "ยืนยันการทำงาน"
         applyThemeColor(TitleLbl, "Text", "TextColor3")
-        TitleLbl.Font = Enum.Font.GothamBold
+        TitleLbl.FontFace = UI_Font("Bold")
         TitleLbl.TextSize = 16
         TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
         TitleLbl.TextTransparency = 1
@@ -1410,7 +1429,7 @@ function Library:CreateWindow(config)
         ContentLbl.BackgroundTransparency = 1
         ContentLbl.Text = opts.Content or ""
         applyThemeColor(ContentLbl, "SubText", "TextColor3")
-        ContentLbl.Font = Enum.Font.GothamMedium
+        ContentLbl.FontFace = UI_Font("Medium")
         ContentLbl.TextSize = 13.5
         ContentLbl.LineHeight = 1.3
         ContentLbl.TextWrapped = true
@@ -1440,7 +1459,7 @@ function Library:CreateWindow(config)
             CancelBtn.AutoButtonColor = false
             CancelBtn.Text = opts.CancelText or "ยกเลิก"
             applyThemeColor(CancelBtn, "SubText", "TextColor3")
-            CancelBtn.Font = Enum.Font.GothamSemibold
+            CancelBtn.FontFace = UI_Font("SemiBold")
             CancelBtn.TextSize = 13
             CancelBtn.ZIndex = 2
             CancelBtn.Parent = BtnRow
@@ -1456,7 +1475,7 @@ function Library:CreateWindow(config)
         ConfirmBtn.AutoButtonColor = false
         ConfirmBtn.Text = opts.ConfirmText or "ยืนยัน"
         ConfirmBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        ConfirmBtn.Font = Enum.Font.GothamBold
+        ConfirmBtn.FontFace = UI_Font("Bold")
         ConfirmBtn.TextSize = 13
         ConfirmBtn.ZIndex = 2
         ConfirmBtn.Parent = BtnRow
@@ -1641,7 +1660,7 @@ function Library:CreateWindow(config)
     TitleLabel.Text = config.Title or "Pro Hub"
     applyThemeColor(TitleLabel, "Text", "TextColor3")
     TitleLabel.TextTransparency = 1
-    TitleLabel.Font = Enum.Font.GothamBold
+    TitleLabel.FontFace = UI_Font("Bold")
     TitleLabel.TextSize = 15
     TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
     TitleLabel.Parent = TopBar
@@ -1654,7 +1673,7 @@ function Library:CreateWindow(config)
         SubTitleLabel.Text = config.SubTitle
         applyThemeColor(SubTitleLabel, "SubText", "TextColor3")
         SubTitleLabel.TextTransparency = 1
-        SubTitleLabel.Font = Enum.Font.GothamMedium
+        SubTitleLabel.FontFace = UI_Font("Medium")
         SubTitleLabel.TextSize = 11
         SubTitleLabel.TextXAlignment = Enum.TextXAlignment.Left
         SubTitleLabel.Parent = TopBar
@@ -1758,7 +1777,7 @@ function Library:CreateWindow(config)
         LetterLabel.BackgroundTransparency = 1
         LetterLabel.Text = string.upper(string.sub(config.Title or "H", 1, 1))
         LetterLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        LetterLabel.Font = Enum.Font.GothamBold
+        LetterLabel.FontFace = UI_Font("Bold")
         LetterLabel.TextSize = 20
         LetterLabel.ZIndex = 21
         LetterLabel.Parent = RestoreBtn
@@ -1828,7 +1847,7 @@ function Library:CreateWindow(config)
     FpsLabel.BackgroundTransparency = 1
     FpsLabel.AutomaticSize = Enum.AutomaticSize.X
     FpsLabel.Size = UDim2.new(0, 0, 1, 0)
-    FpsLabel.Font = Enum.Font.GothamBold
+    FpsLabel.FontFace = UI_Font("Bold")
     FpsLabel.TextSize = 13
     FpsLabel.TextTransparency = 0
     FpsLabel.RichText = false
@@ -2046,7 +2065,7 @@ function Library:CreateWindow(config)
     TabSearchBox.PlaceholderText = "ค้นหา"
     applyThemeColor(TabSearchBox, "Text", "TextColor3")
     applyThemeColor(TabSearchBox, "SubText", "PlaceholderColor3")
-    TabSearchBox.Font = Enum.Font.GothamSemibold
+    TabSearchBox.FontFace = UI_Font("SemiBold")
     TabSearchBox.TextSize = 11.5
     TabSearchBox.ClearTextOnFocus = false
     TabSearchBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -2109,7 +2128,7 @@ function Library:CreateWindow(config)
     TabEmptyLbl.BackgroundTransparency = 1
     TabEmptyLbl.Text = "ไม่พบแท็บ"
     applyThemeColor(TabEmptyLbl, "SubText", "TextColor3")
-    TabEmptyLbl.Font = Enum.Font.GothamSemibold
+    TabEmptyLbl.FontFace = UI_Font("SemiBold")
     TabEmptyLbl.TextSize = 12
     TabEmptyLbl.Visible = false
     TabEmptyLbl.Parent = TabList
@@ -2302,7 +2321,7 @@ function Library:CreateWindow(config)
         Label.Position = UDim2.new(0, 24, 0, 0)
         Label.Size = UDim2.new(0, 0, 1, 0)
         Label.AutomaticSize = Enum.AutomaticSize.X
-        Label.Font = Enum.Font.GothamSemibold
+        Label.FontFace = UI_Font("SemiBold")
         Label.TextSize = 12
         applyThemeColor(Label, "Text", "TextColor3")
         Label.Text = config.Text or "SpectreWare"
@@ -2393,7 +2412,7 @@ function Library:CreateWindow(config)
         Title.LayoutOrder = 0
         Title.BackgroundTransparency = 1
         Title.Text = config.Title or "KEYBINDS"
-        Title.Font = Enum.Font.GothamBold
+        Title.FontFace = UI_Font("Bold")
         Title.TextSize = 11
         applyThemeColor(Title, "SubText", "TextColor3")
         Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -2416,7 +2435,7 @@ function Library:CreateWindow(config)
             NameLbl.Size = UDim2.new(0.58, 0, 1, 0)
             NameLbl.BackgroundTransparency = 1
             NameLbl.Text = item.Text or "Action"
-            NameLbl.Font = Enum.Font.GothamMedium
+            NameLbl.FontFace = UI_Font("Medium")
             NameLbl.TextSize = 12
             NameLbl.TextXAlignment = Enum.TextXAlignment.Left
             NameLbl.TextTruncate = Enum.TextTruncate.AtEnd
@@ -2427,7 +2446,7 @@ function Library:CreateWindow(config)
             KeyLbl.Size = UDim2.new(0.42, 0, 1, 0)
             KeyLbl.Position = UDim2.new(0.58, 0, 0, 0)
             KeyLbl.BackgroundTransparency = 1
-            KeyLbl.Font = Enum.Font.GothamBold
+            KeyLbl.FontFace = UI_Font("Bold")
             KeyLbl.TextSize = 12
             KeyLbl.TextXAlignment = Enum.TextXAlignment.Right
             applyThemeColor(KeyLbl, "AccentA", "TextColor3")
@@ -2481,7 +2500,7 @@ function Library:CreateWindow(config)
         Title.BackgroundTransparency = 1
         Title.Text = opts.Title or "Alert"
         applyThemeColor(Title, "Text", "TextColor3")
-        Title.Font = Enum.Font.GothamBold
+        Title.FontFace = UI_Font("Bold")
         Title.TextSize = 15
         Title.TextXAlignment = Enum.TextXAlignment.Left
         Title.ZIndex = 52
@@ -2493,7 +2512,7 @@ function Library:CreateWindow(config)
         Content.BackgroundTransparency = 1
         Content.Text = opts.Content or ""
         applyThemeColor(Content, "SubText", "TextColor3")
-        Content.Font = Enum.Font.GothamMedium
+        Content.FontFace = UI_Font("Medium")
         Content.TextSize = 13.5
         Content.LineHeight = 1.3
         Content.TextWrapped = true
@@ -2509,7 +2528,7 @@ function Library:CreateWindow(config)
         OkBtn.AutoButtonColor = false
         OkBtn.Text = opts.ButtonText or "OK"
         applyThemeColor(OkBtn, "Text", "TextColor3")
-        OkBtn.Font = Enum.Font.GothamBold
+        OkBtn.FontFace = UI_Font("Bold")
         OkBtn.TextSize = 14
         OkBtn.ZIndex = 52
         OkBtn.Parent = Box
@@ -2553,7 +2572,7 @@ function Library:CreateWindow(config)
         Title.BackgroundTransparency = 1
         Title.Text = opts.Title or "Confirm"
         applyThemeColor(Title, "Text", "TextColor3")
-        Title.Font = Enum.Font.GothamBold
+        Title.FontFace = UI_Font("Bold")
         Title.TextSize = 15
         Title.TextXAlignment = Enum.TextXAlignment.Left
         Title.ZIndex = 52
@@ -2565,7 +2584,7 @@ function Library:CreateWindow(config)
         Content.BackgroundTransparency = 1
         Content.Text = opts.Content or ""
         applyThemeColor(Content, "SubText", "TextColor3")
-        Content.Font = Enum.Font.GothamMedium
+        Content.FontFace = UI_Font("Medium")
         Content.TextSize = 13.5
         Content.LineHeight = 1.3
         Content.TextWrapped = true
@@ -2581,7 +2600,7 @@ function Library:CreateWindow(config)
         CancelBtn.AutoButtonColor = false
         CancelBtn.Text = opts.CancelText or "Cancel"
         applyThemeColor(CancelBtn, "SubText", "TextColor3")
-        CancelBtn.Font = Enum.Font.GothamBold
+        CancelBtn.FontFace = UI_Font("Bold")
         CancelBtn.TextSize = 13
         CancelBtn.ZIndex = 52
         CancelBtn.Parent = Box
@@ -2595,7 +2614,7 @@ function Library:CreateWindow(config)
         ConfirmBtn.AutoButtonColor = false
         ConfirmBtn.Text = opts.ConfirmText or "Confirm"
         applyThemeColor(ConfirmBtn, "Text", "TextColor3")
-        ConfirmBtn.Font = Enum.Font.GothamBold
+        ConfirmBtn.FontFace = UI_Font("Bold")
         ConfirmBtn.TextSize = 13
         ConfirmBtn.ZIndex = 52
         ConfirmBtn.Parent = Box
@@ -2713,7 +2732,7 @@ function Library:CreateWindow(config)
                 TitleLbl.BackgroundTransparency = 1
                 TitleLbl.Text = entry.Title
                 applyThemeColor(TitleLbl, "Text", "TextColor3")
-                TitleLbl.Font = Enum.Font.GothamSemibold
+                TitleLbl.FontFace = UI_Font("SemiBold")
                 TitleLbl.TextSize = 13.5
                 TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
                 TitleLbl.TextTruncate = Enum.TextTruncate.AtEnd
@@ -2728,7 +2747,7 @@ function Library:CreateWindow(config)
                     BadgeLbl.BackgroundTransparency = 1
                     BadgeLbl.Text = entry.TabName or entry.SubText or ""
                     applyThemeColor(BadgeLbl, "SubText", "TextColor3")
-                    BadgeLbl.Font = Enum.Font.GothamMedium
+                    BadgeLbl.FontFace = UI_Font("Medium")
                     BadgeLbl.TextSize = 11
                     BadgeLbl.TextXAlignment = Enum.TextXAlignment.Right
                     BadgeLbl.TextTruncate = Enum.TextTruncate.AtEnd
@@ -2804,7 +2823,7 @@ function Library:CreateWindow(config)
             SearchBox.PlaceholderText = "พิมพ์เพื่อค้นหาคำสั่ง..."
             applyThemeColor(SearchBox, "Text", "TextColor3")
             applyThemeColor(SearchBox, "SubText", "PlaceholderColor3")
-            SearchBox.Font = Enum.Font.GothamSemibold
+            SearchBox.FontFace = UI_Font("SemiBold")
             SearchBox.TextSize = 14
             SearchBox.ClearTextOnFocus = false
             SearchBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -2830,7 +2849,7 @@ function Library:CreateWindow(config)
             EmptyLbl.BackgroundTransparency = 1
             EmptyLbl.Text = "ไม่พบคำสั่งที่ตรงกัน"
             applyThemeColor(EmptyLbl, "SubText", "TextColor3")
-            EmptyLbl.Font = Enum.Font.GothamSemibold
+            EmptyLbl.FontFace = UI_Font("SemiBold")
             EmptyLbl.TextSize = 12.5
             EmptyLbl.Visible = false
             EmptyLbl.ZIndex = 62
@@ -3021,7 +3040,7 @@ function Library:CreateWindow(config)
                     Lbl.BackgroundTransparency = 1
                     Lbl.Text = item.Text
                     applyThemeColor(Lbl, "Text", "TextColor3")
-                    Lbl.Font = Enum.Font.GothamBold
+                    Lbl.FontFace = UI_Font("Bold")
                     Lbl.TextSize = 9.5
                     Lbl.TextTransparency = 1
                     Lbl.TextTruncate = Enum.TextTruncate.AtEnd
@@ -3137,7 +3156,7 @@ function Library:CreateWindow(config)
         TabTitle.BackgroundTransparency = 1
         TabTitle.Text = name
         applyThemeColor(TabTitle, "SubText", "TextColor3")
-        TabTitle.Font = Enum.Font.GothamSemibold
+        TabTitle.FontFace = UI_Font("SemiBold")
         TabTitle.TextSize = 13
         TabTitle.TextXAlignment = Enum.TextXAlignment.Left
         TabTitle.Parent = TabBtn
@@ -3258,7 +3277,7 @@ function Library:CreateWindow(config)
             Label.BackgroundTransparency = 1
             Label.Text = string.upper(title or "Section")
             applyThemeColor(Label, "SubText", "TextColor3")
-            Label.Font = Enum.Font.GothamBold
+            Label.FontFace = UI_Font("Bold")
             Label.TextSize = 11
             Label.TextXAlignment = Enum.TextXAlignment.Left
             Label.Parent = Holder
@@ -3303,7 +3322,7 @@ function Library:CreateWindow(config)
             Label.BackgroundTransparency = 1
             Label.Text = c.Text or "Paragraph"
             applyThemeColor(Label, "SubText", "TextColor3")
-            Label.Font = Enum.Font.GothamMedium
+            Label.FontFace = UI_Font("Medium")
             Label.TextSize = 13.5
             Label.LineHeight = 1.3
             Label.TextWrapped = true
@@ -3348,7 +3367,7 @@ function Library:CreateWindow(config)
             TitleLbl.BackgroundTransparency = 1
             TitleLbl.Text = c.Title or "Accordion"
             applyThemeColor(TitleLbl, "Text", "TextColor3")
-            TitleLbl.Font = Enum.Font.GothamSemibold
+            TitleLbl.FontFace = UI_Font("SemiBold")
             TitleLbl.TextSize = 14
             TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
             TitleLbl.Parent = Header
@@ -3359,7 +3378,7 @@ function Library:CreateWindow(config)
             Body.BackgroundTransparency = 1
             Body.Text = c.Content or ""
             applyThemeColor(Body, "SubText", "TextColor3")
-            Body.Font = Enum.Font.GothamMedium
+            Body.FontFace = UI_Font("Medium")
             Body.TextSize = 13.5
             Body.LineHeight = 1.3
             Body.TextWrapped = true
@@ -3409,7 +3428,7 @@ function Library:CreateWindow(config)
                 Label.BackgroundTransparency = 1
                 Label.Text = c.Text
                 applyThemeColor(Label, "SubText", "TextColor3")
-                Label.Font = Enum.Font.GothamSemibold
+                Label.FontFace = UI_Font("SemiBold")
                 Label.TextSize = 12
                 Label.TextXAlignment = Enum.TextXAlignment.Left
                 Label.Parent = Frame
@@ -3440,7 +3459,7 @@ function Library:CreateWindow(config)
                 OptBtn.BackgroundTransparency = 1
                 OptBtn.AutoButtonColor = false
                 OptBtn.Text = tostring(optText)
-                OptBtn.Font = Enum.Font.GothamSemibold
+                OptBtn.FontFace = UI_Font("SemiBold")
                 OptBtn.TextSize = 12
                 OptBtn.ZIndex = 2
                 applyThemeColor(OptBtn, i == selected and "Text" or "SubText", "TextColor3")
@@ -3503,7 +3522,7 @@ function Library:CreateWindow(config)
             Label.BackgroundTransparency = 1
             Label.Text = c.Text or "Button"
             applyThemeColor(Label, "Text", "TextColor3")
-            Label.Font = Enum.Font.GothamSemibold
+            Label.FontFace = UI_Font("SemiBold")
             Label.TextSize = 14
             Label.TextXAlignment = Enum.TextXAlignment.Left
             Label.Parent = Btn
@@ -3559,7 +3578,7 @@ function Library:CreateWindow(config)
             Label.BackgroundTransparency = 1
             Label.Text = c.Text or "Toggle"
             applyThemeColor(Label, "Text", "TextColor3")
-            Label.Font = Enum.Font.GothamSemibold
+            Label.FontFace = UI_Font("SemiBold")
             Label.TextSize = 14
             Label.TextXAlignment = Enum.TextXAlignment.Left
             Label.Parent = Frame
@@ -3658,7 +3677,7 @@ function Library:CreateWindow(config)
             Label.BackgroundTransparency = 1
             Label.Text = (c.Text or "Slider") .. ": " .. string.format("%." .. places .. "f", val) .. suffix
             applyThemeColor(Label, "Text", "TextColor3")
-            Label.Font = Enum.Font.GothamSemibold
+            Label.FontFace = UI_Font("SemiBold")
             Label.TextSize = 14
             Label.TextXAlignment = Enum.TextXAlignment.Left
             Label.Parent = Frame
@@ -3781,7 +3800,7 @@ function Library:CreateWindow(config)
             Label.BackgroundTransparency = 1
             Label.Text = (c.Text or "Dropdown") .. ": " .. selected
             applyThemeColor(Label, "Text", "TextColor3")
-            Label.Font = Enum.Font.GothamSemibold
+            Label.FontFace = UI_Font("SemiBold")
             Label.TextSize = 14
             Label.TextXAlignment = Enum.TextXAlignment.Left
             Label.TextTruncate = Enum.TextTruncate.AtEnd
@@ -3938,7 +3957,7 @@ function Library:CreateWindow(config)
                     SearchBox.PlaceholderText = "ค้นหา..."
                     applyThemeColor(SearchBox, "Text", "TextColor3")
                     applyThemeColor(SearchBox, "SubText", "PlaceholderColor3")
-                    SearchBox.Font = Enum.Font.GothamSemibold
+                    SearchBox.FontFace = UI_Font("SemiBold")
                     SearchBox.TextSize = 12.5
                     SearchBox.ClearTextOnFocus = false
                     SearchBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -4012,7 +4031,7 @@ function Library:CreateWindow(config)
                 emptyLbl.BackgroundTransparency = 1
                 emptyLbl.Text = "ไม่พบตัวเลือกที่ตรงกัน"
                 applyThemeColor(emptyLbl, "SubText", "TextColor3")
-                emptyLbl.Font = Enum.Font.GothamSemibold
+                emptyLbl.FontFace = UI_Font("SemiBold")
                 emptyLbl.TextSize = 12.5
                 emptyLbl.TextXAlignment = Enum.TextXAlignment.Center
                 emptyLbl.TextYAlignment = Enum.TextYAlignment.Center
@@ -4183,7 +4202,7 @@ function Library:CreateWindow(config)
             Label.BackgroundTransparency = 1
             Label.Text = c.Text or "ColorPicker"
             applyThemeColor(Label, "Text", "TextColor3")
-            Label.Font = Enum.Font.GothamSemibold
+            Label.FontFace = UI_Font("SemiBold")
             Label.TextSize = 14
             Label.TextXAlignment = Enum.TextXAlignment.Left
             Label.Parent = Btn
@@ -4354,7 +4373,7 @@ function Library:CreateWindow(config)
                 HexLabel.LayoutOrder = 3
                 HexLabel.Size = UDim2.new(1, 0, 0, 16)
                 HexLabel.BackgroundTransparency = 1
-                HexLabel.Font = Enum.Font.GothamSemibold
+                HexLabel.FontFace = UI_Font("SemiBold")
                 HexLabel.TextSize = 12
                 HexLabel.TextXAlignment = Enum.TextXAlignment.Left
                 HexLabel.ZIndex = 11
@@ -4528,7 +4547,7 @@ function Library:CreateWindow(config)
             Box.PlaceholderText = c.Text or "Input here..."
             applyThemeColor(Box, "Text", "TextColor3")
             applyThemeColor(Box, "SubText", "PlaceholderColor3")
-            Box.Font = Enum.Font.GothamSemibold
+            Box.FontFace = UI_Font("SemiBold")
             Box.TextSize = 14
             Box.ClearTextOnFocus = false
             Box.TextXAlignment = Enum.TextXAlignment.Left
@@ -4570,7 +4589,7 @@ function Library:CreateWindow(config)
             Label.BackgroundTransparency = 1
             Label.Text = (c.Text or "Keybind") .. ": " .. (selectedKey and selectedKey.Name or "None")
             applyThemeColor(Label, "Text", "TextColor3")
-            Label.Font = Enum.Font.GothamSemibold
+            Label.FontFace = UI_Font("SemiBold")
             Label.TextSize = 14
             Label.TextXAlignment = Enum.TextXAlignment.Left
             Label.Parent = Btn
@@ -4626,7 +4645,7 @@ function Library:CreateWindow(config)
             Label.BackgroundTransparency = 1
             Label.Text = c.Text or "Label"
             applyThemeColor(Label, "SubText", "TextColor3")
-            Label.Font = Enum.Font.GothamSemibold
+            Label.FontFace = UI_Font("SemiBold")
             Label.TextSize = 13
             Label.TextWrapped = true
             Label.TextXAlignment = Enum.TextXAlignment.Left
@@ -4653,7 +4672,7 @@ function Library:CreateWindow(config)
             Box.PlaceholderText = c.Text or "Type notes here..."
             applyThemeColor(Box, "Text", "TextColor3")
             applyThemeColor(Box, "SubText", "PlaceholderColor3")
-            Box.Font = Enum.Font.GothamMedium
+            Box.FontFace = UI_Font("Medium")
             Box.TextSize = 13
             Box.ClearTextOnFocus = false
             Box.MultiLine = true
@@ -4704,7 +4723,7 @@ function Library:CreateWindow(config)
             TitleLbl.BackgroundTransparency = 1
             TitleLbl.Text = c.Text or "Error Log"
             applyThemeColor(TitleLbl, "Text", "TextColor3")
-            TitleLbl.Font = Enum.Font.GothamBold
+            TitleLbl.FontFace = UI_Font("Bold")
             TitleLbl.TextSize = 14
             TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
             TitleLbl.Parent = Header
@@ -4716,7 +4735,7 @@ function Library:CreateWindow(config)
             CopyBtn.AutoButtonColor = false
             CopyBtn.Text = "Copy"
             applyThemeColor(CopyBtn, "SubText", "TextColor3")
-            CopyBtn.Font = Enum.Font.GothamSemibold
+            CopyBtn.FontFace = UI_Font("SemiBold")
             CopyBtn.TextSize = 12
             CopyBtn.Parent = Header
             corner(CopyBtn, 6)
@@ -4736,7 +4755,7 @@ function Library:CreateWindow(config)
             EmptyLbl.BackgroundTransparency = 1
             EmptyLbl.Text = "ยังไม่มี error — ทุกอย่างโอเค"
             applyThemeColor(EmptyLbl, "SubText", "TextColor3")
-            EmptyLbl.Font = Enum.Font.GothamSemibold
+            EmptyLbl.FontFace = UI_Font("SemiBold")
             EmptyLbl.TextSize = 12
             EmptyLbl.TextXAlignment = Enum.TextXAlignment.Left
             EmptyLbl.Parent = ListHolder
@@ -4809,7 +4828,7 @@ function Library:CreateWindow(config)
             Label.BackgroundTransparency = 1
             Label.Text = c.Text or "Progress"
             applyThemeColor(Label, "Text", "TextColor3")
-            Label.Font = Enum.Font.GothamSemibold
+            Label.FontFace = UI_Font("SemiBold")
             Label.TextSize = 13
             Label.TextXAlignment = Enum.TextXAlignment.Left
             Label.Parent = Frame
@@ -4872,7 +4891,7 @@ function Library:CreateWindow(config)
             TitleLbl.BackgroundTransparency = 1
             TitleLbl.Text = c.Text or "Graph"
             applyThemeColor(TitleLbl, "Text", "TextColor3")
-            TitleLbl.Font = Enum.Font.GothamSemibold
+            TitleLbl.FontFace = UI_Font("SemiBold")
             TitleLbl.TextSize = 13
             TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
             TitleLbl.Parent = Header
@@ -4884,7 +4903,7 @@ function Library:CreateWindow(config)
             ValueLbl.BackgroundTransparency = 1
             ValueLbl.Text = "--"
             applyThemeColor(ValueLbl, "AccentA", "TextColor3")
-            ValueLbl.Font = Enum.Font.GothamBold
+            ValueLbl.FontFace = UI_Font("Bold")
             ValueLbl.TextSize = 14
             ValueLbl.TextXAlignment = Enum.TextXAlignment.Right
             ValueLbl.Parent = Header
@@ -5071,7 +5090,7 @@ function Library:CreateWindow(config)
                 TitleLbl.BackgroundTransparency = 1
                 TitleLbl.Text = c.Text
                 applyThemeColor(TitleLbl, "Text", "TextColor3")
-                TitleLbl.Font = Enum.Font.GothamSemibold
+                TitleLbl.FontFace = UI_Font("SemiBold")
                 TitleLbl.TextSize = 13
                 TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
                 TitleLbl.Parent = Frame
@@ -5114,7 +5133,7 @@ function Library:CreateWindow(config)
                 OptLabel.BackgroundTransparency = 1
                 OptLabel.Text = opt
                 applyThemeColor(OptLabel, "Text", "TextColor3")
-                OptLabel.Font = Enum.Font.GothamSemibold
+                OptLabel.FontFace = UI_Font("SemiBold")
                 OptLabel.TextSize = 13
                 OptLabel.TextXAlignment = Enum.TextXAlignment.Left
                 OptLabel.Parent = Row
@@ -5172,7 +5191,7 @@ function Library:CreateWindow(config)
                 TitleLbl.BackgroundTransparency = 1
                 TitleLbl.Text = c.Text
                 applyThemeColor(TitleLbl, "Text", "TextColor3")
-                TitleLbl.Font = Enum.Font.GothamSemibold
+                TitleLbl.FontFace = UI_Font("SemiBold")
                 TitleLbl.TextSize = 13
                 TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
                 TitleLbl.Parent = Frame
@@ -5222,7 +5241,7 @@ function Library:CreateWindow(config)
                 OptLabel.BackgroundTransparency = 1
                 OptLabel.Text = opt
                 applyThemeColor(OptLabel, "Text", "TextColor3")
-                OptLabel.Font = Enum.Font.GothamSemibold
+                OptLabel.FontFace = UI_Font("SemiBold")
                 OptLabel.TextSize = 13
                 OptLabel.TextXAlignment = Enum.TextXAlignment.Left
                 OptLabel.Parent = Row
@@ -5285,7 +5304,7 @@ function Library:CreateWindow(config)
             Box.Text = c.Default or ""
             Box.PlaceholderText = ""
             applyThemeColor(Box, "Text", "TextColor3")
-            Box.Font = Enum.Font.GothamSemibold
+            Box.FontFace = UI_Font("SemiBold")
             Box.TextSize = 13
             Box.ClearTextOnFocus = false
             Box.TextXAlignment = Enum.TextXAlignment.Left
@@ -5297,7 +5316,7 @@ function Library:CreateWindow(config)
             PlaceholderLbl.BackgroundTransparency = 1
             PlaceholderLbl.Position = contentPos
             PlaceholderLbl.Size = contentSize
-            PlaceholderLbl.Font = Enum.Font.GothamSemibold
+            PlaceholderLbl.FontFace = UI_Font("SemiBold")
             PlaceholderLbl.TextSize = 13
             PlaceholderLbl.TextXAlignment = Enum.TextXAlignment.Left
             PlaceholderLbl.TextYAlignment = Enum.TextYAlignment.Center
