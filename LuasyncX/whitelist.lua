@@ -1,21 +1,11 @@
 -- ╔══════════════════════════════════════════════════════╗
 -- ║  SpectreWare Loader  –  Optimised Build              ║
--- ║  Changes vs original:                                ║
--- ║  · httpSend fn-list built once (not per-call)        ║
--- ║  · executor lookup table built once outside fn       ║
--- ║  · WL sets pre-indexed for O(1) uid lookup           ║
--- ║  · executor whitelist is a hash-set (O(1))           ║
--- ║  · sentinel helpers cache getgenv() once per call    ║
--- ║  · _djb2 reused inside getHWID (no duplicate loop)   ║
--- ║  · sendWebhook caches PL.UserId locally              ║
--- ║  · announce loop removes redundant task.wait()       ║
--- ║  · _normalizeRes simplified                          ║
 -- ╚══════════════════════════════════════════════════════╝
 
 local CFG = {
     API                 = "https://luasyncxz.wisp.uno",
     clientKey           = "0f9b3fd53469b88a5ed98d27687650cf5c2812346fd46665",
-    loaderVersion       = "2.6.0",
+    loaderVersion       = "2.6.1",
     waitOnStart         = 0.6,
     sessionCheckEvery   = 10,
     sessionCheckJitter  = 4,  -- ± seconds randomized per tick so the interval isn't a fixed, guessable cadence
@@ -32,10 +22,8 @@ local CFG = {
 local CLIENT_HEADERS = { ["X-Client-Key"] = CFG.clientKey }
 
 -- ── PlaceId → scriptUrl override (set by gateway.lua) ────────────────────────
--- gateway.lua ยิง getgenv()._SW_PLACE_MAP = { [placeId] = scriptUrl, ... } ให้ก่อนรันไฟล์นี้
--- ถ้าเจอ placeId ใน map นี้ จะใช้ค่านี้แทนการยิง /api/script/:placeId ไปที่ backend
 local function _lookupPlaceScript(placeId)
-    local ok, map = pcall(getgenv)
+    local ok, map = _r_pcall(getgenv)
     if not ok or type(map) ~= "table" then return nil end
     local m = map._SW_PLACE_MAP
     if type(m) ~= "table" then return nil end
@@ -153,16 +141,6 @@ local function _checkSetreadonly()
 end
 
 -- ── Global key symbols ──────────────────────────────────────────────────────
--- s1/s2/s3/xk/canary get a random per-session suffix so a getgenv() key name
--- harvested from one dumped/leaked session can't be hardcoded into a public
--- bypass script and reused against a different session or user.
--- running/stime stay fixed — they're needed as a cross-restart anchor for the
--- double-run guard below, but they only ever hold a boolean/timestamp, never
--- the sentinel token itself, so a fixed name there leaks little.
--- saltKey is a fixed name so a NEW run can recover the PREVIOUS run's salt
--- before picking its own — otherwise the stale-session guard below is
--- comparing against sentinel key names that were never written this run
--- (always nil) and can never tell a live duplicate from a dead one.
 local _GK_saltKey = _r_char(95,115,108,116,95) -- "_slt_"
 
 local function _mkGK(salt)
@@ -178,7 +156,7 @@ local function _mkGK(salt)
     }
 end
 
-local _GK_prevSalt = getgenv()[_GK_saltKey] -- salt used by whatever ran before us, if anything
+local _GK_prevSalt = getgenv()[_GK_saltKey]
 local _GK_prev = _GK_prevSalt and _mkGK(_GK_prevSalt) or nil
 
 local _GK_salt = _r_format("%06x", _r_random(0, 0xFFFFFF))
@@ -274,8 +252,6 @@ do
     local gev = getgenv()
     if gev[_GK.running] then
         local al = (os.time() - (gev[_GK.stime] or 0)) < 30
-        -- Check the PREVIOUS run's sentinel (its salt, its key names) — not
-        -- ours, which is guaranteed empty since we haven't written it yet.
         local v1, v2, v3, xk = nil, nil, nil, nil
         if _GK_prev then
             v1, v2, v3, xk = gev[_GK_prev.s1], gev[_GK_prev.s2], gev[_GK_prev.s3], gev[_GK_prev.xk]
@@ -284,8 +260,6 @@ do
             warn("LuaSyncX: already running"); return
         end
         warn("LuaSyncX: stale session — restarting")
-        -- Clear out the dead session's sentinel so it can't be mistaken for
-        -- a live one by anything else checking getgenv() later.
         if _GK_prev then
             gev[_GK_prev.s1] = nil; gev[_GK_prev.s2] = nil
             gev[_GK_prev.s3] = nil; gev[_GK_prev.xk]  = nil
@@ -300,8 +274,7 @@ _writeSentinel(_sessionToken); _plantCanary()
 
 do
     local _raw = luasyncx_key or ""
-    luasyncx_key = _r_char(0):rep(#(luasyncx_key or ""))
-    luasyncx_key = nil
+    luasyncx_key = nil     -- Fix L13: ตัดการอ้าง global ออก (การ _r_char(0):rep() ไม่ได้ scrub memory จริง)
     _setKey(_raw); _raw = nil
 end
 
@@ -311,16 +284,19 @@ local _native_pcall, _native_loadstring, _native_tostring =
       _r_pcall, _r_loadstring, _r_tostring
 
 -- ── Friendly kick-message formatting ─────────────────────────────────────────
--- Maps internal reason codes (executor_wl:..., sentinel_bypass, fn_hook, ...)
--- to a short human-readable line, so the Roblox disconnect dialog shows
--- something a user can read instead of a raw debug token.
 local _REASON_MAP = {
-    executor_wl              = "Executor ของคุณไม่อยู่ในรายการที่รองรับ",
+    -- Fix L7: เพิ่ม key ที่ _checkExecutorWL และ helper ตัวอื่น emit จริง
+    unknown_executor          = "ไม่สามารถระบุ Executor ของคุณได้",
+    executor_wl               = "Executor ของคุณไม่อยู่ในรายการที่รองรับ",
+    executor_not_whitelisted  = "Executor ของคุณไม่อยู่ในรายการที่รองรับ",
+    invalid_uid               = "ไม่สามารถยืนยันบัญชีผู้เล่นได้",
     uid_sanity                = "ไม่สามารถยืนยันบัญชีผู้เล่นได้",
     account_too_new           = "บัญชีอายุน้อยกว่าที่กำหนด",
-    HWID_unknown               = "ไม่สามารถระบุอุปกรณ์ (HWID) ได้",
+    HWID_unknown              = "ไม่สามารถระบุอุปกรณ์ (HWID) ได้",
+    HWID                      = "ไม่สามารถระบุอุปกรณ์ (HWID) ได้",
     sentinel_bypass           = "ตรวจพบการดัดแปลงสคริปต์",
     sentinel_preauth          = "ตรวจพบการดัดแปลงสคริปต์",
+    sentinel                  = "ตรวจพบการดัดแปลงสคริปต์",
     getgenv_bypass            = "ตรวจพบเครื่องมือดักจับ environment",
     getgenv_preauth           = "ตรวจพบเครื่องมือดักจับ environment",
     getgenv_hooked            = "ตรวจพบเครื่องมือดักจับ environment",
@@ -338,6 +314,10 @@ local _REASON_MAP = {
     canary_violated           = "ตรวจพบการดัดแปลงหน่วยความจำ",
     stime_tamper              = "ตรวจพบการดัดแปลง session",
     fn_hook                   = "ตรวจพบการ hook ฟังก์ชันป้องกันระบบ",
+    no_server_xk              = "ตรวจพบปัญหาการเข้ารหัสสคริปต์",
+    ["script hash mismatch DJB2"]  = "ตรวจพบการดัดแปลงสคริปต์ (DJB2)",
+    ["script hash mismatch FNV1a"] = "ตรวจพบการดัดแปลงสคริปต์ (FNV1a)",
+    ["script too short"]      = "ไฟล์สคริปต์ผิดปกติ",
 }
 
 local function _prettyReason(r)
@@ -377,6 +357,21 @@ local UIS = game:GetService("UserInputService")
 local MPS = game:GetService("MarketplaceService")
 local STS = game:GetService("Stats")
 
+-- Fix L4: LocalPlayer อาจยังไม่ spawn (rare) — รอสูงสุด 10 วิ ก่อนใช้ PL.X
+if not PL then
+    local Players = game:GetService("Players")
+    local t = 0
+    while not PL and t < 100 do
+        task.wait(0.1); t = t + 1
+        PL = Players.LocalPlayer
+    end
+    if not PL then
+        warn("LuaSyncX: LocalPlayer unavailable — aborting")
+        _r_pcall(function() getgenv()[_GK.running] = nil end)
+        return
+    end
+end
+
 -- ── Logging / UI helpers ─────────────────────────────────────────────────────
 local NotificationLibrary
 local _TAG = "[ LuaSyncX ]: "
@@ -386,12 +381,9 @@ local _stripChars = {
 }
 
 local function _stripDeco(msg)
-    msg = tostring(msg)
-    -- ทุก decoration char เป็น UTF-8 multi-byte (byte >= 0x80) ทั้งหมด
-    -- ถ้าใน msg ไม่มี byte >= 0x80 เลย ก็ไม่มีทางมี decoration char ให้ strip
-    -- ข้ามลูป 15 รอบ gsub ไปเลย เหลือแค่ trim ที่ถูกกว่ามาก (ผลลัพธ์เหมือนเดิมทุกกรณี)
+    msg = _r_tostring(msg)
     if msg:find("[\128-\255]", 1, false) then
-        for _, ch in ipairs(_stripChars) do
+        for _, ch in _r_ipairs(_stripChars) do
             msg = msg:gsub(ch, "")
         end
     end
@@ -406,10 +398,7 @@ local function _bRow(msg)  print(_TAG .. _stripDeco(msg)) end
 local function _bTop()     print(_TAG .. "┌" .. string.rep("─", 38) .. "┐") end
 local function _bBot()     print(_TAG .. "└" .. string.rep("─", 38) .. "┘") end
 local function _bMid()     print(_TAG .. "├" .. string.rep("─", 38) .. "┤") end
-
-local function _banner(msg)
-    print(_TAG .. _stripDeco(msg))
-end
+local function _banner(msg) print(_TAG .. _stripDeco(msg)) end
 
 local function log(msg, t)
     local m = _stripDeco(msg)
@@ -419,7 +408,9 @@ local function log(msg, t)
         print(_TAG .. m)
     end
 end
-local function try(fn, def) local ok, v = pcall(fn); return ok and v or def end
+
+-- Fix L3: ใช้ _r_pcall แทน global pcall
+local function try(fn, def) local ok, v = _r_pcall(fn); return ok and v or def end
 
 -- ── HTTP layer ───────────────────────────────────────────────────────────────
 local _httpFns = {
@@ -465,20 +456,21 @@ local function httpSend(opts)
     local method = (opts.Method or "GET"):upper()
 
     if _httpCacheIdx then
-        local ok, res = pcall(_httpFns[_httpCacheIdx], opts)
+        -- Fix L3: _r_pcall
+        local ok, res = _r_pcall(_httpFns[_httpCacheIdx], opts)
         local nr = ok and _normalizeRes(res)
         if nr then return nr end
         if not ok then _httpCacheIdx = nil end
     end
 
     for i = 1, #_httpFns do
-        local ok, res = pcall(_httpFns[i], opts)
+        local ok, res = _r_pcall(_httpFns[i], opts)
         local nr = ok and _normalizeRes(res)
         if nr then _httpCacheIdx = i; return nr end
     end
 
     if method == "GET" then
-        local ok, body = pcall(function() return game:HttpGet(url, true) end)
+        local ok, body = _r_pcall(function() return game:HttpGet(url, true) end)
         if ok and body and body ~= "" then
             return { Body = body, body = body, StatusCode = 200 }
         end
@@ -487,7 +479,7 @@ local function httpSend(opts)
 end
 
 local function safeGet(url, headers, timeout)
-    local ok, res = pcall(httpSend, {
+    local ok, res = _r_pcall(httpSend, {
         Url = url, Method = "GET", Headers = headers,
         Timeout = timeout, timeout = timeout,
     })
@@ -505,17 +497,12 @@ local function safeGetTimeout(url, timeout, headers)
     local ticks, max = 0, timeout * 20
     while not done and ticks < max do task.wait(0.05); ticks = ticks + 1 end
     if not done then
-        pcall(task.cancel, co)
+        _r_pcall(task.cancel, co)
     end
     return done and result or false, done and body or "timeout"
 end
 
 -- ── Notification library (async) ─────────────────────────────────────────────
--- Integrity-checked against a hardcoded DJB2 hash of the pinned notiflib
--- source (mirrors the scriptHash/DJB2 check used later for the main script).
--- IMPORTANT: whenever CFG.notifLibUrl's content is intentionally changed,
--- this constant must be recomputed and updated, or every load will be
--- refused with a hash-mismatch warning.
 local EXPECTED_NOTIFLIB_HASH = "C11A5FC8" -- DJB2 of current Tools/notiflib.lua content (GitHub) — refreshed 2026-09-14
 
 task.spawn(function()
@@ -560,11 +547,14 @@ local function getHWID()
     if s4 then parts[#parts + 1] = s4 end
     push("AG:", function() return tostring(PL.AccountAge) end)
 
+    -- Fix L6: HWID seed ต้อง persist จริง ไม่งั้น drift ทุก session
+    -- ลำดับ: (1) readfile → (2) MemStorageService → (3) ถ้าทั้งคู่ fail ห้ามใส่ M:
+    --        (ปล่อยให้ A:/U:/G:/E:/AG: เป็นตัวระบุ — persist เองผ่าน Roblox)
     if not _hwidSeedCache then
         _hwidSeedCache = try(function()
             local done, out = false, nil
             task.spawn(function()
-                local ok = pcall(function()
+                local ok = _r_pcall(function()
                     if isfile and isfile(_SEED_FILE) then
                         local s = readfile(_SEED_FILE)
                         if s and s ~= "" then out = s end
@@ -576,20 +566,25 @@ local function getHWID()
             while not done and t < 30 do task.wait(0.1); t = t + 1 end
             return out
         end, nil)
-        if not _hwidSeedCache then
-            _hwidSeedCache = try(function()
-                local ms = game:GetService("MemStorageService")
-                local s  = ms:GetItem("_sw_seed")
-                if s and s ~= "" then pcall(writefile, _SEED_FILE, s); return s end
-            end, nil)
-        end
-        if not _hwidSeedCache then
-            local seed = tostring(math.random(0x10000, 0xFFFFFF)) .. "_" ..
-                         tostring(math.random(0x10000, 0xFFFFFF))
-            pcall(writefile, _SEED_FILE, seed)
-            pcall(function() game:GetService("MemStorageService"):SetItem("_sw_seed", seed) end)
-            _hwidSeedCache = seed
-        end
+    end
+    if not _hwidSeedCache then
+        _hwidSeedCache = try(function()
+            local ms = game:GetService("MemStorageService")
+            local s  = ms:GetItem("_sw_seed")
+            if s and s ~= "" then _r_pcall(writefile, _SEED_FILE, s); return s end
+        end, nil)
+    end
+    if not _hwidSeedCache then
+        -- สร้างใหม่ + persist ทั้ง 2 ที่ ถ้าที่ใดสำเร็จก็ใช้ได้
+        local seed = tostring(math.random(0x10000, 0xFFFFFF)) .. "_" ..
+                     tostring(math.random(0x10000, 0xFFFFFF))
+        local persisted = false
+        local ok1 = _r_pcall(writefile, _SEED_FILE, seed)
+        if ok1 then persisted = true end
+        local ok2 = _r_pcall(function() game:GetService("MemStorageService"):SetItem("_sw_seed", seed) end)
+        if ok2 then persisted = true end
+        -- ถ้า persist ไม่ได้เลย → ไม่ cache ไว้ (ปล่อย seed = nil → ไม่ใส่ M:)
+        if persisted then _hwidSeedCache = seed end
     end
     if _hwidSeedCache then parts[#parts + 1] = "M:" .. _hwidSeedCache end
     if #parts == 0 then return "UNKNOWN" end
@@ -622,7 +617,7 @@ local function _notifyWL(timeLeft, tier)
         task.wait(0.1); waited = waited + 1
     end
     if NotificationLibrary then
-        pcall(function() NotificationLibrary:SendNotification("Success", msg, 7) end)
+        _r_pcall(function() NotificationLibrary:SendNotification("Success", msg, 7) end)
     end
 end
 
@@ -639,15 +634,15 @@ local function _notifyHWID(reason)
         task.wait(0.1); waited = waited + 1
     end
     if NotificationLibrary then
-        pcall(function() NotificationLibrary:SendNotification("Warning", msg, 10) end)
+        _r_pcall(function() NotificationLibrary:SendNotification("Warning", msg, 10) end)
     end
 end
 
 -- ── HWID Reset UI ─────────────────────────────────────────────────────────────
-local function _showHWIDResetUI(currentHwid, kickDelay)
-    kickDelay = kickDelay or 5
-    local _ok, _err = pcall(function()
-        local pgOk, pg = pcall(function() return game:GetService("CoreGui") end)
+-- Fix L8: ลบ parameter kickDelay ที่ไม่ถูกใช้
+local function _showHWIDResetUI(currentHwid)
+    local _ok, _err = _r_pcall(function()
+        local pgOk, pg = _r_pcall(function() return game:GetService("CoreGui") end)
         if not pgOk or not pg then
             pg = PL:WaitForChild("PlayerGui", 3)
             if not pg then return end
@@ -661,12 +656,12 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
         gui.ResetOnSpawn    = false
         gui.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
         gui.IgnoreGuiInset  = true
-        pcall(function() gui.DisplayOrder = 999 end)
+        _r_pcall(function() gui.DisplayOrder = 999 end)
 
         local function mk(cls, props, par)
             local i = Instance.new(cls)
             for k, v in pairs(props) do
-                local pOk, pErr = pcall(function() i[k] = v end)
+                local pOk, pErr = _r_pcall(function() i[k] = v end)
                 if not pOk then
                     warn("LuaSyncX: HWID UI prop '" .. tostring(k) .. "' on " .. cls .. " failed — " .. tostring(pErr))
                 end
@@ -681,9 +676,8 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
             ZIndex = 10,
         })
 
-        -- ขยายการ์ดให้ใหญ่ขึ้นเพื่อรองรับรูปภาพที่ใหญ่ขึ้น
         local card = mk("Frame", {
-            Size        = UDim2.new(0.9, 0, 0, 500), 
+            Size        = UDim2.new(0.9, 0, 0, 500),
             Position    = UDim2.new(0.5, 0, 0.5, 0),
             AnchorPoint = Vector2.new(0.5, 0.5),
             BackgroundColor3 = Color3.fromRGB(20, 20, 27),
@@ -693,8 +687,7 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
         mk("UISizeConstraint", {
             MaxSize = Vector2.new(380, 520),
         }, card)
-        
-        -- ระบบย่อ-ขยายอัตโนมัติขนาดตามจอ (ถ้าจอเล็กกว่าการ์ด จะย่อลงมาพอดี)
+
         local uiScale = mk("UIScale", { Scale = 1 }, card)
         local function _updateScale()
             local requiredH = 520
@@ -720,8 +713,8 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
             HorizontalAlignment = Enum.HorizontalAlignment.Center,
             SortOrder = Enum.SortOrder.LayoutOrder,
         }, card)
-        
-        local padding = mk("UIPadding", {
+
+        mk("UIPadding", {
             PaddingTop = UDim.new(0, 20),
             PaddingBottom = UDim.new(0, 20),
             PaddingLeft = UDim.new(0, 20),
@@ -887,9 +880,8 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
             LayoutOrder = 8,
         }, card)
 
-        -- ขยายขนาดรูปภาพ Guide จาก 120px เป็น 180px ให้เห็นชัดเจนขึ้น
         local guideBox = mk("Frame", {
-            Size = UDim2.new(1, 0, 0, 180), 
+            Size = UDim2.new(1, 0, 0, 180),
             BackgroundColor3 = Color3.fromRGB(12, 12, 17),
             BorderSizePixel = 0,
             LayoutOrder = 9,
@@ -907,13 +899,13 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
         }, guideBox)
 
         local parented = false
-        pcall(function() gui.Parent = game:GetService("CoreGui"); parented = true end)
+        _r_pcall(function() gui.Parent = game:GetService("CoreGui"); parented = true end)
         if not parented then
-            pcall(function() gui.Parent = PL:WaitForChild("PlayerGui", 3) end)
+            _r_pcall(function() gui.Parent = PL:WaitForChild("PlayerGui", 3) end)
         end
 
         btn.MouseButton1Click:Connect(function()
-            pcall(function() setclipboard(CFG.discordUrl) end)
+            _r_pcall(function() setclipboard(CFG.discordUrl) end)
             btn.Text = "✔  คัดลอกลิงก์แล้ว!"
             btn.BackgroundColor3 = Color3.fromRGB(55, 170, 95)
             task.delay(2, function()
@@ -927,21 +919,21 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
         task.spawn(function()
             while gui and gui.Parent do
                 task.wait(10)
-                local encOk, body = pcall(HS.JSONEncode, HS, {
+                local encOk, body = _r_pcall(HS.JSONEncode, HS, {
                     key           = _getKey(),
                     hwid          = currentHwid,
                     loaderVersion = CFG.loaderVersion,
                     placeId       = tostring(game.PlaceId),
                 })
                 if encOk then
-                    local sendOk, res = pcall(httpSend, {
+                    local sendOk, res = _r_pcall(httpSend, {
                         Url = CFG.API .. "/api/lookup", Method = "POST",
                         Headers = { ["Content-Type"] = "application/json",
                                     ["X-Loader-Version"] = CFG.loaderVersion },
                         Body = body, Timeout = 6, timeout = 6,
                     })
                     if sendOk and res and res.Body and res.Body ~= "" and res.Body:sub(1,1) ~= "<" then
-                        local decOk, d = pcall(HS.JSONDecode, HS, res.Body)
+                        local decOk, d = _r_pcall(HS.JSONDecode, HS, res.Body)
                         if decOk and type(d) == "table" then
                             local success = d.success == true or d.success == "true"
                             local code = (type(d.data) == "table" and tostring(d.data.code or "")) or ""
@@ -952,7 +944,7 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
                                 cdLabel.Text = "✅  รีเซ็ต HWID สำเร็จ — กรุณารีจอย"
                                 cdLabel.TextColor3 = Color3.fromRGB(90, 210, 130)
                                 btn.Visible = false
-                                pcall(function()
+                                _r_pcall(function()
                                     game:GetService("StarterGui"):SetCore("SendNotification", {
                                         Title = "LuaSyncX",
                                         Text = "HWID reset สำเร็จ — กรุณารีจอยเซิร์ฟเวอร์",
@@ -1079,13 +1071,28 @@ local function getAvatar(uid)
     end, fb), fb
 end
 
+-- Fix L14: cache profile data (avatar/friends) — ยิง HTTP ซ้ำทุกครั้งที่ sendWebhook
+local _profileCache
+local function _getProfile()
+    if _profileCache then return _profileCache end
+    local uid = PL.UserId
+    local avatar, headshot = getAvatar(uid)
+    _profileCache = {
+        avatar   = avatar,
+        headshot = headshot,
+        friends  = getFriendCount(),
+    }
+    return _profileCache
+end
+
 local function sendWebhook(event, info)
     info = info or {}
     local uid                           = PL.UserId
-    local avatar, headshot              = getAvatar(uid)
+    local prof                          = _getProfile()
+    local avatar, headshot              = prof.avatar, prof.headshot
     local gameName, gameCreator, maxP, placeVer = getGameInfo()
     local clockDrift
-    pcall(function()
+    _r_pcall(function()
         local res = httpSend({ Url = CFG.API .. "/api/time", Method = "GET", Headers = CLIENT_HEADERS })
         if res and res.Body then
             local d = HS:JSONDecode(res.Body)
@@ -1097,7 +1104,7 @@ local function sendWebhook(event, info)
             end
         end
     end)
-    local ok, body = pcall(HS.JSONEncode, HS, {
+    local ok, body = _r_pcall(HS.JSONEncode, HS, {
         event       = event,
         key         = info.key     or "?",
         hwid        = info.hwid    or "?",
@@ -1110,7 +1117,7 @@ local function sendWebhook(event, info)
             displayName = tostring(PL.DisplayName or PL.Name),
             userId      = tostring(uid),
             accountAge  = getAccountAge(),
-            friends     = getFriendCount(),
+            friends     = prof.friends,
             membership  = getMembership(),
             avatar      = avatar,
             headshot    = headshot,
@@ -1128,7 +1135,7 @@ local function sendWebhook(event, info)
         },
     })
     if ok then
-        pcall(httpSend, { Url = CFG.API .. "/api/event", Method = "POST",
+        _r_pcall(httpSend, { Url = CFG.API .. "/api/event", Method = "POST",
                           Headers = { ["Content-Type"] = "application/json" }, Body = body })
     end
 end
@@ -1157,7 +1164,7 @@ local function _isExpired(d)
 end
 
 local function _parseResult(raw)
-    local ok, r = pcall(HS.JSONDecode, HS, raw)
+    local ok, r = _r_pcall(HS.JSONDecode, HS, raw)
     if not ok or type(r) ~= "table" then return nil end
     if r.success == nil or r.message == nil then return nil end
     if r.data == nil then r.data = {} end
@@ -1180,10 +1187,12 @@ end
 
 local function _wlHas(set, val) return set[val] == true end
 
+-- Fix L10: เพิ่ม length sanity — กัน ex="x" ที่ match ทุก executor name
 local function _checkExecutorWL()
     if #WL.EXECUTORS == 0 then return true, nil end
     local ex = getExecutor():lower()
     if ex == "" or ex == "unknown" then return false, "unknown_executor" end
+    if #ex < 3 then return false, "unknown_executor" end
     for k in pairs(_exSet) do
         if ex:find(k, 1, true) then return true, nil end
     end
@@ -1207,10 +1216,7 @@ end
 -- ── API helpers ───────────────────────────────────────────────────────────────
 local _verified      = false
 
--- ── Announce poller (starts right after key+HWID auth succeeds — ────────────
---    ไม่ต้องรอ script fetch/compile/launch เสร็จก่อน แค่ auth ผ่านก็รับ
---    ประกาศได้เลย, กันซ้ำด้วย _announceStarted เพราะสอง branch (dev/free
---    กับ paid-key) เรียกจุดนี้คนละที่กัน)
+-- ── Announce poller ──────────────────────────────────────────────────────────
 local _sessionActive    = true
 local _announceStarted  = false
 local _lastSeq, _lastId = 0, ""
@@ -1221,34 +1227,18 @@ local function startAnnouncePoller()
     task.spawn(function()
         while _sessionActive do
             local gotMsg = false
-            pcall(function()
+            _r_pcall(function()
                 local ok, raw2 = safeGetTimeout(
                     CFG.API .. "/api/announce?key=" .. _getKey() .. "&hwid=" .. HS:UrlEncode(hwid) .. "&seq=" .. _lastSeq,
                     CFG.announceTimeout, CLIENT_HEADERS)
                 if not ok or not raw2 or raw2 == "" then return end
-                local ok2, d = pcall(HS.JSONDecode, HS, raw2)
+                local ok2, d = _r_pcall(HS.JSONDecode, HS, raw2)
                 if not ok2 or type(d) ~= "table" then return end
                 if type(d.seq) == "number" then _lastSeq = d.seq end
                 local id, m = tostring(d.id or ""), tostring(d.message or "")
                 if id ~= "" and id ~= _lastId and m ~= "" then
                     _lastId = id; gotMsg = true; showAnnounce(m)
-                    -- fire-and-forget ack: บอก server ว่า user คนนี้เห็นประกาศ id นี้แล้ว
-                    task.spawn(function()
-                        pcall(function()
-                            local body = HS:JSONEncode({
-                                id     = id,
-                                key    = _getKey(),
-                                hwid   = hwid,
-                                userId = tostring(PL.UserId),
-                            })
-                            httpSend({
-                                Url = CFG.API .. "/api/announce/ack", Method = "POST",
-                                Headers = { ["Content-Type"] = "application/json",
-                                            ["X-Loader-Version"] = CFG.loaderVersion },
-                                Body = body, Timeout = 5, timeout = 5,
-                            })
-                        end)
-                    end)
+                    -- Fix L5: /api/announce/ack ยังไม่มีใน server — ลบ ack call ออก
                 end
             end)
             task.wait(gotMsg and 2 or 4)
@@ -1258,11 +1248,7 @@ end
 local _expiresAt_cached
 
 local function apiLookup(key, hwidStr, timeout)
-    -- หมายเหตุ: ไม่ส่ง loaderXk (crypto key สำหรับถอด scriptEnc) จากฝั่งนี้อีกแล้ว —
-    -- server เป็นคนสุ่มคีย์เองแล้วส่งกลับมาใน response แทน (ดู _parseResult /
-    -- ส่วนถอด scriptEnc ด้านล่าง) กัน loader ที่ถูกแก้ไขเลือกคีย์เองแล้วถอดข้อมูล
-    -- ได้ทันทีโดยไม่ต้องพึ่ง handshake ปกติ
-    local ok, body = pcall(HS.JSONEncode, HS, {
+    local ok, body = _r_pcall(HS.JSONEncode, HS, {
         key           = key,
         hwid          = hwidStr,
         loaderVersion = CFG.loaderVersion,
@@ -1282,7 +1268,7 @@ local function _awaitResult(fn, timeoutSec)
     local co = task.spawn(function() r1, r2 = fn(); done = true end)
     local t, max = 0, (timeoutSec or 5) * 10
     while not done and t < max do task.wait(0.1); t = t + 1 end
-    if not done then pcall(task.cancel, co) end
+    if not done then _r_pcall(task.cancel, co) end
     return r1, r2
 end
 
@@ -1291,6 +1277,12 @@ end
 -- ══════════════════════════════════════════════════════════════════════════════
 print("[ LuaSyncX ]: Connecting to Server...")
 
+-- Fix L2: เทียบ global `loadstring` ปัจจุบัน กับ capture ตอนต้น (ไม่ใช่ _r_loadstring)
+local function _loadstring_is_pristine()
+    return _r_rawequal(loadstring, _native_loadstring)
+end
+
+-- Fix L11: error handler ต้อง kick user ไม่ใช่แค่ warn
 local _mainOk = xpcall(function()
     task.wait(CFG.waitOnStart)
     local _uid = PL.UserId
@@ -1304,7 +1296,7 @@ local _mainOk = xpcall(function()
         if not _ageOk then
             log("Account too new — access denied (minimum " .. tostring(WL.MIN_ACCOUNT_AGE) .. "d)", "error")
             task.wait(1.5)
-            pcall(function()
+            _r_pcall(function()
                 PL:Kick(table.concat({
                     "[ LuaSyncX ]  Access Denied",
                     "───────────────────────",
@@ -1354,7 +1346,7 @@ local _mainOk = xpcall(function()
             log((_isDev and "DEV" or "FREE") .. " bypass: no script configured for PlaceId " ..
                 tostring(game.PlaceId), "error")
             getgenv()[_GK.running] = nil
-            pcall(function()
+            _r_pcall(function()
                 PL:Kick(table.concat({
                 "[ LuaSyncX ]  Unsupported Game",
                 "───────────────────────",
@@ -1365,9 +1357,9 @@ local _mainOk = xpcall(function()
         end
         print("[ LuaSyncX ]: Authenticated in " .. tostring(os.clock() - _authStart2) .. "s")
         log("Script URL received ✓", "success")
-        startAnnouncePoller() -- key+hwid verified → รับประกาศได้ทันที ไม่ต้องรอ script launch
+        startAnnouncePoller()
         if NotificationLibrary then
-            pcall(function()
+            _r_pcall(function()
                 NotificationLibrary:SendNotification("Info",
                     "⚡  LuaSyncX  v" .. CFG.loaderVersion .. "  —  กำลังโหลด...", 4)
             end)
@@ -1393,7 +1385,8 @@ local _mainOk = xpcall(function()
             log("Failed to fetch script after 3 attempts", "error"); getgenv()[_GK.running] = nil; return
         end
         if #_src < 32 then log("Script source too short", "error"); integrityFail("script too short"); return end
-        if not _r_rawequal(_native_loadstring, _r_loadstring) then integrityFail("loadstring_hooked"); return end
+        -- Fix L2: เทียบ global loadstring กับ native ที่ capture ไว้
+        if not _loadstring_is_pristine() then integrityFail("loadstring_hooked"); return end
         task.wait(0.35)
         local _fn, _err = _native_loadstring(_src); _src = nil
         if not _fn then log("Compile error: " .. tostring(_err), "error"); getgenv()[_GK.running] = nil; return end
@@ -1464,7 +1457,7 @@ local _mainOk = xpcall(function()
             task.spawn(function() sendWebhook("mismatch", { key = _getKey(), hwid = hwid, timeLeft = "BLOCKED" }) end)
             getgenv()[_GK.running] = nil
             task.spawn(function()
-                _showHWIDResetUI(hwid, 5)
+                _showHWIDResetUI(hwid)  -- Fix L8: ตัด param 2
             end)
             return
         end
@@ -1490,12 +1483,12 @@ local _mainOk = xpcall(function()
         task.spawn(function() sendWebhook("mismatch", { key = _getKey(), hwid = hwid, timeLeft = "BLOCKED" }) end)
         getgenv()[_GK.running] = nil
         task.spawn(function()
-            _showHWIDResetUI(hwid, 5)
+            _showHWIDResetUI(hwid)
         end)
         return
     end
     log("HWID verified ✓", "success")
-    startAnnouncePoller() -- key+hwid verified → รับประกาศได้ทันที ไม่ต้องรอ script launch
+    startAnnouncePoller()
     print("[ LuaSyncX ]: Authenticated in " .. tostring(os.clock() - _authStart) .. "s")
     task.wait(0.4)
     local _hasScript = (type(data.scriptEnc) == "string" and data.scriptEnc ~= "") or
@@ -1503,7 +1496,7 @@ local _mainOk = xpcall(function()
     if not _hasScript then
         log("API did not return scriptUrl for PlaceId " .. tostring(game.PlaceId), "error")
         getgenv()[_GK.running] = nil
-        pcall(function()
+        _r_pcall(function()
             PL:Kick(table.concat({
                 "[ LuaSyncX ]  Unsupported Game",
                 "───────────────────────",
@@ -1513,7 +1506,7 @@ local _mainOk = xpcall(function()
         return
     end
     if NotificationLibrary then
-        pcall(function()
+        _r_pcall(function()
             NotificationLibrary:SendNotification("Info",
                 "⚡  LuaSyncX  v" .. CFG.loaderVersion .. "  —  กำลังโหลด...", 4)
         end)
@@ -1536,9 +1529,6 @@ local _mainOk = xpcall(function()
     task.delay(1, function() _notifyWL(timeLeft, "KEY") end)
     task.spawn(function() sendWebhook("login", { key = _getKey(), hwid = hwid, timeLeft = timeLeft, expiresAt = expiresAt }) end)
     local scriptSrc
-    -- PLACE_MAP (ตั้งจาก gateway.lua) มีสิทธิ์เหนือ scriptEnc ของ server เสมอ —
-    -- ถ้า placeId นี้ถูก map ไว้ ให้ดึงจาก URL ใน map ตรงๆ โดยไม่สนใจว่า server
-    -- จะส่ง scriptEnc มาด้วยหรือไม่
     local _mapUrl = _lookupPlaceScript(game.PlaceId)
     if _mapUrl and _mapUrl ~= "" then
         log("Loading script from PLACE_MAP override...", "loading")
@@ -1554,8 +1544,6 @@ local _mainOk = xpcall(function()
             log("Failed to fetch mapped script after 3 attempts", "error"); getgenv()[_GK.running] = nil; return
         end
     elseif type(data.scriptEnc) == "string" and data.scriptEnc ~= "" then
-        -- decrypt key มาจาก server (data.loaderXk) ไม่ใช่ _xorKey ของ session เอง —
-        -- server สุ่ม key ใหม่ทุก request แล้วส่งมาคู่กับ scriptEnc เสมอ
         local _srvXk = type(data.loaderXk) == "string" and data.loaderXk or ""
         if _srvXk == "" then
             log("Missing decrypt key from server", "error"); integrityFail("no_server_xk"); return
@@ -1568,7 +1556,7 @@ local _mainOk = xpcall(function()
         if not SCRIPT or SCRIPT == "" then
             log("API did not return scriptUrl for PlaceId " .. tostring(game.PlaceId), "error")
             getgenv()[_GK.running] = nil
-            pcall(function()
+            _r_pcall(function()
                 PL:Kick(table.concat({
                 "[ LuaSyncX ]  Unsupported Game",
                 "───────────────────────",
@@ -1593,6 +1581,7 @@ local _mainOk = xpcall(function()
     if not scriptSrc or #scriptSrc < 32 then
         log("Script source too short — aborting", "error"); integrityFail("script too short"); return
     end
+    -- ── DJB2 check: ตอนนี้ server ส่ง DJB2 (8 uppercase hex) มาแล้ว ──
     if type(data.scriptHash) == "string" and data.scriptHash ~= "" then
         if _djb2(scriptSrc) ~= data.scriptHash:upper() then
             log("Script hash mismatch (DJB2)", "error"); integrityFail("script hash mismatch DJB2"); return
@@ -1607,7 +1596,8 @@ local _mainOk = xpcall(function()
         log("Script integrity ✓ (FNV1a)", "success")
         task.wait(0.3)
     end
-    if not _r_rawequal(_native_loadstring, _r_loadstring) then
+    -- Fix L2: เทียบ global loadstring
+    if not _loadstring_is_pristine() then
         log("loadstring hooked — aborting", "error"); integrityFail("loadstring_hooked"); return
     end
     task.wait(0.4)
@@ -1615,15 +1605,23 @@ local _mainOk = xpcall(function()
     if not fn then log("Compile error: " .. tostring(compErr), "error"); getgenv()[_GK.running] = nil; return end
     _verified = true; task.spawn(fn); log("Script launched 🚀", "success"); _div()
 
+-- Fix L11: error handler kick user
 end, function(err)
     warn("LuaSyncX: unexpected error — " .. tostring(err))
-    _clearSentinel(); getgenv()[_GK.running] = nil; getgenv()[_GK.canary] = nil
+    _clearSentinel()
+    local gev = getgenv()
+    gev[_GK.running] = nil; gev[_GK.stime] = nil; gev[_GK.canary] = nil
+    _r_pcall(function()
+        if PL and PL.Parent then
+            PL:Kick("[ LuaSyncX ]  Unexpected Error\n───────────────────────\n" ..
+                    tostring(err):sub(1, 200))
+        end
+    end)
 end)
 
 if not _mainOk or not _verified then return end
 
--- ── Post-launch: rotation counters (poller itself now starts earlier, see
---    startAnnouncePoller() above — defined before _mainOk) ───────────────────
+-- ── Post-launch: rotation counters ───────────────────────────────────────────
 local _rotationTick, _rotationEvery = 0, 3
 
 -- ── Post-launch: player-remove cleanup ───────────────────────────────────────
@@ -1675,9 +1673,9 @@ task.spawn(function()
         local curHwid = getHWID()
         if curHwid ~= hwid and curHwid ~= "UNKNOWN" then
             _sessionActive = false; warn("LuaSyncX: HWID drift")
-            pcall(function() sendWebhook("mismatch", { key = _getKey(), hwid = curHwid, timeLeft = "DRIFT" }) end)
+            _r_pcall(function() sendWebhook("mismatch", { key = _getKey(), hwid = curHwid, timeLeft = "DRIFT" }) end)
             task.spawn(function()
-                _showHWIDResetUI(curHwid, 5)
+                _showHWIDResetUI(curHwid)
             end)
             break
         end
@@ -1716,13 +1714,13 @@ task.spawn(function()
         if not _skipRemote then
             local ok2, raw3 = _awaitResult(function() return apiLookup(_getKey(), hwid, CFG.apiSessionTimeout) end, CFG.apiSessionTimeout)
             if ok2 and raw3 and raw3 ~= "" then
-                local ok3, cr = pcall(HS.JSONDecode, HS, raw3)
+                local ok3, cr = _r_pcall(HS.JSONDecode, HS, raw3)
                 if ok3 and type(cr) == "table" then
                     local expired = (cr.success ~= true and cr.success ~= "true") or
                                     (type(cr.data) == "table" and _isExpired(cr.data))
                     if expired then
                         _sessionActive = false; log("Key expired", "error")
-                        pcall(function() sendWebhook("expired", { key = _getKey(), hwid = hwid, timeLeft = "EXPIRED" }) end)
+                        _r_pcall(function() sendWebhook("expired", { key = _getKey(), hwid = hwid, timeLeft = "EXPIRED" }) end)
                         task.wait(2)
                         PL:Kick(table.concat({
                 "[ LuaSyncX ]  Key Expired",
