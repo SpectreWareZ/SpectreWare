@@ -795,6 +795,10 @@ function Library:CreateWindow(config)
     -- แล้วล้น/เกะกะบนจอมือถือเล็ก หรือดูจิ๋วเกินไปบนจอ PC ใหญ่ๆ
     -- อัปเดตสดตอนหมุนจอ/ปรับขนาดหน้าต่าง เพื่อคง proportion เดิมเสมอ
     local ResponsiveScale = 1
+    -- มือถือ (touch, ไม่มีเมาส์) รายงาน AbsoluteSize เป็นพิกเซลดิบซึ่งมักสูงกว่า REF_MAX
+    -- อยู่แล้ว (จอ 1080p+) ทำให้สเกลชนเพดาน 1.0 เท่า PC ทั้งที่ขนาดจริงบนจอเล็กกว่ามาก
+    -- → ต้อง boost เพิ่มเฉพาะ touch device กันไม่ให้ UI ดูจิ๋ว
+    local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
     local function computeResponsiveScale()
         local screenSize = ScreenGui.AbsoluteSize
         local minDim = math.min(screenSize.X, screenSize.Y)
@@ -802,7 +806,11 @@ function Library:CreateWindow(config)
         local REF_MIN, REF_MAX = 380, 900   -- มิติสั้นสุด: มือถือจอเล็กสุด ~380px ถึง PC ทั่วไป ~900px
         local SCALE_MIN, SCALE_MAX = 0.74, 1.0
         local t = math.clamp((minDim - REF_MIN) / (REF_MAX - REF_MIN), 0, 1)
-        return SCALE_MIN + (SCALE_MAX - SCALE_MIN) * t
+        local scale = SCALE_MIN + (SCALE_MAX - SCALE_MIN) * t
+        if IS_MOBILE then
+            scale = scale * 1.35   -- boost มือถือเพิ่ม ~35% ปรับตัวเลขนี้ได้ตามชอบ
+        end
+        return scale
     end
     ResponsiveScale = computeResponsiveScale()
 
