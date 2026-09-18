@@ -2121,6 +2121,39 @@ function Library:CreateWindow(config)
     TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
     TabLayout.Parent = TabList
 
+    -- ============ SLIDING ACTIVE-TAB INDICATOR ============
+    -- แถบไฮไลต์เดียวที่ไถลลื่นๆ จากตำแหน่งแท็บเดิมไปตำแหน่งแท็บใหม่ (Back_Out) แทนการกระพริบทีละปุ่ม
+    -- ต้องมี ZIndex ต่ำกว่าปุ่มแท็บ (ปุ่มโปร่งใสตอนไม่ active อยู่แล้ว เลยเห็นแถบทะลุขึ้นมาข้างหลังสวยๆ)
+    local ActiveIndicator = Instance.new("Frame")
+    ActiveIndicator.Name = "ActiveIndicator"
+    ActiveIndicator.Size = UDim2.new(1, 0, 0, 36)
+    ActiveIndicator.Position = UDim2.new(0, 0, 0, 0)
+    ActiveIndicator.BackgroundTransparency = 1
+    applyThemeColor(ActiveIndicator, "AccentA")
+    ActiveIndicator.BorderSizePixel = 0
+    ActiveIndicator.ZIndex = 0
+    ActiveIndicator.Parent = TabList
+    corner(ActiveIndicator, 8)
+    accentGradient(ActiveIndicator, 100)
+    local indicatorStroke = stroke(ActiveIndicator, "AccentA")
+    indicatorStroke.Transparency = 1
+
+    local function slideIndicatorTo(targetBtn, instant)
+        if instant then
+            ActiveIndicator.Position = targetBtn.Position
+            ActiveIndicator.Size = targetBtn.Size
+            ActiveIndicator.BackgroundTransparency = 0.88
+            indicatorStroke.Transparency = 0.7
+            return
+        end
+        TweenService:Create(ActiveIndicator, TI.d02_Back_Out, {
+            Position = targetBtn.Position,
+            Size = targetBtn.Size,
+            BackgroundTransparency = 0.88,
+        }):Play()
+        TweenService:Create(indicatorStroke, TI.d02_Back_Out, {Transparency = 0.7}):Play()
+    end
+
     -- registry ของแท็บทั้งหมด (ใช้กรองตอนค้นหา) + label "ไม่พบแท็บ"
     local allTabs = {}
     local TabEmptyLbl = Instance.new("TextLabel")
@@ -3227,6 +3260,7 @@ function Library:CreateWindow(config)
                 local isThis = (t.Btn == TabBtn)
                 t.SetActive(isThis)
                 if isThis then
+                    slideIndicatorTo(t.Btn)
                     if not t.Content.Visible then
                         -- เด้งขึ้นมาจากด้านล่างนิดๆ พร้อม pop สเกล ให้รู้สึกลื่นไหลตอนสลับแท็บ
                         t.Content.Position = t.BasePos + UDim2.new(0, 0, 0, 12)
@@ -5418,6 +5452,7 @@ function Library:CreateWindow(config)
         table.insert(Tabs, {Btn = TabBtn, Content = TabContent, SetActive = setActive, BasePos = ContentBasePos, Scale = ContentScale})
         if #Tabs == 1 then
             setActive(true)
+            slideIndicatorTo(TabBtn, true) -- true = จัดตำแหน่งทันทีไม่ต้องไถล (แท็บแรกตอนเปิด UI)
             TabContent.Visible = true
             CurrentTab = {Btn = TabBtn, Content = TabContent, SetActive = setActive}
         end
@@ -5562,6 +5597,11 @@ function Library:CreateWindow(config)
             end)
         end
     end)
+
+    -- ============ GRAND ENTRANCE ============
+    -- เอฟเฟกต์เด้งสปริง+เอียงสะบัด+fade ที่ setUiVisible(true) ทำไว้แล้ว (เดิมใช้แค่ตอน Restore จากการซ่อน)
+    -- เรียกครั้งเดียวตอนสร้างหน้าต่างเสร็จ ให้ UI เด้งเข้ามาสวยๆ ตั้งแต่เปิดสคริปต์ครั้งแรกด้วย
+    setUiVisible(true)
 
     return Window
 end
