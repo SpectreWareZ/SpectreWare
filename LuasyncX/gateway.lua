@@ -9,9 +9,8 @@
 -- whitelist.lua จะเช็ค map นี้ก่อนยิงไป backend เสมอ ถ้าเจอ placeId ใน map
 -- จะใช้ scriptUrl นี้เลย (ไม่ต้องพึ่ง /api/script/:placeId จาก backend)
 local PLACE_MAP = {
-     ["77908479907662"] = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/Never",
-    ["17766863403"] = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/Beady",
-    ["123974602339071"] = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Games/Test.lua",
+    ["77908479907662"] = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/Never",
+    ["17766863403"]    = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/Beady",
 }
 
 local CFG = {
@@ -77,7 +76,7 @@ local function _tryFn(fn, opts, timeout)
         ticks = ticks + 1
     end
     if not done then
-        pcall(task.cancel, co)
+        _r_pcall(task.cancel, co)
         return false, nil
     end
     return ok, res
@@ -114,7 +113,7 @@ local function safeGetTimeout(url, timeout)
     end)
     local ticks, max = 0, timeout * 20
     while not done and ticks < max do task.wait(0.05); ticks = ticks + 1 end
-    if not done then pcall(task.cancel, co) end
+    if not done then _r_pcall(task.cancel, co) end
     return done and ok or false, done and body or nil
 end
 
@@ -146,6 +145,9 @@ end
 
 if not ok or not src or #src < 32 then
     warn("[ SpectreWare Gateway ]: Failed to fetch whitelist.lua after " .. CFG.maxRetries .. " attempts.")
+    -- ── Fix: เคลียร์ guard flag เมื่อ fetch fail เพื่อให้รันใหม่ได้ทันที ──
+    -- (เดิม flag ค้าง true — รันซ้ำภายใน 10 วิ จะโดน skip)
+    _r_pcall(function() getgenv()._SW_GW_RUNNING = nil end)
     return
 end
 
@@ -154,15 +156,20 @@ local fn, compErr = loadstring(src)
 src = nil
 if not fn then
     warn("[ SpectreWare Gateway ]: Compile error — " .. tostring(compErr))
+    -- ── Fix: เคลียร์ flag เช่นกัน ──
+    _r_pcall(function() getgenv()._SW_GW_RUNNING = nil end)
     return
 end
 
-local _gOk = pcall(function() getgenv()._SW_PLACE_MAP = PLACE_MAP end)
+local _gOk = _r_pcall(function() getgenv()._SW_PLACE_MAP = PLACE_MAP end)
 if not _gOk then
     warn("[ SpectreWare Gateway ]: getgenv() unavailable — PLACE_MAP override disabled")
 end
 
-local runOk, runErr = pcall(fn)
+local runOk, runErr = _r_pcall(fn)
 if not runOk then
     warn("[ SpectreWare Gateway ]: Runtime error — " .. tostring(runErr))
+    -- ── Fix: run fail → เคลียร์ flag เพื่อให้ลองใหม่ได้ (สำเร็จ → คง flag ไว้
+    --       เพราะ whitelist.lua ยังรัน async heartbeat ต่อ) ──
+    _r_pcall(function() getgenv()._SW_GW_RUNNING = nil end)
 end
