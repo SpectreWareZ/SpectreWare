@@ -90,6 +90,10 @@ function NotificationLibrary:SendNotification(Mode, Text, Duration)
         local ok, err = pcall(function()
             local n = templateFolder:WaitForChild(_resolvedMode):Clone()
             local filler, bar = n.Filler, n.bar
+            -- RichText: เปิดไว้เสมอ ให้ Text ที่ส่งมาใช้ <img src="rbxassetid://.."/>
+            -- แทนอีโมจิ Unicode ได้ (caller เก่าที่ยังส่ง plain text/emoji ธรรมดา
+            -- ก็ยังใช้ได้ปกติ ไม่กระทบ)
+            n.Header.RichText = true
             n.Header.Text = Text
             n.Header.TextTransparency = 1 -- เริ่มโปร่งใส เดี๋ยว fade เข้า
 
