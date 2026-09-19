@@ -23,7 +23,7 @@ local CFG = {
     splashImageId       = "71815202801684",
     announceDisplayTime = 5,
     announceSound       = "6518811702",
-    announceTimeout     = 6,
+    announceTimeout     = 25, -- ต้องมากกว่า long-poll ฝั่ง server (20s) ไม่งั้น client ตัดทิ้งก่อนได้คำตอบ
     apiSessionTimeout   = 10,
     discordUrl          = "https://discord.gg/KJHk8c2Q65",
     notifLibUrl         = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Tools/notiflib.lua",
@@ -385,31 +385,6 @@ local _stripChars = {
     "✔","✘","⚡","🔑","🖥","👤","🎮","⏳","💬","👑","🎁","∞","⚠️","⚠","›","·","🚀","🔥",
 }
 
--- ── Icon assets (สำหรับ NotificationLibrary เท่านั้น — RichText เปิดแล้ว) ────
--- เดิมพยายามโหลด icons.lua จาก URL แยก แต่พังเพราะไฟล์ยังไม่ได้อัปโหลดขึ้น
--- repo จริง (fetch ได้ 404 กลับมาแทน) แก้โดยฝัง id 4 ตัวที่ใช้จริงเข้ามาตรงนี้
--- เลย (คัดลอกมาจาก icons.lua ที่ส่งให้ก่อนหน้า: check/key/warning/clock) ไม่
--- ต้อง fetch อะไรจากเน็ตอีกต่อไป ไม่มีทาง 404 ไม่ต้องอัปโหลด/แก้ URL ที่ไหน
--- ถ้าจะเพิ่ม/เปลี่ยนไอคอนทีหลัง แก้เลข rbxassetid ตรงนี้ตรงๆ ได้เลย
--- หมายเหตุ: ยังไม่มีไอคอนสำหรับ "bolt" (⚡) เพราะ icons.lua ที่ให้มาไม่มีชื่อ
--- zap/lightning อยู่ในลิสต์ — ใช้ emoji เดิมไปก่อนจนกว่าจะมี id จริงมาใส่
-local ICON_SIZE = 18
-local ICONS = {
-    bolt      = 0,           -- ⚡ ยังไม่มี id — คงเป็น emoji
-    check     = 10709790644, -- ✔  icons.lua: check
-    key       = 10723416652, -- 🔑 icons.lua: key
-    hourglass = 10709805144, -- ⏳ icons.lua: clock (ใกล้เคียงสุดที่มี)
-    warning   = 10709753149, -- ⚠  icons.lua: warning
-}
-
-local function _icon(name, fallbackEmoji)
-    local id = ICONS[name]
-    if id and id ~= 0 then
-        return ('<img src="rbxassetid://%d" width="%d" height="%d"/>'):format(id, ICON_SIZE, ICON_SIZE)
-    end
-    return fallbackEmoji
-end
-
 local function _stripDeco(msg)
     msg = tostring(msg)
     -- ทุก decoration char เป็น UTF-8 multi-byte (byte >= 0x80) ทั้งหมด
@@ -541,7 +516,7 @@ end
 -- IMPORTANT: whenever CFG.notifLibUrl's content is intentionally changed,
 -- this constant must be recomputed and updated, or every load will be
 -- refused with a hash-mismatch warning.
-local EXPECTED_NOTIFLIB_HASH = "F6B0888D" -- DJB2 of current Tools/notiflib.lua content (GitHub) — refreshed 2026-09-19 (RichText patch)
+local EXPECTED_NOTIFLIB_HASH = "C11A5FC8" -- DJB2 of current Tools/notiflib.lua content (GitHub) — refreshed 2026-09-14
 
 task.spawn(function()
     local _nlOk, _nlSrc = safeGet(CFG.notifLibUrl)
@@ -639,9 +614,9 @@ end
 
 local function _notifyWL(timeLeft, tier)
     local isPerm = timeLeft == "Permanent" or timeLeft == "∞  Developer" or timeLeft == "∞  Free"
-    local msg = _icon("bolt", "⚡") .. "  LuaSyncX  " .. _icon("check", "✔") .. "  " .. (tier or "") .. "  —  " ..
-                (isPerm and (_icon("key", "🔑") .. " Whitelist ของคุณ: ตลอดกาล ∞")
-                         or (_icon("hourglass", "⏳") .. " Whitelist ของคุณเหลือ: " .. timeLeft))
+    local msg = "⚡  LuaSyncX  ✔  " .. (tier or "") .. "  —  " ..
+                (isPerm and "🔑 Whitelist ของคุณ: ตลอดกาล ∞"
+                         or "⏳ Whitelist ของคุณเหลือ: " .. timeLeft)
     local waited = 0
     while not NotificationLibrary and waited < 50 do
         task.wait(0.1); waited = waited + 1
@@ -655,9 +630,9 @@ local function _notifyHWID(reason)
     reason = reason or "mismatch"
     local msg
     if reason == "drift" then
-        msg = _icon("warning", "⚠") .. "  HWID Drift Detected\n" .. _icon("bolt", "⚡") .. "  LuaSyncX  —  HWID เปลี่ยนระหว่าง session\nติดต่อ Discord เพื่อรีเซ็ต HWID"
+        msg = "⚠  HWID Drift Detected\n⚡  LuaSyncX  —  HWID เปลี่ยนระหว่าง session\nติดต่อ Discord เพื่อรีเซ็ต HWID"
     else
-        msg = _icon("warning", "⚠") .. "  HWID Mismatch\n" .. _icon("bolt", "⚡") .. "  LuaSyncX  —  Key นี้ผูกกับอุปกรณ์อื่น\nติดต่อ Discord เพื่อรีเซ็ต HWID"
+        msg = "⚠  HWID Mismatch\n⚡  LuaSyncX  —  Key นี้ผูกกับอุปกรณ์อื่น\nติดต่อ Discord เพื่อรีเซ็ต HWID"
     end
     local waited = 0
     while not NotificationLibrary and waited < 50 do
@@ -1245,7 +1220,7 @@ local function startAnnouncePoller()
     _announceStarted = true
     task.spawn(function()
         while _sessionActive do
-            local gotMsg = false
+            local gotMsg, gotResp = false, false
             pcall(function()
                 local ok, raw2 = safeGetTimeout(
                     CFG.API .. "/api/announce?key=" .. _getKey() .. "&hwid=" .. HS:UrlEncode(hwid) .. "&seq=" .. _lastSeq,
@@ -1253,7 +1228,7 @@ local function startAnnouncePoller()
                 if not ok or not raw2 or raw2 == "" then return end
                 local ok2, d = pcall(HS.JSONDecode, HS, raw2)
                 if not ok2 or type(d) ~= "table" then return end
-                if type(d.seq) == "number" then _lastSeq = d.seq end
+                if type(d.seq) == "number" then _lastSeq = d.seq; gotResp = true end
                 local id, m = tostring(d.id or ""), tostring(d.message or "")
                 if id ~= "" and id ~= _lastId and m ~= "" then
                     _lastId = id; gotMsg = true; showAnnounce(m)
@@ -1276,7 +1251,7 @@ local function startAnnouncePoller()
                     end)
                 end
             end)
-            task.wait(gotMsg and 2 or 4)
+            task.wait(gotMsg and 2 or (gotResp and 1 or 5)) -- long-poll รอมาแล้ว → poll ต่อไว; error/401/429 → ถอยไป 5s
         end
     end)
 end
@@ -1394,7 +1369,7 @@ local _mainOk = xpcall(function()
         if NotificationLibrary then
             pcall(function()
                 NotificationLibrary:SendNotification("Info",
-                    _icon("bolt", "⚡") .. "  LuaSyncX  v" .. CFG.loaderVersion .. "  —  กำลังโหลด...", 4)
+                    "⚡  LuaSyncX  v" .. CFG.loaderVersion .. "  —  กำลังโหลด...", 4)
             end)
         end
         local _label  = _isDev and "DEV ACCESS 👑"  or "FREE ACCESS 🎁"
@@ -1540,7 +1515,7 @@ local _mainOk = xpcall(function()
     if NotificationLibrary then
         pcall(function()
             NotificationLibrary:SendNotification("Info",
-                _icon("bolt", "⚡") .. "  LuaSyncX  v" .. CFG.loaderVersion .. "  —  กำลังโหลด...", 4)
+                "⚡  LuaSyncX  v" .. CFG.loaderVersion .. "  —  กำลังโหลด...", 4)
         end)
     end
     local timeLeft, expiresAt = "Permanent", data.expiresAt
