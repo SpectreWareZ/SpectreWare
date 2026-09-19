@@ -27,9 +27,6 @@ local CFG = {
     apiSessionTimeout   = 10,
     discordUrl          = "https://discord.gg/KJHk8c2Q65",
     notifLibUrl         = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Tools/notiflib.lua",
-    -- TODO: อัปโหลด icons.lua (อยู่ในโฟลเดอร์เดียวกับไฟล์นี้ในซิป) ขึ้น repo จริง
-    -- แล้วแก้ path นี้ให้ตรง — ตอนนี้เป็นแค่ path เดา ยังไม่มีไฟล์ที่ url นี้จริง
-    iconsUrl            = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Tools/icons.lua",
 }
 
 local CLIENT_HEADERS = { ["X-Client-Key"] = CFG.clientKey }
@@ -389,27 +386,20 @@ local _stripChars = {
 }
 
 -- ── Icon assets (สำหรับ NotificationLibrary เท่านั้น — RichText เปิดแล้ว) ────
--- ค่า ICONS ด้านล่างโหลดมาจาก icons.lua (module แยก, เชื่อม CFG.iconsUrl ด้านล่าง)
--- ถ้าโหลดไม่สำเร็จ หรือชื่อไอคอนนั้นไม่มีใน module ระบบ fallback กลับไปใช้
--- อีโมจิ Unicode เดิมให้อัตโนมัติ — ไม่มีทางพังหรือขึ้นกล่องขาว
--- หมายเหตุ: ยังไม่มีไอคอนสำหรับ "bolt" (⚡) ใน icons.lua ที่ให้มา (ไม่มีชื่อ
--- zap/lightning อยู่ในลิสต์) — ใช้ emoji เดิมไปก่อนจนกว่าจะเพิ่มเข้า module
+-- เดิมพยายามโหลด icons.lua จาก URL แยก แต่พังเพราะไฟล์ยังไม่ได้อัปโหลดขึ้น
+-- repo จริง (fetch ได้ 404 กลับมาแทน) แก้โดยฝัง id 4 ตัวที่ใช้จริงเข้ามาตรงนี้
+-- เลย (คัดลอกมาจาก icons.lua ที่ส่งให้ก่อนหน้า: check/key/warning/clock) ไม่
+-- ต้อง fetch อะไรจากเน็ตอีกต่อไป ไม่มีทาง 404 ไม่ต้องอัปโหลด/แก้ URL ที่ไหน
+-- ถ้าจะเพิ่ม/เปลี่ยนไอคอนทีหลัง แก้เลข rbxassetid ตรงนี้ตรงๆ ได้เลย
+-- หมายเหตุ: ยังไม่มีไอคอนสำหรับ "bolt" (⚡) เพราะ icons.lua ที่ให้มาไม่มีชื่อ
+-- zap/lightning อยู่ในลิสต์ — ใช้ emoji เดิมไปก่อนจนกว่าจะมี id จริงมาใส่
 local ICON_SIZE = 18
 local ICONS = {
-    bolt      = 0, -- ⚡ ยังไม่มีใน icons.lua ที่ให้มา
-    check     = 0, -- ✔  ← icons.lua: check
-    key       = 0, -- 🔑 ← icons.lua: key
-    hourglass = 0, -- ⏳ ← icons.lua: clock (ใกล้เคียงสุดที่มี ไม่มี hourglass ตรงตัว)
-    warning   = 0, -- ⚠  ← icons.lua: warning
-}
-
--- แม็พ ICONS key (ที่ _icon() ใช้) → ชื่อ icon ใน module icons.lua
-local _ICON_SOURCE_NAME = {
-    check     = "check",
-    key       = "key",
-    hourglass = "clock",
-    warning   = "warning",
-    -- bolt: ตั้งใจไม่แม็พ เพราะ icons.lua ที่ให้มายังไม่มีตัวที่ตรงความหมาย
+    bolt      = 0,           -- ⚡ ยังไม่มี id — คงเป็น emoji
+    check     = 10709790644, -- ✔  icons.lua: check
+    key       = 10723416652, -- 🔑 icons.lua: key
+    hourglass = 10709805144, -- ⏳ icons.lua: clock (ใกล้เคียงสุดที่มี)
+    warning   = 10709753149, -- ⚠  icons.lua: warning
 }
 
 local function _icon(name, fallbackEmoji)
@@ -569,30 +559,6 @@ task.spawn(function()
     local _runOk, _lib = _r_pcall(_fn)
     NotificationLibrary = _runOk and _lib or nil
     if not NotificationLibrary then warn("LuaSyncX: notiflib load failed") end
-end)
-
--- ── Icon pack (async, best-effort) ────────────────────────────────────────────
--- โหลด icons.lua จาก CFG.iconsUrl แล้วแม็พเฉพาะชื่อที่ใช้จริงใน ICONS/_icon()
--- (ดูตาราง _ICON_SOURCE_NAME ด้านบน) เข้า ICONS[..] ที่นั่น ไม่มี integrity
--- hash-pin แบบ notiflib เพราะเป็นแค่ตาราง data ล้วนไม่มีโค้ดที่รันอันตรายได้
--- (ยังคง _native_loadstring/pcall แบบ sandboxed เดิมเผื่ออนาคต) — โหลดพังก็แค่
--- ไม่มี icon ใช้ fallback อีโมจิเดิม ไม่กระทบการทำงานส่วนอื่น
-task.spawn(function()
-    local _icOk, _icSrc = safeGet(CFG.iconsUrl)
-    if not _icOk or not _icSrc or _icSrc == "" then
-        warn("LuaSyncX: icons.lua fetch failed — ใช้อีโมจิ fallback ต่อไป"); return
-    end
-    local _fn, _cerr = _native_loadstring(_icSrc)
-    if not _fn then warn("LuaSyncX: icons.lua compile error — " .. tostring(_cerr)); return end
-    local _runOk, _pack = _r_pcall(_fn)
-    if not _runOk or type(_pack) ~= "table" then
-        warn("LuaSyncX: icons.lua returned no usable table"); return
-    end
-    for ourKey, packName in pairs(_ICON_SOURCE_NAME) do
-        local raw = _pack[packName]
-        local numId = type(raw) == "string" and raw:match("%d+")
-        if numId then ICONS[ourKey] = tonumber(numId) end
-    end
 end)
 
 -- ── HWID ─────────────────────────────────────────────────────────────────────
