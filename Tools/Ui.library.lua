@@ -3098,15 +3098,26 @@ function Library:CreateWindow(config)
 
     local function slideIndicatorTo(targetBtn, instant)
         ActiveIndicator.Visible = true
+        -- UIListLayout ไม่เซต .Position ของลูก — มันจัดผ่าน internal layout (AbsolutePosition)
+        -- ดังนั้น targetBtn.Position จะเป็น UDim2(0,0,0,0) ตลอด ทำให้ indicator ติดอยู่ที่ Y=0 เสมอ
+        -- แก้: คำนวณ offsetY จาก AbsolutePosition เทียบกับ TabHolder origin + canvas scroll
+        local function calcPos()
+            local offsetY = targetBtn.AbsolutePosition.Y - TabHolder.AbsolutePosition.Y + TabList.CanvasPosition.Y
+            return UDim2.new(0, 0, 0, offsetY)
+        end
         if instant then
-            ActiveIndicator.Position = targetBtn.Position
-            ActiveIndicator.Size = targetBtn.Size
-            ActiveIndicator.BackgroundTransparency = 0.88
-            indicatorStroke.Transparency = 0.7
+            -- defer 1 frame เพื่อให้ UIListLayout คำนวณ AbsolutePosition เสร็จก่อน (กรณีสร้างใหม่)
+            task.defer(function()
+                if not ActiveIndicator.Parent then return end
+                ActiveIndicator.Position = calcPos()
+                ActiveIndicator.Size = targetBtn.Size
+                ActiveIndicator.BackgroundTransparency = 0.88
+                indicatorStroke.Transparency = 0.7
+            end)
             return
         end
         TweenService:Create(ActiveIndicator, TI.d02_Back_Out, {
-            Position = targetBtn.Position,
+            Position = calcPos(),
             Size = targetBtn.Size,
             BackgroundTransparency = 0.88,
         }):Play()
