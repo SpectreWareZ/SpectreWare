@@ -5666,7 +5666,12 @@ function Library:CreateWindow(config)
         function Tab:CreateParagraph(c)
             c = type(c) == "table" and c or {}
             local titleText = c.Title and tostring(Library:Translate(c.Title)) or nil
-            local bodyRaw = c.Text or c.Desc or c.Content or c.Description
+            -- normalizeConfig เติม c.Text = Title ให้ทุก element → ถ้าใช้ c.Text ก่อน Paragraph({Title=, Desc=}) จะโชว์ Title ซ้ำเป็นเนื้อหาแล้ว Desc หาย
+            local bodyRaw = c.Desc or c.Content or c.Description
+            if bodyRaw == nil and c.Text ~= nil then
+                local textIsTitle = c.Title ~= nil and tostring(Library:Translate(c.Title)) == tostring(c.Text)
+                if not textIsTitle then bodyRaw = c.Text end
+            end
             local bodyText = bodyRaw ~= nil and tostring(Library:Translate(bodyRaw)) or ((titleText == nil and not c.Image) and "Paragraph" or "")
 
             local tint
@@ -6581,6 +6586,38 @@ function Library:CreateWindow(config)
             Label.TextTruncate = Enum.TextTruncate.AtEnd
             Label.Parent = Drop
 
+            -- ไอคอนประจำตัวเลือก (c.OptionIcons = {[ชื่อตัวเลือก] = ไอคอน/asset}) — โชว์ทั้งในรายการและหน้าตัวเลือกที่เลือกอยู่
+            local function optionIcon(opt)
+                local m = c.OptionIcons
+                local v = type(m) == "table" and m[opt] or nil
+                if type(v) == "string" and v ~= "" then return Library.Icons[v] or v end
+                return nil
+            end
+            local SelIcon = Instance.new("ImageLabel")
+            SelIcon.Name = "SelIcon"
+            SelIcon.Size = UDim2.new(0, 24, 0, 24)
+            SelIcon.AnchorPoint = Vector2.new(0, 0.5)
+            SelIcon.Position = UDim2.new(0, 12, 0.5, 0)
+            SelIcon.BackgroundTransparency = 1
+            SelIcon.ScaleType = Enum.ScaleType.Fit
+            SelIcon.Visible = false
+            SelIcon.Parent = Drop
+            local function applySelIcon()
+                -- แก้เฉพาะแกน X ของ Label (แกน Y อาจถูก attachDesc ปรับไว้แล้ว)
+                local img = optionIcon(selected)
+                if img then
+                    SelIcon.Image = img
+                    SelIcon.Visible = true
+                    Label.Position = UDim2.new(0, 42, Label.Position.Y.Scale, Label.Position.Y.Offset)
+                    Label.Size = UDim2.new(1, -70, Label.Size.Y.Scale, Label.Size.Y.Offset)
+                else
+                    SelIcon.Visible = false
+                    Label.Position = UDim2.new(0, 16, Label.Position.Y.Scale, Label.Position.Y.Offset)
+                    Label.Size = UDim2.new(1, -44, Label.Size.Y.Scale, Label.Size.Y.Offset)
+                end
+            end
+            applySelIcon()
+
             local ArrowWrap = Instance.new("Frame")
             ArrowWrap.Size = UDim2.new(0, 18, 0, 18)
             ArrowWrap.Position = UDim2.new(1, -32, 0.5, 0)
@@ -6623,6 +6660,7 @@ function Library:CreateWindow(config)
             local function selectOption(opt, fireCallback)
                 selected = opt
                 Label.Text = (c.Text or "Dropdown") .. ": " .. opt
+                applySelIcon()
                 bindFlag(c.Flag, selected)
                 closeDropdown()
                 if fireCallback then safeCallback(c.Callback, opt) end
@@ -6845,8 +6883,22 @@ function Library:CreateWindow(config)
                     end
 
                     local optLabel = Instance.new("TextLabel")
-                    optLabel.Size = UDim2.new(1, isSelected and -46 or -24, 1, 0)
-                    optLabel.Position = UDim2.new(0, (isSelected and 20 or 14) - 6, 0, 0) -- เลื่อนซ้าย 6px ไว้ก่อน แล้ว slide-in เข้าที่
+                    local optImg = optionIcon(opt)
+                    local iconOff = optImg and 28 or 0
+                    optLabel.Size = UDim2.new(1, (isSelected and -46 or -24) - iconOff, 1, 0)
+                    optLabel.Position = UDim2.new(0, (isSelected and 20 or 14) - 6 + iconOff, 0, 0) -- เลื่อนซ้าย 6px ไว้ก่อน แล้ว slide-in เข้าที่
+                    if optImg then
+                        local OptIco = Instance.new("ImageLabel")
+                        OptIco.Name = "OptIcon"
+                        OptIco.Size = UDim2.new(0, 22, 0, 22)
+                        OptIco.AnchorPoint = Vector2.new(0, 0.5)
+                        OptIco.Position = UDim2.new(0, isSelected and 12 or 10, 0.5, 0)
+                        OptIco.BackgroundTransparency = 1
+                        OptIco.Image = optImg
+                        OptIco.ScaleType = Enum.ScaleType.Fit
+                        OptIco.ZIndex = 12
+                        OptIco.Parent = optBtn
+                    end
                     optLabel.BackgroundTransparency = 1
                     optLabel.Text = opt
                     applyThemeColor(optLabel, isSelected and "AccentA" or "Text", "TextColor3")
@@ -6874,7 +6926,7 @@ function Library:CreateWindow(config)
                     end
 
                     optBtn.MouseButton1Click:Connect(function() selectOption(opt, true) end)
-                    table.insert(optEntries, {opt = opt, btn = optBtn, label = optLabel, check = check, bar = accentBar, baseX = isSelected and 20 or 14})
+                    table.insert(optEntries, {opt = opt, btn = optBtn, label = optLabel, check = check, bar = accentBar, baseX = (isSelected and 20 or 14) + iconOff})
                 end
 
                 -- กรองรายการตามคำค้นหา (ซ่อน/โชว์ผ่าน Visible, UIListLayout จะจัดเรียงใหม่ให้อัตโนมัติ)
@@ -6942,7 +6994,32 @@ function Library:CreateWindow(config)
                 -- SearchBox ไม่ auto-focus ตอนเปิด dropdown — user กดเองเมื่อต้องการค้นหา
             end
             Drop.MouseButton1Click:Connect(function() if isOpen then closeDropdown() else openDropdown() end end)
-            return newElement(Drop, function() return selected end, function(_, newVal) selectOption(newVal, true) end, nil, c.Flag)
+            local dropElem = newElement(Drop, function() return selected end, function(_, newVal) selectOption(newVal, true) end, nil, c.Flag)
+            -- เปลี่ยนรายการตัวเลือกสด (WindUI: Refresh) — ไม่ยิง Callback
+            -- Refresh(options, เลือกอันไหน?, ไอคอนของแต่ละตัวเลือก?) ถ้าไม่ระบุจะคงค่าเดิมไว้ถ้ายังอยู่ในรายการ ไม่งั้นเลือกอันแรก
+            function dropElem:Refresh(options, newSelected, optionIcons)
+                local conv = {}
+                if type(options) == "table" then
+                    for _, v in ipairs(options) do
+                        conv[#conv + 1] = type(v) == "table" and tostring(v.Title or v.Name or v.Text or "") or tostring(v)
+                    end
+                end
+                if #conv == 0 then conv = {"Option 1"} end
+                c.Options = conv
+                if optionIcons ~= nil then c.OptionIcons = optionIcons end
+                closeDropdown()
+                local target = newSelected
+                if target == nil or not table.find(conv, target) then
+                    target = table.find(conv, selected) and selected or conv[1]
+                end
+                selected = target
+                Label.Text = (c.Text or "Dropdown") .. ": " .. selected
+                applySelIcon()
+                bindFlag(c.Flag, selected)
+                return dropElem
+            end
+            dropElem.SetOptions = dropElem.Refresh
+            return dropElem
         end
 
         function Tab:CreateThemeDropdown(c)
@@ -7989,6 +8066,11 @@ function Library:CreateWindow(config)
                 safeCallback(c.Callback, list)
             end
 
+            local rowFrames = {}
+            local function buildRows()
+                for _, r in ipairs(rowFrames) do r:Destroy() end
+                rowFrames = {}
+                boxes = {}
             for _, opt in ipairs(c.Options) do
                 local Row = Instance.new("TextButton")
                 Row.Size = UDim2.new(1, 0, 0, 26)
@@ -7996,6 +8078,7 @@ function Library:CreateWindow(config)
                 Row.AutoButtonColor = false
                 Row.Text = ""
                 Row.Parent = Frame
+                table.insert(rowFrames, Row)
                 corner(Row, 6)
                 applyHoverEffect(Row, "Element", "ElementHover") -- เดิมแถวไม่มี feedback ตอน hover เลย ทำให้รู้สึกดิบๆ
 
@@ -8046,8 +8129,10 @@ function Library:CreateWindow(config)
                     fireCallback()
                 end)
             end
+            end
+            buildRows()
 
-            return newElement(Frame, getList, function(_, newList)
+            local multiElem = newElement(Frame, getList, function(_, newList)
                 selected = {}
                 if type(newList) == "table" then for _, v in ipairs(newList) do selected[v] = true end end
                 for opt, b in pairs(boxes) do
@@ -8056,6 +8141,27 @@ function Library:CreateWindow(config)
                 end
                 fireCallback()
             end, nil, c.Flag)
+            -- เปลี่ยนรายการตัวเลือกสด (WindUI: Refresh) — สร้างแถวใหม่ทั้งหมด ไม่ยิง Callback
+            -- Refresh(options, รายการที่ติ๊กไว้?) ถ้าไม่ระบุจะคงอันที่ยังอยู่ในรายการไว้
+            function multiElem:Refresh(options, newSelected)
+                local conv = {}
+                if type(options) == "table" then
+                    for _, v in ipairs(options) do
+                        conv[#conv + 1] = type(v) == "table" and tostring(v.Title or v.Name or v.Text or "") or tostring(v)
+                    end
+                end
+                if #conv == 0 then conv = {"Option 1"} end
+                c.Options = conv
+                if type(newSelected) == "table" then
+                    selected = {}
+                    for _, v in ipairs(newSelected) do selected[v] = true end
+                end
+                buildRows()
+                bindFlag(c.Flag, getList())
+                return multiElem
+            end
+            multiElem.SetOptions = multiElem.Refresh
+            return multiElem
         end
 
         function Tab:CreateSearchBox(c)
