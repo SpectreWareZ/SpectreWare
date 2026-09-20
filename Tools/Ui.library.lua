@@ -4027,6 +4027,13 @@ function Library:CreateWindow(config)
             if CurrentTab and CurrentTab.Btn == TabBtn then return end
             TweenService:Create(TabBtn, TI.d015_Sine_Out, {BackgroundTransparency = 1}):Play()
         end)
+        -- SAFETY NET: บนมือถือบางที touch แตะ MouseEnter ติดแต่ปล่อยนิ้วแล้ว MouseLeave ไม่ยิงกลับมา
+        -- (ปัญหาเดียวกับ Radial Menu ที่เจอก่อนหน้า) ทำให้ปุ่มแท็บที่ไม่ได้เลือกค้าง highlight ค้างตลอดไป
+        -- ต้อง force เคลียร์ทุกครั้งที่มีนิ้วปล่อยจากจอ ถ้าแท็บนี้ไม่ใช่แท็บที่ active อยู่จริง
+        UserInputService.TouchEnded:Connect(function()
+            if CurrentTab and CurrentTab.Btn == TabBtn then return end
+            TweenService:Create(TabBtn, TI.d015_Sine_Out, {BackgroundTransparency = 1}):Play()
+        end)
 
         local TabContent = Instance.new("ScrollingFrame")
         TabContent.Size = UDim2.new(1, -20, 1, -20)
@@ -5216,7 +5223,19 @@ function Library:CreateWindow(config)
             Handle.Parent = Fill
             corner(Handle, 7)
 
-            local dragging, activeType = false, nil
+            -- HitZone: an invisible, taller strike area centered on Bar so touch
+            -- input on mobile doesn't have to land on the thin 8px visual track.
+            -- Sits above Bar in the hierarchy so it intercepts input first; the
+            -- visual look of Bar/Fill/Handle is untouched.
+            local HitZone = Instance.new("Frame")
+            HitZone.Size = UDim2.new(1, -20, 0, 28)
+            HitZone.Position = UDim2.new(0, 10, 0, 23)
+            HitZone.BackgroundTransparency = 1
+            HitZone.Active = true
+            HitZone.ZIndex = Bar.ZIndex + 1
+            HitZone.Parent = Frame
+
+            local dragging, activeType, activeInput = false, nil, nil
             local function updateFromPos(xPos, fireCallback)
                 local pos = xPos - Bar.AbsolutePosition.X
                 local percent = math.clamp(pos / Bar.AbsoluteSize.X, 0, 1)
@@ -5247,38 +5266,56 @@ function Library:CreateWindow(config)
 
             local inputChangedConn, inputEndedConn = nil, nil
             local function stopSliderDrag()
-                dragging = false; activeType = nil
+                dragging = false; activeType = nil; activeInput = nil
                 TabContent.ScrollingEnabled = true
                 if inputChangedConn then inputChangedConn:Disconnect(); inputChangedConn = nil end
                 if inputEndedConn then inputEndedConn:Disconnect(); inputEndedConn = nil end
                 sliderRSStop()
             end
 
-            Bar.InputBegan:Connect(function(input)
+            HitZone.InputBegan:Connect(function(input)
+                -- Ignore re-entrant presses (e.g. a second finger touching the
+                -- slider while it's already being dragged) instead of silently
+                -- overwriting activeType/connections and leaking the old ones.
+                if dragging then return end
                 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                     dragging = true
                     activeType = input.UserInputType
+                    activeInput = input
                     TabContent.ScrollingEnabled = false
                     updateFromPos(input.Position.X, true)
                     sliderRSStart()
 
                     inputChangedConn = UserInputService.InputChanged:Connect(function(input2)
                         if not dragging then return end
-                        if activeType == Enum.UserInputType.Touch and input2.UserInputType == Enum.UserInputType.Touch then
-                            sliderPush(input2.Position.X)
+                        if activeType == Enum.UserInputType.Touch then
+                            -- Match the exact touch (InputObject identity) that started
+                            -- the drag, so a second/unrelated finger moving elsewhere on
+                            -- screen (e.g. while scrolling) can't hijack the slider value.
+                            if input2 == activeInput then
+                                sliderPush(input2.Position.X)
+                            end
                         elseif activeType == Enum.UserInputType.MouseButton1 and input2.UserInputType == Enum.UserInputType.MouseMovement then
                             sliderPush(input2.Position.X)
                         end
                     end)
                     inputEndedConn = UserInputService.InputEnded:Connect(function(input2)
-                        if dragging and input2.UserInputType == activeType then
+                        if not dragging then return end
+                        if activeType == Enum.UserInputType.Touch then
+                            if input2 == activeInput then
+                                stopSliderDrag()
+                            end
+                        elseif input2.UserInputType == activeType then
                             stopSliderDrag()
                         end
                     end)
                 end
             end)
-            Bar.InputEnded:Connect(function(input)
-                if input.UserInputType == activeType then
+            HitZone.InputEnded:Connect(function(input)
+                if not dragging then return end
+                if activeType == Enum.UserInputType.Touch then
+                    if input == activeInput then stopSliderDrag() end
+                elseif input.UserInputType == activeType then
                     stopSliderDrag()
                 end
             end)
