@@ -1,4 +1,9 @@
 --[[
+    SpectreUI v7.0 — Pro Mobile & PC UI Library (WindUI-parity update)
+    ใหม่ใน v7: Element API (Lock/Unlock/SetTitle/SetDesc/Highlight), Section แบบพับได้, Group, Code, Space, Checkbox,
+    Paragraph แบบเต็ม (Title/Desc/Buttons), Desc ทุก element, Localization, SetFont, Dialog หลายปุ่ม, Notify (Icon/Buttons/Persistent),
+    Window: Tag/TopbarButton/UserPanel/BackgroundImage/Acrylic/Transparency/SetUIScale/SelectTab/OnOpen/OnClose ฯลฯ, ธีมเพิ่ม 15 ชุด
+    ------------------------------------------------------------------
     Pro Mobile & PC UI Library v6.1 (Massive Icon Update)
     =====================================================
     อัปเดตจาก v6:
@@ -11,7 +16,7 @@ Library.__index = Library
 Library.Flags = {}
 Library.Themes = {}
 Library.CurrentTheme = "Midnight"
-Library.Version = "6.8.0"
+Library.Version = "7.0.0"
 
 -- ============ FLAG SYSTEM (ต่อขยาย: registry + event สำหรับ Config save/load และ dependency) ============
 Library.FlagElements = {}                    -- ชื่อ Flag -> element object (ใช้ตอน LoadConfig เพื่อ Set ค่ากลับเข้า UI จริง)
@@ -419,9 +424,252 @@ Library.Themes.Caramel = resolveTheme({
     Warning = Color3.fromRGB(230, 190, 120), Success = Color3.fromRGB(150, 200, 130)
 })
 
+
+-- ============ ธีมเพิ่มใหม่ v7 (สไตล์ WindUI / ธีมยอดนิยม) ============
+local function T(bg, side, top, el, hov, txt, sub, a, b, off, str, extra)
+    local o = {Background = bg, Sidebar = side, Topbar = top, Element = el, ElementHover = hov, Text = txt, SubText = sub,
+        AccentA = a, AccentB = b, ToggleOff = off, Stroke = str}
+    if extra then for k, v in pairs(extra) do o[k] = v end end
+    return o
+end
+local RGB = Color3.fromRGB
+Library.Themes.Indigo = resolveTheme(T(RGB(9,9,20), RGB(12,12,26), RGB(14,14,30), RGB(22,22,44), RGB(31,31,60), RGB(240,240,255), RGB(150,152,196), RGB(99,102,241), RGB(129,140,248), RGB(36,36,68), RGB(44,44,80)))
+Library.Themes.Sky = resolveTheme(T(RGB(7,15,24), RGB(9,19,30), RGB(11,23,36), RGB(15,32,48), RGB(21,44,66), RGB(240,249,255), RGB(140,172,196), RGB(56,189,248), RGB(125,211,252), RGB(22,44,64), RGB(28,54,78)))
+Library.Themes.Violet = resolveTheme(T(RGB(13,9,22), RGB(17,12,29), RGB(20,14,34), RGB(29,20,48), RGB(40,28,66), RGB(247,242,255), RGB(163,148,200), RGB(139,92,246), RGB(196,181,253), RGB(40,28,66), RGB(52,36,84)))
+Library.Themes.Amber = resolveTheme(T(RGB(17,12,5), RGB(22,16,7), RGB(26,19,8), RGB(37,27,11), RGB(50,37,15), RGB(255,251,235), RGB(190,168,120), RGB(245,158,11), RGB(252,211,77), RGB(50,37,15), RGB(64,47,18)))
+Library.Themes.Emerald = resolveTheme(T(RGB(6,15,12), RGB(8,20,16), RGB(10,24,19), RGB(14,33,27), RGB(20,46,38), RGB(236,253,245), RGB(130,178,158), RGB(16,185,129), RGB(110,231,183), RGB(20,44,36), RGB(26,56,46)))
+Library.Themes.Rose = resolveTheme(T(RGB(18,8,12), RGB(23,10,15), RGB(27,12,18), RGB(38,17,25), RGB(52,24,34), RGB(255,241,245), RGB(196,150,164), RGB(244,63,94), RGB(251,113,133), RGB(52,24,34), RGB(66,30,42)))
+Library.Themes.Mocha = resolveTheme(T(RGB(30,30,46), RGB(24,24,37), RGB(17,17,27), RGB(49,50,68), RGB(69,71,90), RGB(205,214,244), RGB(166,173,200), RGB(203,166,247), RGB(137,180,250), RGB(69,71,90), RGB(88,91,112),
+    {Success = RGB(166,227,161), Danger = RGB(243,139,168), Warning = RGB(249,226,175), Info = RGB(137,220,235)}))
+Library.Themes.Dracula = resolveTheme(T(RGB(40,42,54), RGB(33,34,44), RGB(30,31,40), RGB(56,58,76), RGB(68,71,90), RGB(248,248,242), RGB(160,165,196), RGB(189,147,249), RGB(255,121,198), RGB(68,71,90), RGB(98,114,164),
+    {Success = RGB(80,250,123), Danger = RGB(255,85,85), Warning = RGB(241,250,140), Info = RGB(139,233,253)}))
+Library.Themes.Nord = resolveTheme(T(RGB(46,52,64), RGB(41,46,57), RGB(38,43,53), RGB(59,66,82), RGB(67,76,94), RGB(236,239,244), RGB(168,178,196), RGB(136,192,208), RGB(129,161,193), RGB(67,76,94), RGB(76,86,106),
+    {Success = RGB(163,190,140), Danger = RGB(191,97,106), Warning = RGB(235,203,139), Info = RGB(94,129,172)}))
+Library.Themes.TokyoNight = resolveTheme(T(RGB(26,27,38), RGB(22,22,30), RGB(20,21,28), RGB(36,40,59), RGB(47,53,77), RGB(192,202,245), RGB(130,139,184), RGB(122,162,247), RGB(187,154,247), RGB(47,53,77), RGB(59,66,97),
+    {Success = RGB(158,206,106), Danger = RGB(247,118,142), Warning = RGB(224,175,104), Info = RGB(125,207,255)}))
+Library.Themes.Cyberpunk = resolveTheme(T(RGB(12,6,20), RGB(16,8,26), RGB(20,10,32), RGB(30,14,46), RGB(42,20,64), RGB(255,240,250), RGB(190,150,200), RGB(255,0,153), RGB(0,240,255), RGB(40,20,60), RGB(60,25,88),
+    {Success = RGB(0,255,170), Danger = RGB(255,60,90), Warning = RGB(255,230,0), Info = RGB(0,240,255)}))
+Library.Themes.Monokai = resolveTheme(T(RGB(39,40,34), RGB(33,34,29), RGB(29,30,26), RGB(55,56,48), RGB(70,71,62), RGB(248,248,242), RGB(166,165,150), RGB(166,226,46), RGB(102,217,239), RGB(70,71,62), RGB(73,72,62),
+    {Danger = RGB(249,38,114), Warning = RGB(230,219,116), Info = RGB(102,217,239)}))
+Library.Themes.Obsidian = resolveTheme(T(RGB(0,0,0), RGB(5,5,6), RGB(8,8,10), RGB(14,14,17), RGB(22,22,27), RGB(250,250,252), RGB(140,140,150), RGB(235,235,245), RGB(160,160,180), RGB(24,24,30), RGB(34,34,42)))
+Library.Themes.Lavender = resolveTheme(T(RGB(245,243,255), RGB(255,255,255), RGB(255,255,255), RGB(255,255,255), RGB(243,240,255), RGB(30,27,46), RGB(110,105,140), RGB(139,92,246), RGB(217,70,239), RGB(221,217,240), RGB(226,222,245),
+    {Success = RGB(22,163,106), Danger = RGB(224,54,54), Warning = RGB(217,130,0), Info = RGB(37,108,224)}))
+Library.Themes.Mint = resolveTheme(T(RGB(240,251,247), RGB(255,255,255), RGB(255,255,255), RGB(255,255,255), RGB(238,250,245), RGB(16,42,34), RGB(90,128,114), RGB(16,185,129), RGB(45,212,191), RGB(208,232,223), RGB(216,238,230),
+    {Success = RGB(22,163,106), Danger = RGB(224,54,54), Warning = RGB(217,130,0), Info = RGB(37,108,224)}))
+Library.Themes.Peach = resolveTheme(T(RGB(255,247,242), RGB(255,255,255), RGB(255,255,255), RGB(255,255,255), RGB(255,243,236), RGB(52,28,18), RGB(140,102,86), RGB(251,113,80), RGB(251,191,36), RGB(240,220,210), RGB(246,228,219),
+    {Success = RGB(22,163,106), Danger = RGB(224,54,54), Warning = RGB(217,130,0), Info = RGB(37,108,224)}))
+
 function Library:AddTheme(name, overrides)
     if type(name) ~= "string" or name == "" then return end
     Library.Themes[name] = resolveTheme(overrides)
+end
+
+
+-- ============ v7: LOCALIZATION (ข้อความ "loc:KEY" แปลตามภาษา สลับสดได้) ============
+Library.Localization = {Enabled = true, Language = "en", DefaultLanguage = "en", Translations = {}}
+Library.LanguageChanged = Instance.new("BindableEvent")
+Library._locBindings = {}   -- {alive = function() -> bool, apply = function()}
+
+function Library:SetLocalization(cfg)
+    cfg = type(cfg) == "table" and cfg or {}
+    local L = Library.Localization
+    if cfg.Enabled ~= nil then L.Enabled = cfg.Enabled end
+    if cfg.DefaultLanguage then
+        L.DefaultLanguage = cfg.DefaultLanguage
+        if not L._userSet then L.Language = cfg.DefaultLanguage end
+    end
+    if type(cfg.Translations) == "table" then
+        for lang, map in pairs(cfg.Translations) do
+            L.Translations[lang] = L.Translations[lang] or {}
+            for k, v in pairs(map) do L.Translations[lang][k] = v end
+        end
+    end
+    return L
+end
+function Library:AddTranslations(lang, map) return Library:SetLocalization({Translations = {[lang] = map}}) end
+function Library:GetLanguage() return Library.Localization.Language end
+function Library:GetLanguages()
+    local list = {}
+    for lang in pairs(Library.Localization.Translations) do table.insert(list, lang) end
+    table.sort(list)
+    return list
+end
+
+-- "loc:KEY" → ข้อความตามภาษาปัจจุบัน (ไม่เจอ key → คืนชื่อ key)
+function Library:Translate(text)
+    if type(text) ~= "string" then return text end
+    local key = string.match(text, "^loc:(.+)$")
+    if not key then return text end
+    local L = Library.Localization
+    if not L.Enabled then return key end
+    local pack = L.Translations[L.Language]
+    local v = pack and pack[key]
+    if v == nil then
+        local def = L.Translations[L.DefaultLanguage]
+        v = def and def[key]
+    end
+    if v == nil then return key end
+    return v
+end
+
+function Library:IsLocalizedKey(text)
+    return type(text) == "string" and string.match(text, "^loc:(.+)$") ~= nil
+end
+
+function Library:BindLocalized(aliveFn, applyFn)
+    table.insert(Library._locBindings, {alive = aliveFn, apply = applyFn})
+end
+
+function Library:SetLanguage(lang)
+    local L = Library.Localization
+    L._userSet = true
+    L.Language = lang
+    for i = #Library._locBindings, 1, -1 do
+        local b = Library._locBindings[i]
+        local okAlive, alive = pcall(b.alive)
+        if not okAlive or not alive then
+            table.remove(Library._locBindings, i)
+        else
+            pcall(b.apply)
+        end
+    end
+    Library.LanguageChanged:Fire(lang)
+end
+
+-- ============ v7: FONT (สลับฟอนต์ทั้ง UI สด ๆ) ============
+Library.FontPresets = {
+    BuilderSans = "rbxasset://fonts/families/BuilderSans.json",
+    Gotham = "rbxasset://fonts/families/GothamSSm.json",
+    Montserrat = "rbxasset://fonts/families/Montserrat.json",
+    Roboto = "rbxasset://fonts/families/Roboto.json",
+    RobotoMono = "rbxasset://fonts/families/RobotoMono.json",
+    Ubuntu = "rbxasset://fonts/families/Ubuntu.json",
+    Nunito = "rbxasset://fonts/families/Nunito.json",
+    SourceSans = "rbxasset://fonts/families/SourceSansPro.json",
+    Oswald = "rbxasset://fonts/families/Oswald.json",
+    Arimo = "rbxasset://fonts/families/Arimo.json",
+    JosefinSans = "rbxasset://fonts/families/JosefinSans.json",
+    TitilliumWeb = "rbxasset://fonts/families/TitilliumWeb.json",
+}
+Library.CurrentFont = "BuilderSans"
+Library._Guis = {}   -- ScreenGui ทั้งหมดที่ Library สร้าง (ใช้กับ SetFont)
+
+function Library:SetFont(family)
+    if type(family) == "number" then family = "rbxassetid://" .. tostring(math.floor(family)) end
+    if type(family) ~= "string" or family == "" then return false end
+    local label = family
+    family = Library.FontPresets[family] or family
+    BUILDER_FAMILY = family
+    Library.CurrentFont = label
+    for i = #Library._Guis, 1, -1 do
+        local gui = Library._Guis[i]
+        if not gui or not gui.Parent then
+            table.remove(Library._Guis, i)
+        else
+            for _, inst in ipairs(gui:GetDescendants()) do
+                if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
+                    pcall(function()
+                        local old = inst.FontFace
+                        inst.FontFace = Font.new(family, old.Weight, old.Style)
+                    end)
+                end
+            end
+        end
+    end
+    return true
+end
+
+-- ============ v7: CODE HIGHLIGHT (Lua → RichText) ============
+local LUA_KEYWORDS = {}
+for _, w in ipairs({"and", "break", "do", "else", "elseif", "end", "false", "for", "function", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while", "continue"}) do LUA_KEYWORDS[w] = true end
+local LUA_BUILTINS = {}
+for _, w in ipairs({"game", "workspace", "script", "print", "warn", "error", "pairs", "ipairs", "pcall", "xpcall", "type", "typeof", "tostring", "tonumber", "require", "select", "next", "setmetatable", "getmetatable", "task", "math", "string", "table", "os", "coroutine", "Instance", "Vector3", "Vector2", "CFrame", "Color3", "UDim2", "Enum", "loadstring", "wait", "spawn", "delay", "tick", "Random", "Drawing", "getgenv", "Library"}) do LUA_BUILTINS[w] = true end
+
+local function xmlEscape(text)
+    text = string.gsub(text, "&", "&amp;")
+    text = string.gsub(text, "<", "&lt;")
+    text = string.gsub(text, ">", "&gt;")
+    text = string.gsub(text, '"', "&quot;")
+    text = string.gsub(text, "'", "&apos;")
+    return text
+end
+
+local function highlightLua(code)
+    local COL = {kw = "#c678dd", str = "#98c379", num = "#d19a66", com = "#5c6370", fn = "#61afef", bi = "#e5c07b"}
+    local out, plain = {}, {}
+    local function flush()
+        if #plain > 0 then
+            out[#out + 1] = xmlEscape(table.concat(plain))
+            plain = {}
+        end
+    end
+    local function push(kind, text)
+        flush()
+        out[#out + 1] = '<font color="' .. COL[kind] .. '">' .. xmlEscape(text) .. '</font>'
+    end
+    local i, n = 1, #code
+    while i <= n do
+        local ch = string.sub(code, i, i)
+        if string.sub(code, i, i + 1) == "--" then
+            local lvl = string.match(code, "^%-%-%[(=*)%[", i)
+            if lvl then
+                local close = "]" .. lvl .. "]"
+                local e = string.find(code, close, i, true)
+                local stop = e and (e + #close - 1) or n
+                push("com", string.sub(code, i, stop))
+                i = stop + 1
+            else
+                local e = string.find(code, "\n", i, true) or (n + 1)
+                push("com", string.sub(code, i, e - 1))
+                i = e
+            end
+        elseif ch == '"' or ch == "'" then
+            local j = i + 1
+            while j <= n do
+                local cj = string.sub(code, j, j)
+                if cj == "\\" then j = j + 2
+                elseif cj == ch or cj == "\n" then break
+                else j = j + 1 end
+            end
+            push("str", string.sub(code, i, math.min(j, n)))
+            i = j + 1
+        elseif string.match(code, "^%[=*%[", i) then
+            local lvl = string.match(code, "^%[(=*)%[", i)
+            local close = "]" .. lvl .. "]"
+            local e = string.find(code, close, i, true)
+            local stop = e and (e + #close - 1) or n
+            push("str", string.sub(code, i, stop))
+            i = stop + 1
+        elseif string.match(ch, "%d") then
+            local num = string.match(code, "^0[xX]%x+", i)
+            if not num then
+                num = string.match(code, "^%d+%.?%d*", i)
+                local ex = string.match(code, "^[eE][%+%-]?%d+", i + #num)
+                if ex then num = num .. ex end
+            end
+            push("num", num)
+            i = i + #num
+        elseif string.match(ch, "[%a_]") then
+            local word = string.match(code, "^[%w_]+", i)
+            local nextCh = string.match(code, "^%s*(.)", i + #word)
+            if LUA_KEYWORDS[word] then push("kw", word)
+            elseif LUA_BUILTINS[word] then push("bi", word)
+            elseif nextCh == "(" then push("fn", word)
+            else plain[#plain + 1] = word end
+            i = i + #word
+        else
+            plain[#plain + 1] = ch
+            i = i + 1
+        end
+    end
+    flush()
+    return table.concat(out)
+end
+
+local function copyToClipboard(text)
+    local fn = (type(setclipboard) == "function" and setclipboard) or (type(toclipboard) == "function" and toclipboard) or (type(set_clipboard) == "function" and set_clipboard)
+    if not fn then return false end
+    return (pcall(fn, text))
 end
 
 -- ============ CONFIG SAVE/LOAD ============
@@ -594,6 +842,25 @@ local function applyThemeColor(inst, key, prop)
     prop = prop or "BackgroundColor3"
     inst:SetAttribute("ThemeKey", key)
     inst:SetAttribute("ThemeProp", prop)
+    -- เก็บทุก binding ของ instance เดียวกัน (เดิมเก็บแค่คีย์สุดท้าย → ตอนสลับธีม prop อื่นค้างสีเก่า)
+    local binds = inst:GetAttribute("ThemeBinds")
+    local entry = prop .. "=" .. key
+    if binds == nil or binds == "" then
+        binds = entry
+    else
+        local parts, found = {}, false
+        for p in string.gmatch(binds, "[^;]+") do
+            if string.sub(p, 1, #prop + 1) == prop .. "=" then
+                parts[#parts + 1] = entry
+                found = true
+            else
+                parts[#parts + 1] = p
+            end
+        end
+        if not found then parts[#parts + 1] = entry end
+        binds = table.concat(parts, ";")
+    end
+    inst:SetAttribute("ThemeBinds", binds)
     if Theme[key] then inst[prop] = Theme[key] end
 end
 
@@ -602,6 +869,9 @@ local function stroke(inst, colorKey, thickness)
     applyThemeColor(s, colorKey or "Stroke", "Color")
     s.Thickness = thickness or 1
     s.Transparency = 0.65
+    -- Contextual (ค่าเริ่มต้น) จะวาดเป็น "ขอบตัวอักษร" เมื่อ parent เป็น TextButton/TextBox/TextLabel
+    -- ทำให้ glow/ขอบรอบปุ่มไม่เคยโผล่ → บังคับ Border เสมอ
+    pcall(function() s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border end)
     s.Parent = inst
     return s
 end
@@ -785,13 +1055,143 @@ local function newElement(root, getter, setter, destroyer, flag)
         end)
         return elem
     end
+    -- ============ v7: Element API (เทียบเท่า WindUI) ============
+    function elem:Show() root.Visible = true return elem end
+    function elem:Hide() root.Visible = false return elem end
+    function elem:IsVisible() return root.Visible end
+    function elem:GetInstance() return root end
+    function elem:SetTooltip(text)
+        if text and Library.AttachTooltip then Library:AttachTooltip(root, text) end
+        return elem
+    end
+
+    function elem:IsLocked() return elem._lockOverlay ~= nil end
+    function elem:Lock(message)
+        local ov = elem._lockOverlay
+        if not ov then
+            ov = Instance.new("TextButton")
+            ov.Name = "__Lock"
+            ov.AutoButtonColor = false
+            ov.Text = ""
+            ov.Size = UDim2.new(1, 0, 1, 0)
+            applyThemeColor(ov, "Background")
+            ov.BackgroundTransparency = 0.38
+            ov.BorderSizePixel = 0
+            ov.ZIndex = 100
+            local rc = root:FindFirstChildOfClass("UICorner")
+            local oc = Instance.new("UICorner")
+            oc.CornerRadius = rc and rc.CornerRadius or UDim.new(0, 9)
+            oc.Parent = ov
+            local lbl = Instance.new("TextLabel")
+            lbl.BackgroundTransparency = 1
+            lbl.Size = UDim2.new(1, -16, 1, 0)
+            lbl.Position = UDim2.new(0, 8, 0, 0)
+            lbl.FontFace = UI_Font("SemiBold")
+            lbl.TextSize = 12.5
+            lbl.TextTruncate = Enum.TextTruncate.AtEnd
+            applyThemeColor(lbl, "SubText", "TextColor3")
+            lbl.ZIndex = 101
+            lbl.Parent = ov
+            ov.Parent = root
+            elem._lockOverlay, elem._lockLabel = ov, lbl
+        end
+        elem._lockLabel.Text = message and ("🔒  " .. tostring(message)) or "🔒"
+        return elem
+    end
+    function elem:Unlock()
+        if elem._lockOverlay then
+            elem._lockOverlay:Destroy()
+            elem._lockOverlay, elem._lockLabel = nil, nil
+        end
+        return elem
+    end
+
+    -- เลื่อนหน้าไปหา element + วูบขอบสีธีม ใช้ชี้ให้ผู้ใช้เห็นว่า "อยู่ตรงนี้"
+    function elem:Highlight(duration)
+        duration = tonumber(duration) or 1.4
+        pcall(function()
+            local sf = root:FindFirstAncestorOfClass("ScrollingFrame")
+            if sf then
+                local y = root.AbsolutePosition.Y - sf.AbsolutePosition.Y + sf.CanvasPosition.Y
+                sf.CanvasPosition = Vector2.new(0, math.max(0, y - 16))
+            end
+        end)
+        local hs = Instance.new("UIStroke")
+        hs.Color = Theme.AccentA
+        hs.Thickness = 2
+        hs.Transparency = 0
+        pcall(function() hs.ApplyStrokeMode = Enum.ApplyStrokeMode.Border end)
+        hs.Parent = root
+        local tw = TweenService:Create(hs, TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {Transparency = 1})
+        tw:Play()
+        tw.Completed:Connect(function() hs:Destroy() end)
+        return elem
+    end
+
+    local function findTitleLabel()
+        if root:IsA("TextLabel") then return root end
+        for _, d in ipairs(root:GetDescendants()) do
+            if d:IsA("TextLabel") and d.Name ~= "__DescLabel" and d.Text ~= "" and not (elem._lockOverlay and d:IsDescendantOf(elem._lockOverlay)) then
+                return d
+            end
+        end
+        return nil
+    end
+
+    function elem:SetTitle(text)
+        text = tostring(text)
+        if elem._setTitle then elem._setTitle(text) return elem end
+        local cfg = elem._cfg
+        local old = cfg and cfg.Text
+        if cfg then cfg.Text = text; cfg.Title = text end
+        if root:IsA("TextBox") then root.PlaceholderText = text return elem end
+        local lbl = findTitleLabel()
+        if lbl then
+            local cur = lbl.Text
+            if old and old ~= "" and cur == old then
+                lbl.Text = text
+            elseif old and old ~= "" and string.sub(cur, 1, #old + 2) == old .. ": " then
+                lbl.Text = text .. string.sub(cur, #old + 1)   -- แบบ "ชื่อ: ค่า" (Slider/Dropdown/Keybind)
+            elseif not old then
+                lbl.Text = text
+            end
+        end
+        return elem
+    end
+
+    function elem:SetDesc(text)
+        text = tostring(text)
+        if elem._setDesc then elem._setDesc(text)
+        elseif elem._descHook then elem._descHook(text) end
+        return elem
+    end
+
+    function elem:OnChanged(fn)
+        if not flag or type(fn) ~= "function" then return nil end
+        return Library.FlagChanged.Event:Connect(function(changedFlag, value)
+            if changedFlag == flag then fn(value) end
+        end)
+    end
+
     if flag then Library.FlagElements[flag] = elem end
     return elem
 end
 
 -- ============ MAIN LIBRARY ============
 function Library:CreateWindow(config)
-    config = type(config) == "table" and config or {}
+    do
+        local copy = {}
+        if type(config) == "table" then for k, v in pairs(config) do copy[k] = v end end
+        config = copy
+    end
+    -- alias ให้ config แบบ WindUI ใช้ได้ (Author/ToggleKey/Name/Folder)
+    if config.SubTitle == nil and config.Author ~= nil then config.SubTitle = config.Author end
+    if config.ToggleKeybind == nil and config.ToggleKey ~= nil then config.ToggleKeybind = config.ToggleKey end
+    if config.Title == nil and config.Name ~= nil then config.Title = config.Name end
+    local cfgFolder = config.ConfigFolder or config.Folder
+    if type(cfgFolder) == "string" and cfgFolder ~= "" then Library.ConfigFolder = cfgFolder end
+    local rawWindowTitle = config.Title
+    if type(config.Title) == "string" then config.Title = Library:Translate(config.Title) end
     local Window = setmetatable({}, Library)
 
     local UiParent = getUiParent()
@@ -818,6 +1218,7 @@ function Library:CreateWindow(config)
     -- อยู่แล้ว (จอ 1080p+) ทำให้สเกลชนเพดาน 1.0 เท่า PC ทั้งที่ขนาดจริงบนจอเล็กกว่ามาก
     -- → ต้อง boost เพิ่มเฉพาะ touch device กันไม่ให้ UI ดูจิ๋ว
     local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+    local UserScale = 1   -- ตัวคูณจากผู้ใช้ (Window:SetUIScale)
     local function computeResponsiveScale()
         local screenSize = ScreenGui.AbsoluteSize
         local minDim = math.min(screenSize.X, screenSize.Y)
@@ -829,7 +1230,7 @@ function Library:CreateWindow(config)
         if IS_MOBILE then
             scale = scale * 1.35   -- boost มือถือเพิ่ม ~35% ปรับตัวเลขนี้ได้ตามชอบ
         end
-        return scale
+        return scale * UserScale
     end
     ResponsiveScale = computeResponsiveScale()
 
@@ -840,10 +1241,18 @@ function Library:CreateWindow(config)
         Library.CurrentTheme = themeName
 
         for _, inst in ipairs(ScreenGui:GetDescendants()) do
-            local key = inst:GetAttribute("ThemeKey")
-            if key and Theme[key] then
-                local prop = inst:GetAttribute("ThemeProp") or "BackgroundColor3"
-                inst[prop] = Theme[key]
+            local binds = inst:GetAttribute("ThemeBinds")
+            if binds then
+                for p in string.gmatch(binds, "[^;]+") do
+                    local pr, k = string.match(p, "^(.-)=(.+)$")
+                    if pr and Theme[k] then pcall(function() inst[pr] = Theme[k] end) end
+                end
+            else
+                local key = inst:GetAttribute("ThemeKey")
+                if key and Theme[key] then
+                    local prop = inst:GetAttribute("ThemeProp") or "BackgroundColor3"
+                    inst[prop] = Theme[key]
+                end
             end
             if inst:IsA("UIGradient") and inst:GetAttribute("IsAccent") then
                 inst.Color = ColorSequence.new(Theme.AccentA, Theme.AccentB)
@@ -973,7 +1382,12 @@ function Library:CreateWindow(config)
             hideTooltip()
         end)
         inst.Destroying:Connect(function()
-            if moveConn then moveConn:Disconnect() end
+            -- ถ้า instance ถูก Destroy ระหว่างกำลัง hover (รอ delay หรือ tooltip โชว์อยู่แล้ว)
+            -- MouseLeave จะไม่มีทางยิงอีก ต้องตัด hoverToken ค้าง + สั่งซ่อนเองตรงนี้
+            -- ไม่งั้น tooltip จะค้างโชว์บนจอตลอดไปหลัง element หายไป (เช่น ปิด tab/สลับหน้า)
+            hoverToken += 1
+            if moveConn then moveConn:Disconnect(); moveConn = nil end
+            hideTooltip()
         end)
     end
 
@@ -1012,24 +1426,40 @@ function Library:CreateWindow(config)
         end
     end
 
+    -- opts: Title, Content, Type(info/success/warning/error), Duration, Persistent, Icon, Color,
+    --       Buttons = {{Title=, Callback=, Variant="Primary"/"Secondary"/"Danger", KeepOpen=}}
+    -- คืน handle: :Close() :SetTitle(t) :SetContent(t)
     function Library:Notify(opts)
         if type(opts) == "string" then opts = {Content = opts} end
         opts = type(opts) == "table" and opts or {}
-        if activeNotifyCount >= MAX_VISIBLE_NOTIFICATIONS then
-            table.insert(notifyQueue, opts)
-            return
+        local o = {}
+        for k, v in pairs(opts) do o[k] = v end
+        local handle = {}
+        function handle:Close()
+            handle._closeRequested = true
+            if handle._dismiss then handle._dismiss() end
         end
-        spawnToast(opts)
+        function handle:SetTitle(t) if handle._title then handle._title.Text = tostring(t) end end
+        function handle:SetContent(t) if handle._content then handle._content.Text = tostring(t) end end
+        o._handle = handle
+        if activeNotifyCount >= MAX_VISIBLE_NOTIFICATIONS then
+            table.insert(notifyQueue, o)
+            return handle
+        end
+        task.spawn(spawnToast, o)
+        return handle
     end
 
     spawnToast = function(opts)
         activeNotifyCount += 1
-        local title = opts.Title or "Notice"
-        local content = opts.Content or ""
+        local title = Library:Translate(opts.Title or "Notice")
+        local content = Library:Translate(opts.Content or "")
         local duration = math.max(opts.Duration or 3, 0.5)
+        if opts.Persistent == true or opts.Duration == math.huge then duration = math.huge end
         local ntype = opts.Type or "info"
         local COLOR_KEY = {success = "Success", error = "Danger", warning = "Warning", info = "Info"}
         local color = Theme[COLOR_KEY[ntype] or "Info"]
+        if typeof(opts.Color) == "Color3" then color = opts.Color end
 
         -- ===== SHADOW =====
         local Shadow = Instance.new("ImageLabel")
@@ -1160,7 +1590,19 @@ function Library:CreateWindow(config)
         IconImg.Position = UDim2.new(0.5, 0, 0.5, 0)
         IconImg.Size = UDim2.new(0, 14, 0, 14)
         IconImg.BackgroundTransparency = 1
-        IconImg.Image = NOTIFY_ICON[ntype] or Library.Icons.info
+        do
+            local custom
+            if opts.Icon ~= nil then
+                custom = Library.Icons[opts.Icon]
+                if not custom then
+                    local asText = tostring(opts.Icon)
+                    if typeof(opts.Icon) == "number" or string.match(asText, "^rbx") or string.match(asText, "^%d+$") then
+                        custom = normalizeAssetId(opts.Icon)
+                    end
+                end
+            end
+            IconImg.Image = custom or NOTIFY_ICON[ntype] or Library.Icons.info
+        end
         IconImg.ImageColor3 = color
         IconImg.ImageTransparency = 1
         IconImg.ScaleType = Enum.ScaleType.Fit
@@ -1219,6 +1661,26 @@ function Library:CreateWindow(config)
         BottomSpacer.Size = UDim2.new(1, 0, 0, 22)
         BottomSpacer.ZIndex = 2
         BottomSpacer.Parent = Toast
+
+        -- ===== ACTION BUTTONS (opts.Buttons) =====
+        local actionButtons = type(opts.Buttons) == "table" and opts.Buttons or nil
+        local hasActions = actionButtons ~= nil and #actionButtons > 0
+        local ActionsRow
+        if hasActions then
+            ActionsRow = Instance.new("CanvasGroup")
+            ActionsRow.Name = "Actions"
+            ActionsRow.BackgroundTransparency = 1
+            ActionsRow.GroupTransparency = 1
+            ActionsRow.Position = UDim2.new(0, 54, 0, 60)
+            ActionsRow.Size = UDim2.new(1, -66, 0, 28)
+            ActionsRow.ZIndex = 6
+            ActionsRow.Parent = Toast
+            local rowLayout = Instance.new("UIListLayout")
+            rowLayout.FillDirection = Enum.FillDirection.Horizontal
+            rowLayout.Padding = UDim.new(0, 6)
+            rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            rowLayout.Parent = ActionsRow
+        end
 
         -- ===== PROGRESS BAR (2px full-width bottom edge) =====
         local ProgressTrack = Instance.new("Frame")
@@ -1284,6 +1746,12 @@ function Library:CreateWindow(config)
 
         -- รอ AutomaticSize นิ่ง 1 เฟรม
         RunService.Heartbeat:Wait()
+        if hasActions then
+            local ch = (ContentLbl.Text ~= "") and ContentLbl.TextBounds.Y or 0
+            ActionsRow.Position = UDim2.new(0, 54, 0, 44 + ch + 8)
+            BottomSpacer.Size = UDim2.new(1, 0, 0, ch + 8 + 28 + 12)
+            RunService.Heartbeat:Wait()
+        end
 
         local targetHeight = Toast.AbsoluteSize.Y
         Slot.Size = UDim2.new(1, 0, 0, 0)
@@ -1334,6 +1802,7 @@ function Library:CreateWindow(config)
             TweenService:Create(CloseXIcon, TI.d014_Sine_Out, {ImageTransparency = 1}):Play()
             TweenService:Create(ProgressTrack, TI.d014_Sine_Out, {BackgroundTransparency = 1}):Play()
             TweenService:Create(ProgressBar, TI.d014_Sine_Out, {BackgroundTransparency = 1}):Play()
+            if ActionsRow then TweenService:Create(ActionsRow, TI.d014_Sine_Out, {GroupTransparency = 1}):Play() end
             TweenService:Create(Slot, TI.d018_Quint_In, {Size = UDim2.new(1, 0, 0, 0)}):Play()
             task.delay(0.22, function()
                 for _, c in ipairs(shadowConns) do c:Disconnect() end
@@ -1342,6 +1811,50 @@ function Library:CreateWindow(config)
                 activeNotifyCount -= 1
                 tryDequeueNotify()
             end)
+        end
+
+        -- handle + ปุ่มใน toast
+        if opts._handle then
+            opts._handle._dismiss = dismiss
+            opts._handle._title = TitleLbl
+            opts._handle._content = ContentLbl
+            if opts._handle._closeRequested then dismiss() end
+        end
+        if hasActions then
+            for idx, b in ipairs(actionButtons) do
+                local variant = b.Variant or (idx == 1 and "Primary" or "Secondary")
+                local Btn = Instance.new("TextButton")
+                Btn.AutomaticSize = Enum.AutomaticSize.X
+                Btn.Size = UDim2.new(0, 0, 1, 0)
+                Btn.LayoutOrder = idx
+                Btn.AutoButtonColor = false
+                Btn.Text = tostring(Library:Translate(b.Title or b.Text or "OK"))
+                Btn.FontFace = UI_Font("SemiBold")
+                Btn.TextSize = 12
+                Btn.ZIndex = 7
+                if variant == "Primary" then
+                    Btn.BackgroundColor3 = color
+                    Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                elseif variant == "Danger" then
+                    applyThemeColor(Btn, "Danger")
+                    Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                else
+                    applyThemeColor(Btn, "ElementHover")
+                    applyThemeColor(Btn, "Text", "TextColor3")
+                end
+                local bp = Instance.new("UIPadding")
+                bp.PaddingLeft = UDim.new(0, 12)
+                bp.PaddingRight = UDim.new(0, 12)
+                bp.Parent = Btn
+                Btn.Parent = ActionsRow
+                corner(Btn, 7)
+                applyPressAnimation(Btn, 0.94)
+                Btn.MouseButton1Click:Connect(function()
+                    if b.Callback then safeCallback(b.Callback) end
+                    if b.KeepOpen ~= true then dismiss() end
+                end)
+            end
+            TweenService:Create(ActionsRow, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.18), {GroupTransparency = 0}):Play()
         end
 
         -- HOVER: หยุดนับถอยหลัง + lift card
@@ -1535,6 +2048,226 @@ function Library:CreateWindow(config)
         })
     end
 
+    -- ============ v7: Library:Dialog — โมดัลหลายปุ่ม (สไตล์ WindUI Popup/Dialog) ============
+    -- opts: Title, Content, Icon, Width, Closable(=true), OnClose,
+    --       Buttons = {{Title=, Icon=, Variant="Primary"/"Secondary"/"Tertiary"/"Danger", Callback=fn, KeepOpen=false}}
+    function Library:Dialog(opts)
+        opts = type(opts) == "table" and opts or {}
+        local Gui = Instance.new("ScreenGui")
+        Gui.Name = "DialogGui"
+        Gui.ResetOnSpawn = false
+        Gui.IgnoreGuiInset = true
+        Gui.DisplayOrder = 999
+        Gui.Parent = UiParent
+        table.insert(Library._Guis, Gui)
+
+        local Backdrop = Instance.new("Frame")
+        Backdrop.Size = UDim2.new(1, 0, 1, 0)
+        Backdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        Backdrop.BackgroundTransparency = 1
+        Backdrop.Active = true
+        Backdrop.ZIndex = 1
+        Backdrop.Parent = Gui
+
+        local Card = Instance.new("CanvasGroup")
+        Card.AnchorPoint = Vector2.new(0.5, 0.5)
+        Card.Position = UDim2.new(0.5, 0, 0.5, 0)
+        Card.Size = UDim2.new(0, math.clamp(tonumber(opts.Width) or 340, 260, 560), 0, 0)
+        Card.AutomaticSize = Enum.AutomaticSize.Y
+        applyThemeColor(Card, "Background")
+        Card.GroupTransparency = 1
+        Card.ZIndex = 2
+        Card.Parent = Gui
+        corner(Card, 14)
+        local cardStroke = stroke(Card, "Stroke", 1)
+        cardStroke.Transparency = 0.45
+        local cScale = Instance.new("UIScale")
+        cScale.Scale = 0.85
+        cScale.Parent = Card
+        local cPad = Instance.new("UIPadding")
+        cPad.PaddingLeft = UDim.new(0, 18)
+        cPad.PaddingRight = UDim.new(0, 18)
+        cPad.PaddingTop = UDim.new(0, 18)
+        cPad.PaddingBottom = UDim.new(0, 16)
+        cPad.Parent = Card
+        local cLayout = Instance.new("UIListLayout")
+        cLayout.Padding = UDim.new(0, 12)
+        cLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        cLayout.Parent = Card
+
+        local titleText = opts.Title and Library:Translate(opts.Title) or nil
+        if titleText or opts.Icon then
+            local Header = Instance.new("Frame")
+            Header.Size = UDim2.new(1, 0, 0, 30)
+            Header.BackgroundTransparency = 1
+            Header.LayoutOrder = 1
+            Header.Parent = Card
+            local textX = 0
+            if opts.Icon then
+                local Badge = Instance.new("Frame")
+                Badge.Size = UDim2.new(0, 30, 0, 30)
+                applyThemeColor(Badge, "AccentA")
+                Badge.BackgroundTransparency = 0.8
+                Badge.Parent = Header
+                corner(Badge, 8)
+                local BIcon = Instance.new("ImageLabel")
+                BIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+                BIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
+                BIcon.Size = UDim2.new(0, 16, 0, 16)
+                BIcon.BackgroundTransparency = 1
+                BIcon.Image = Library.Icons[opts.Icon] or normalizeAssetId(opts.Icon)
+                applyThemeColor(BIcon, "AccentA", "ImageColor3")
+                BIcon.ScaleType = Enum.ScaleType.Fit
+                BIcon.Parent = Badge
+                textX = 40
+            end
+            local TitleLbl = Instance.new("TextLabel")
+            TitleLbl.Size = UDim2.new(1, -textX, 1, 0)
+            TitleLbl.Position = UDim2.new(0, textX, 0, 0)
+            TitleLbl.BackgroundTransparency = 1
+            TitleLbl.Text = titleText or ""
+            applyThemeColor(TitleLbl, "Text", "TextColor3")
+            TitleLbl.FontFace = UI_Font("Bold")
+            TitleLbl.TextSize = 16
+            TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+            TitleLbl.TextTruncate = Enum.TextTruncate.AtEnd
+            TitleLbl.Parent = Header
+        end
+
+        if opts.Content and opts.Content ~= "" then
+            local ContentLbl = Instance.new("TextLabel")
+            ContentLbl.Size = UDim2.new(1, 0, 0, 0)
+            ContentLbl.AutomaticSize = Enum.AutomaticSize.Y
+            ContentLbl.BackgroundTransparency = 1
+            ContentLbl.Text = Library:Translate(opts.Content)
+            ContentLbl.RichText = opts.RichText == true
+            applyThemeColor(ContentLbl, "SubText", "TextColor3")
+            ContentLbl.FontFace = UI_Font("Medium")
+            ContentLbl.TextSize = 13.5
+            ContentLbl.LineHeight = 1.3
+            ContentLbl.TextWrapped = true
+            ContentLbl.TextXAlignment = Enum.TextXAlignment.Left
+            ContentLbl.TextYAlignment = Enum.TextYAlignment.Top
+            ContentLbl.LayoutOrder = 2
+            ContentLbl.Parent = Card
+        end
+
+        local buttons = (type(opts.Buttons) == "table" and #opts.Buttons > 0) and opts.Buttons or {{Title = "OK", Variant = "Primary"}}
+        local vertical = #buttons > 3
+        local BtnRow = Instance.new("Frame")
+        BtnRow.Size = UDim2.new(1, 0, 0, 0)
+        BtnRow.AutomaticSize = Enum.AutomaticSize.Y
+        BtnRow.BackgroundTransparency = 1
+        BtnRow.LayoutOrder = 3
+        BtnRow.Parent = Card
+        local rowLayout = Instance.new("UIListLayout")
+        rowLayout.Padding = UDim.new(0, 8)
+        rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        if vertical then
+            rowLayout.FillDirection = Enum.FillDirection.Vertical
+        else
+            rowLayout.FillDirection = Enum.FillDirection.Horizontal
+            rowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+        end
+        rowLayout.Parent = BtnRow
+
+        local closed = false
+        local function close()
+            if closed then return end
+            closed = true
+            TweenService:Create(Backdrop, TI.d018_Sine_Out, {BackgroundTransparency = 1}):Play()
+            TweenService:Create(cScale, TI.d018_Quint_In, {Scale = 0.88}):Play()
+            TweenService:Create(Card, TI.d018_Quint_In, {GroupTransparency = 1}):Play()
+            task.delay(0.2, function() if Gui then Gui:Destroy() end end)
+            if opts.OnClose then safeCallback(opts.OnClose) end
+        end
+
+        for idx, b in ipairs(buttons) do
+            local variant = b.Variant or (idx == #buttons and "Primary" or "Secondary")
+            local Btn = Instance.new("TextButton")
+            Btn.LayoutOrder = idx
+            Btn.AutoButtonColor = false
+            Btn.Text = ""
+            Btn.ZIndex = 3
+            if vertical then
+                Btn.Size = UDim2.new(1, 0, 0, 36)
+            else
+                Btn.Size = UDim2.new(0, 0, 0, 34)
+                Btn.AutomaticSize = Enum.AutomaticSize.X
+            end
+            local textKey = "Text"
+            local whiteText = false
+            if variant == "Primary" then
+                applyThemeColor(Btn, "AccentA")
+                accentGradient(Btn, 100)
+                whiteText = true
+            elseif variant == "Danger" then
+                applyThemeColor(Btn, "Danger")
+                whiteText = true
+            elseif variant == "Tertiary" then
+                Btn.BackgroundTransparency = 1
+                stroke(Btn, "Stroke", 1)
+                textKey = "SubText"
+            else
+                applyThemeColor(Btn, "ElementHover")
+            end
+            Btn.Parent = BtnRow
+            corner(Btn, 9)
+            applyPressAnimation(Btn, 0.95)
+            ripple(Btn, "AccentA")
+            local bPad = Instance.new("UIPadding")
+            bPad.PaddingLeft = UDim.new(0, 16)
+            bPad.PaddingRight = UDim.new(0, 16)
+            bPad.Parent = Btn
+            local bLay = Instance.new("UIListLayout")
+            bLay.FillDirection = Enum.FillDirection.Horizontal
+            bLay.HorizontalAlignment = Enum.HorizontalAlignment.Center
+            bLay.VerticalAlignment = Enum.VerticalAlignment.Center
+            bLay.Padding = UDim.new(0, 6)
+            bLay.SortOrder = Enum.SortOrder.LayoutOrder
+            bLay.Parent = Btn
+            if b.Icon then
+                local BI = Instance.new("ImageLabel")
+                BI.Size = UDim2.new(0, 14, 0, 14)
+                BI.BackgroundTransparency = 1
+                BI.Image = Library.Icons[b.Icon] or normalizeAssetId(b.Icon)
+                BI.ImageColor3 = whiteText and Color3.fromRGB(255, 255, 255) or Theme[textKey]
+                BI.ScaleType = Enum.ScaleType.Fit
+                BI.LayoutOrder = 1
+                BI.ZIndex = 4
+                BI.Parent = Btn
+            end
+            local BL = Instance.new("TextLabel")
+            BL.Size = UDim2.new(0, 0, 1, 0)
+            BL.AutomaticSize = Enum.AutomaticSize.X
+            BL.BackgroundTransparency = 1
+            BL.Text = tostring(Library:Translate(b.Title or b.Text or "OK"))
+            if whiteText then BL.TextColor3 = Color3.fromRGB(255, 255, 255) else applyThemeColor(BL, textKey, "TextColor3") end
+            BL.FontFace = UI_Font("SemiBold")
+            BL.TextSize = 13
+            BL.LayoutOrder = 2
+            BL.ZIndex = 4
+            BL.Parent = Btn
+            Btn.MouseButton1Click:Connect(function()
+                if b.Callback then safeCallback(b.Callback) end
+                if b.KeepOpen ~= true then close() end
+            end)
+        end
+
+        Backdrop.InputBegan:Connect(function(input)
+            if opts.Closable == false then return end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                close()
+            end
+        end)
+
+        TweenService:Create(Backdrop, TI.d022_Sine_Out, {BackgroundTransparency = 0.45}):Play()
+        TweenService:Create(cScale, TI.d045_Back_Out, {Scale = 1}):Play()
+        TweenService:Create(Card, TI.d024_Quint_Out, {GroupTransparency = 0}):Play()
+        return {Close = close, Gui = Gui}
+    end
+    Library.Popup = Library.Dialog
+
     -- ============ Main window ============
     local Shadow = Instance.new("ImageLabel")
     Shadow.Name = "Shadow"
@@ -1551,7 +2284,18 @@ function Library:CreateWindow(config)
 
     local MainFrame = Instance.new("Frame")
     MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-    MainFrame.Size = UDim2.new(0, 380, 0, 340)
+    local initW, initH = 380, 340
+    if not IS_MOBILE then initW, initH = 500, 380 end
+    if typeof(config.Size) == "UDim2" then
+        initW = math.max(380, config.Size.X.Offset)
+        initH = math.max(340, config.Size.Y.Offset)
+    end
+    MainFrame.Size = UDim2.new(0, initW, 0, initH)
+    -- เงาตามขนาดหน้าต่างจริงเสมอ (เดิมเงาคงที่ พอ resize แล้วเงาไม่ตาม)
+    Shadow.Size = MainFrame.Size + UDim2.new(0, 60, 0, 60)
+    MainFrame:GetPropertyChangedSignal("Size"):Connect(function()
+        Shadow.Size = MainFrame.Size + UDim2.new(0, 60, 0, 60)
+    end)
     MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
     applyThemeColor(MainFrame, "Background")
     MainFrame.BackgroundTransparency = 1
@@ -1665,8 +2409,9 @@ function Library:CreateWindow(config)
     TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
     TitleLabel.Parent = TopBar
 
+    local SubTitleLabel
     if config.SubTitle then
-        local SubTitleLabel = Instance.new("TextLabel")
+        SubTitleLabel = Instance.new("TextLabel")
         SubTitleLabel.Size = UDim2.new(1, -96, 0, 14)
         SubTitleLabel.Position = UDim2.new(0, 30, 0, 27)
         SubTitleLabel.BackgroundTransparency = 1
@@ -2012,8 +2757,9 @@ function Library:CreateWindow(config)
         end)
     end
 
+    local SIDEBAR_W = tonumber(config.SideBarWidth) or (IS_MOBILE and 118 or 132)
     local TabContainer = Instance.new("Frame")
-    TabContainer.Size = UDim2.new(0, 118, 1, -topBarH)
+    TabContainer.Size = UDim2.new(0, SIDEBAR_W, 1, -topBarH)
     TabContainer.Position = UDim2.new(0, 0, 0, topBarH)
     applyThemeColor(TabContainer, "Sidebar")
     TabContainer.BackgroundTransparency = 1
@@ -2119,7 +2865,15 @@ function Library:CreateWindow(config)
     local TabLayout = Instance.new("UIListLayout")
     TabLayout.Padding = UDim.new(0, 4)
     TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    TabLayout.Parent = TabList
+    -- ปุ่มแท็บอยู่ใน TabHolder (มี UIListLayout) ส่วน ActiveIndicator อยู่นอก layout
+    -- ไม่งั้น UIListLayout จะยึดตำแหน่ง indicator ทำให้กลายเป็นแถบว่างค้างบนสุดและไม่ไถลตามแท็บ
+    local TabHolder = Instance.new("Frame")
+    TabHolder.Name = "TabHolder"
+    TabHolder.BackgroundTransparency = 1
+    TabHolder.Size = UDim2.new(1, 0, 0, 0)
+    TabHolder.AutomaticSize = Enum.AutomaticSize.Y
+    TabHolder.Parent = TabList
+    TabLayout.Parent = TabHolder
 
     -- ============ SLIDING ACTIVE-TAB INDICATOR ============
     -- แถบไฮไลต์เดียวที่ไถลลื่นๆ จากตำแหน่งแท็บเดิมไปตำแหน่งแท็บใหม่ (Back_Out) แทนการกระพริบทีละปุ่ม
@@ -2139,6 +2893,7 @@ function Library:CreateWindow(config)
     indicatorStroke.Transparency = 1
 
     local function slideIndicatorTo(targetBtn, instant)
+        ActiveIndicator.Visible = true
         if instant then
             ActiveIndicator.Position = targetBtn.Position
             ActiveIndicator.Size = targetBtn.Size
@@ -2164,7 +2919,7 @@ function Library:CreateWindow(config)
     TabEmptyLbl.FontFace = UI_Font("SemiBold")
     TabEmptyLbl.TextSize = 12
     TabEmptyLbl.Visible = false
-    TabEmptyLbl.Parent = TabList
+    TabEmptyLbl.Parent = TabHolder
 
     local function applyTabFilter(query)
         query = (query or ""):lower()
@@ -2181,8 +2936,8 @@ function Library:CreateWindow(config)
     end)
 
     local ContentArea = Instance.new("Frame")
-    ContentArea.Size = UDim2.new(1, -118, 1, -topBarH)
-    ContentArea.Position = UDim2.new(0, 118, 0, topBarH)
+    ContentArea.Size = UDim2.new(1, -SIDEBAR_W, 1, -topBarH)
+    ContentArea.Position = UDim2.new(0, SIDEBAR_W, 0, topBarH)
     ContentArea.BackgroundTransparency = 1
     ContentArea.Active = true
     ContentArea.Parent = MainContent
@@ -2244,6 +2999,28 @@ function Library:CreateWindow(config)
     local CurrentTab = nil
     local closeActivePopup = function() end
     local tabOrderCounter = 0
+    local windowTabList = {}   -- Tab object ทั้งหมด (ใช้กับ Window:SelectTab/GetTabs)
+    local topbarButtons = {}   -- ปุ่มเพิ่มบน TopBar (Window:CreateTopbarButton)
+    local function topbarButtonHit(pos)
+        for _, b in ipairs(topbarButtons) do
+            if b.Btn.Parent and isPointOverGui(pos, b.Btn) then return true end
+        end
+        return false
+    end
+    -- ค้นหา/ซ่อนแท็บแล้ว layout ขยับ → ให้ indicator ตามปุ่มแท็บปัจจุบันเสมอ
+    TabLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        task.defer(function()
+            if CurrentTab and CurrentTab.Btn and CurrentTab.Btn.Parent then
+                if CurrentTab.Btn.Visible then
+                    ActiveIndicator.Position = CurrentTab.Btn.Position
+                    ActiveIndicator.Size = CurrentTab.Btn.Size
+                    ActiveIndicator.Visible = true
+                else
+                    ActiveIndicator.Visible = false
+                end
+            end
+        end)
+    end)
 
     TweenService:Create(MainFrame, TI.d028_Sine_Out, {
         BackgroundTransparency = 0
@@ -2259,14 +3036,13 @@ function Library:CreateWindow(config)
     TweenService:Create(HideBtn, TI.d028_Sine_Out, {ImageTransparency = 0}):Play()
     TweenService:Create(TabContainer, TI.d028_Sine_Out, {BackgroundTransparency = 0}):Play()
 
-    if config.ToggleKeybind then
-        UserInputService.InputBegan:Connect(function(input, gpe)
-            if gpe then return end
-            if input.KeyCode == config.ToggleKeybind then
-                setUiVisible(not ScreenGui.Enabled)
-            end
-        end)
-    end
+    local toggleKeyConn = UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        local key = config.ToggleKeybind
+        if key and input.KeyCode == key then
+            setUiVisible(not ScreenGui.Enabled)
+        end
+    end)
 
     function Window:Toggle() setUiVisible(not ScreenGui.Enabled) end
     function Window:SetTitle(newTitle) TitleLabel.Text = newTitle end
@@ -2302,6 +3078,7 @@ function Library:CreateWindow(config)
             if activeWatermark then pcall(function() activeWatermark:Destroy() end) end
             if activeKeyList then pcall(function() activeKeyList:Destroy() end) end
             if fpsConn then fpsConn:Disconnect() end
+            if toggleKeyConn then toggleKeyConn:Disconnect() end
             ScreenGui:Destroy(); RestoreGui:Destroy(); NotifyGui:Destroy(); TooltipGui:Destroy()
         end
         if ScreenGui.Enabled then
@@ -3155,6 +3932,13 @@ function Library:CreateWindow(config)
     end
 
     function Window:CreateTab(name, icon)
+        if type(name) == "table" then   -- รองรับ Window:Tab({Title=, Icon=}) แบบ WindUI
+            local tabCfg = name
+            name = tabCfg.Title or tabCfg.Name or "Tab"
+            icon = icon or tabCfg.Icon
+        end
+        local rawTabName = name
+        name = tostring(Library:Translate(name))
         local Tab = {}
         local TabBtn = Instance.new("TextButton")
         TabBtn.Size = UDim2.new(1, 0, 0, 36)
@@ -3162,7 +3946,7 @@ function Library:CreateWindow(config)
         TabBtn.BackgroundTransparency = 1
         TabBtn.AutoButtonColor = false
         TabBtn.Text = ""
-        TabBtn.Parent = TabList
+        TabBtn.Parent = TabHolder
         tabOrderCounter = tabOrderCounter + 1
         TabBtn.LayoutOrder = tabOrderCounter
         corner(TabBtn, 8)
@@ -3193,6 +3977,13 @@ function Library:CreateWindow(config)
         TabTitle.TextSize = 13
         TabTitle.TextXAlignment = Enum.TextXAlignment.Left
         TabTitle.Parent = TabBtn
+        if Library:IsLocalizedKey(rawTabName) then
+            Library:BindLocalized(function() return TabTitle.Parent ~= nil end, function()
+                name = tostring(Library:Translate(rawTabName))
+                TabTitle.Text = name
+                for _, e in ipairs(allTabs) do if e.btn == TabBtn then e.name = name end end
+            end)
+        end
 
         local ActiveBar = Instance.new("Frame")
         ActiveBar.Size = UDim2.new(0, 3, 0, 0)
@@ -3255,6 +4046,7 @@ function Library:CreateWindow(config)
         end
 
         local function activateTab()
+            if Tab.Locked then return end
             closeActivePopup()
             for _, t in ipairs(Tabs) do
                 local isThis = (t.Btn == TabBtn)
@@ -3276,6 +4068,38 @@ function Library:CreateWindow(config)
             CurrentTab = {Btn = TabBtn, Content = TabContent, SetActive = setActive}
         end
         TabBtn.MouseButton1Click:Connect(activateTab)
+        Tab.Name = name
+        Tab.Select = function() activateTab() end   -- เรียกได้ทั้ง tab:Select() และ tab.Select()
+        function Tab:Lock(msg)
+            Tab.Locked = true
+            TabTitle.TextTransparency = 0.55
+            return Tab
+        end
+        function Tab:Unlock()
+            Tab.Locked = false
+            TabTitle.TextTransparency = 0
+            return Tab
+        end
+        function Tab:SetTitle(newName)
+            name = tostring(Library:Translate(newName))
+            Tab.Name = name
+            TabTitle.Text = name
+            for _, e in ipairs(allTabs) do if e.btn == TabBtn then e.name = name end end
+            return Tab
+        end
+        function Tab:Destroy()
+            for i, t in ipairs(Tabs) do if t.Btn == TabBtn then table.remove(Tabs, i) break end end
+            for i, t in ipairs(allTabs) do if t.btn == TabBtn then table.remove(allTabs, i) break end end
+            for i, t in ipairs(windowTabList) do if t == Tab then table.remove(windowTabList, i) break end end
+            Library:UnregisterCommandsByTab(name)
+            local wasCurrent = CurrentTab and CurrentTab.Btn == TabBtn
+            TabBtn:Destroy()
+            TabContent:Destroy()
+            if wasCurrent then
+                CurrentTab = nil
+                if windowTabList[1] then windowTabList[1].Select() else ActiveIndicator.Visible = false end
+            end
+        end
 
         Library:RegisterCommand({
             Title = "ไปที่แท็บ: " .. name,
@@ -3292,30 +4116,271 @@ function Library:CreateWindow(config)
             Library.FlagChanged:Fire(flag, value)
         end
 
-        function Tab:CreateSection(title)
-            local Holder = Instance.new("Frame")
-            Holder.Size = UDim2.new(1, 0, 0, 22)
-            Holder.BackgroundTransparency = 1
-            Holder.Parent = TabContent
-            local Line = Instance.new("Frame")
-            Line.Size = UDim2.new(0, 3, 0, 12)
-            Line.Position = UDim2.new(0, 0, 0, 5)
-            applyThemeColor(Line, "AccentA")
-            Line.BorderSizePixel = 0
-            Line.Parent = Holder
-            corner(Line, 2)
-            accentGradient(Line, 90)
-            local Label = Instance.new("TextLabel")
-            Label.Size = UDim2.new(1, -10, 0, 16)
-            Label.Position = UDim2.new(0, 10, 0, 3)
-            Label.BackgroundTransparency = 1
-            Label.Text = string.upper(title or "Section")
-            applyThemeColor(Label, "SubText", "TextColor3")
-            Label.FontFace = UI_Font("Bold")
-            Label.TextSize = 11
-            Label.TextXAlignment = Enum.TextXAlignment.Left
-            Label.Parent = Holder
-            return newElement(Holder)
+        -- ============ v7: ชื่อ creator ทั้งหมด + proxy สำหรับ container (Section/Group) ============
+        local CREATOR_NAMES = {"CreateSection", "CreateDivider", "CreateSpace", "CreateParagraph", "CreateAccordion", "CreateSegmentedControl",
+            "CreateButton", "CreateToggle", "CreateCheckbox", "CreateSlider", "CreateDropdown", "CreateThemeDropdown", "CreateColorPicker",
+            "CreateInput", "CreateKeybind", "CreateLabel", "CreateTextArea", "CreateErrorLog", "CreateProgressBar", "CreateGraph",
+            "CreateRadioGroup", "CreateMultiDropdown", "CreateSearchBox", "CreateImage", "CreateCode", "CreateGroup", "CreateConfigManager"}
+
+        -- สร้าง element ลงใน container ที่กำหนด โดยสลับ TabContent ชั่วคราวระหว่างสร้าง
+        -- (ทุก creator อ้าง TabContent ตอนสร้างเท่านั้น ส่วน runtime กลับไปใช้ ScrollingFrame ตัวจริงเสมอ)
+        local function withContainer(container, cname, cfg)
+            local prev = TabContent
+            if container then TabContent = container end
+            local ok, res = pcall(Tab[cname], Tab, cfg)
+            TabContent = prev
+            if not ok then error(res, 0) end
+            return res
+        end
+        local function attachCreators(target, container, after)
+            for _, cname in ipairs(CREATOR_NAMES) do
+                local fn = function(_, cfg)
+                    local res = withContainer(container, cname, cfg)
+                    if after then after() end
+                    return res
+                end
+                target[cname] = fn
+                target[string.sub(cname, 7)] = fn   -- alias แบบ WindUI: Button/Toggle/Slider/...
+            end
+            target.Colorpicker = target.CreateColorPicker
+            target.Segmented = target.CreateSegmentedControl
+            target.Radio = target.CreateRadioGroup
+            target.Progress = target.CreateProgressBar
+            return target
+        end
+
+        -- ============ Section: หัวข้อ (แบบเดิม) หรือ container พับได้ (Collapsible/Opened/Box) ============
+        -- Tab:CreateSection("ชื่อ")                       → หัวข้อเส้นจาง เหมือนเดิม
+        -- Tab:CreateSection({Title=, Desc=, Icon=, Opened=true, Box=true, Collapsible=true}) → กล่อง: section:CreateButton{...}
+        function Tab:CreateSection(arg)
+            local c = type(arg) == "table" and arg or {Title = arg}
+            local title = tostring(Library:Translate(c.Title or c.Text or c.Name or "Section"))
+            local rawDesc = c.Desc or c.Description
+            local desc = rawDesc and tostring(Library:Translate(rawDesc)) or nil
+            local isContainer = c.Collapsible == true or c.Opened ~= nil or c.Box == true or c.Container == true
+
+            if not isContainer then
+                local Holder = Instance.new("Frame")
+                Holder.Name = "Section"
+                Holder.Size = UDim2.new(1, 0, 0, desc and 38 or 24)
+                Holder.BackgroundTransparency = 1
+                Holder.Parent = TabContent
+                local Bar = Instance.new("Frame")
+                Bar.Size = UDim2.new(0, 3, 0, 12)
+                Bar.Position = UDim2.new(0, 0, 0, 6)
+                applyThemeColor(Bar, "AccentA")
+                Bar.BorderSizePixel = 0
+                Bar.Parent = Holder
+                corner(Bar, 2)
+                accentGradient(Bar, 90)
+                local labelX = 10
+                if c.Icon then
+                    local Ic = Instance.new("ImageLabel")
+                    Ic.Size = UDim2.new(0, 14, 0, 14)
+                    Ic.Position = UDim2.new(0, 10, 0, 5)
+                    Ic.BackgroundTransparency = 1
+                    Ic.Image = Library.Icons[c.Icon] or normalizeAssetId(c.Icon)
+                    applyThemeColor(Ic, "AccentA", "ImageColor3")
+                    Ic.ScaleType = Enum.ScaleType.Fit
+                    Ic.Parent = Holder
+                    labelX = 30
+                end
+                local Label = Instance.new("TextLabel")
+                Label.Size = UDim2.new(0, 0, 0, 16)
+                Label.AutomaticSize = Enum.AutomaticSize.X
+                Label.Position = UDim2.new(0, labelX, 0, 4)
+                Label.BackgroundTransparency = 1
+                Label.Text = string.upper(title)
+                applyThemeColor(Label, "SubText", "TextColor3")
+                Label.FontFace = UI_Font("Bold")
+                Label.TextSize = 11
+                Label.TextXAlignment = Enum.TextXAlignment.Left
+                Label.Parent = Holder
+                -- เส้นจางลงทางขวาต่อจากชื่อ
+                local Fade = Instance.new("Frame")
+                Fade.BorderSizePixel = 0
+                applyThemeColor(Fade, "Stroke")
+                Fade.Parent = Holder
+                local fadeGrad = Instance.new("UIGradient")
+                fadeGrad.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1)})
+                fadeGrad.Parent = Fade
+                local function relayout()
+                    local w = Label.TextBounds.X
+                    Fade.Position = UDim2.new(0, labelX + w + 8, 0, 12)
+                    Fade.Size = UDim2.new(1, -(labelX + w + 8), 0, 1)
+                end
+                Label:GetPropertyChangedSignal("TextBounds"):Connect(relayout)
+                relayout()
+                local DescLbl
+                if desc then
+                    DescLbl = Instance.new("TextLabel")
+                    DescLbl.Position = UDim2.new(0, 10, 0, 22)
+                    DescLbl.Size = UDim2.new(1, -10, 0, 14)
+                    DescLbl.BackgroundTransparency = 1
+                    DescLbl.Text = desc
+                    applyThemeColor(DescLbl, "SubText", "TextColor3")
+                    DescLbl.FontFace = UI_Font("Medium")
+                    DescLbl.TextSize = 11.5
+                    DescLbl.TextTruncate = Enum.TextTruncate.AtEnd
+                    DescLbl.TextXAlignment = Enum.TextXAlignment.Left
+                    DescLbl.Parent = Holder
+                end
+                local elem = newElement(Holder, function() return title end, function(_, t) Label.Text = string.upper(tostring(t)); relayout() end)
+                elem._setTitle = function(t) Label.Text = string.upper(t); relayout() end
+                elem._setDesc = function(t) if DescLbl then DescLbl.Text = t end end
+                if Library:IsLocalizedKey(c.Title or c.Text) then
+                    local rawT = c.Title or c.Text
+                    Library:BindLocalized(function() return Holder.Parent ~= nil end, function() elem._setTitle(tostring(Library:Translate(rawT))) end)
+                end
+                attachCreators(elem, nil)
+                return elem
+            end
+
+            -- ---- container mode ----
+            local boxed = c.Box ~= false
+            local opened = c.Opened ~= false
+            local collapsible = c.Collapsible ~= false
+            local Outer = Instance.new("Frame")
+            Outer.Name = "SectionBox"
+            Outer.Size = UDim2.new(1, 0, 0, 0)
+            Outer.AutomaticSize = Enum.AutomaticSize.Y
+            if boxed then
+                applyThemeColor(Outer, "Sidebar")
+                Outer.BackgroundTransparency = 0.2
+                Outer.Parent = TabContent
+                corner(Outer, 12)
+                local outerStroke = stroke(Outer, "Stroke", 1)
+                outerStroke.Transparency = 0.5
+            else
+                Outer.BackgroundTransparency = 1
+                Outer.Parent = TabContent
+            end
+            local oLayout = Instance.new("UIListLayout")
+            oLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            oLayout.Parent = Outer
+
+            local headerH = desc and 46 or 38
+            local Header = Instance.new("TextButton")
+            Header.Size = UDim2.new(1, 0, 0, headerH)
+            Header.BackgroundTransparency = 1
+            Header.AutoButtonColor = false
+            Header.Text = ""
+            Header.LayoutOrder = 1
+            Header.Parent = Outer
+            local hBar = Instance.new("Frame")
+            hBar.Size = UDim2.new(0, 3, 0, 14)
+            hBar.Position = UDim2.new(0, 10, 0.5, -7)
+            applyThemeColor(hBar, "AccentA")
+            hBar.BorderSizePixel = 0
+            hBar.Parent = Header
+            corner(hBar, 2)
+            accentGradient(hBar, 90)
+            local hx = 22
+            if c.Icon then
+                local Ic = Instance.new("ImageLabel")
+                Ic.Size = UDim2.new(0, 16, 0, 16)
+                Ic.Position = UDim2.new(0, 22, 0.5, -8)
+                Ic.BackgroundTransparency = 1
+                Ic.Image = Library.Icons[c.Icon] or normalizeAssetId(c.Icon)
+                applyThemeColor(Ic, "AccentA", "ImageColor3")
+                Ic.ScaleType = Enum.ScaleType.Fit
+                Ic.Parent = Header
+                hx = 44
+            end
+            local HTitle = Instance.new("TextLabel")
+            HTitle.Position = UDim2.new(0, hx, 0, desc and 7 or 0)
+            HTitle.Size = UDim2.new(1, -(hx + 34), 0, desc and 18 or headerH)
+            HTitle.BackgroundTransparency = 1
+            HTitle.Text = title
+            applyThemeColor(HTitle, "Text", "TextColor3")
+            HTitle.FontFace = UI_Font("Bold")
+            HTitle.TextSize = 13.5
+            HTitle.TextXAlignment = Enum.TextXAlignment.Left
+            HTitle.TextTruncate = Enum.TextTruncate.AtEnd
+            HTitle.Parent = Header
+            local HDesc
+            if desc then
+                HDesc = Instance.new("TextLabel")
+                HDesc.Position = UDim2.new(0, hx, 0, 25)
+                HDesc.Size = UDim2.new(1, -(hx + 34), 0, 14)
+                HDesc.BackgroundTransparency = 1
+                HDesc.Text = desc
+                applyThemeColor(HDesc, "SubText", "TextColor3")
+                HDesc.FontFace = UI_Font("Medium")
+                HDesc.TextSize = 11.5
+                HDesc.TextXAlignment = Enum.TextXAlignment.Left
+                HDesc.TextTruncate = Enum.TextTruncate.AtEnd
+                HDesc.Parent = Header
+            end
+            local Arrow = Instance.new("ImageLabel")
+            Arrow.Size = UDim2.new(0, 14, 0, 14)
+            Arrow.Position = UDim2.new(1, -24, 0.5, -7)
+            Arrow.BackgroundTransparency = 1
+            Arrow.Image = "rbxassetid://6031091004"
+            applyThemeColor(Arrow, "SubText", "ImageColor3")
+            Arrow.Rotation = opened and 180 or 0
+            Arrow.Visible = collapsible
+            Arrow.Parent = Header
+
+            local Body = Instance.new("Frame")
+            Body.Name = "Body"
+            Body.BackgroundTransparency = 1
+            Body.ClipsDescendants = true
+            Body.Size = UDim2.new(1, 0, 0, 0)
+            Body.LayoutOrder = 2
+            Body.Parent = Outer
+            local bPad = Instance.new("UIPadding")
+            bPad.PaddingLeft = UDim.new(0, boxed and 8 or 10)
+            bPad.PaddingRight = UDim.new(0, boxed and 8 or 0)
+            bPad.PaddingTop = UDim.new(0, 2)
+            bPad.PaddingBottom = UDim.new(0, 8)
+            bPad.Parent = Body
+            local bLayout = Instance.new("UIListLayout")
+            bLayout.Padding = UDim.new(0, 8)
+            bLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            bLayout.Parent = Body
+
+            local function bodyTarget()
+                local y = bLayout.AbsoluteContentSize.Y
+                if not opened or y <= 0 then return 0 end
+                return y + 10
+            end
+            local function applyBody(animate)
+                local target = UDim2.new(1, 0, 0, bodyTarget())
+                if animate then
+                    TweenService:Create(Body, TI.d024_Quint_Out, {Size = target}):Play()
+                else
+                    Body.Size = target
+                end
+                TweenService:Create(Arrow, TI.d022_Sine_Out, {Rotation = opened and 180 or 0}):Play()
+            end
+            bLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+                if opened then Body.Size = UDim2.new(1, 0, 0, bodyTarget()) end
+            end)
+            applyBody(false)
+
+            local elem
+            local function setOpened(v, animate)
+                opened = v and true or false
+                applyBody(animate ~= false)
+                if c.Callback then safeCallback(c.Callback, opened) end
+            end
+            if collapsible then
+                Header.MouseButton1Click:Connect(function() setOpened(not opened, true) end)
+            end
+            elem = newElement(Outer, function() return opened end, function(_, v) setOpened(v, true) end)
+            function elem:Open() setOpened(true, true) return elem end
+            function elem:Close() setOpened(false, true) return elem end
+            function elem:Toggle() setOpened(not opened, true) return elem end
+            elem.Content = Body
+            elem._setTitle = function(t) HTitle.Text = t end
+            elem._setDesc = function(t) if HDesc then HDesc.Text = t end end
+            if Library:IsLocalizedKey(c.Title or c.Text) then
+                local rawT = c.Title or c.Text
+                Library:BindLocalized(function() return Outer.Parent ~= nil end, function() HTitle.Text = tostring(Library:Translate(rawT)) end)
+            end
+            attachCreators(elem, Body)
+            return elem
         end
 
         function Tab:CreateDivider(c)
@@ -3330,39 +4395,420 @@ function Library:CreateWindow(config)
             applyThemeColor(Line, "Stroke")
             Line.BorderSizePixel = 0
             Line.Parent = Holder
+            local lineGrad = Instance.new("UIGradient")
+            lineGrad.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0.15),
+                NumberSequenceKeypoint.new(0.8, 0.15), NumberSequenceKeypoint.new(1, 1),
+            })
+            lineGrad.Parent = Line
             return newElement(Holder)
         end
 
+        function Tab:CreateSpace(c)
+            local h = 8
+            if type(c) == "number" then h = c elseif type(c) == "table" then h = tonumber(c.Height or c.Size) or 8 end
+            local Holder = Instance.new("Frame")
+            Holder.Name = "Space"
+            Holder.Size = UDim2.new(1, 0, 0, h)
+            Holder.BackgroundTransparency = 1
+            Holder.Parent = TabContent
+            return newElement(Holder)
+        end
+
+        -- ============ Paragraph: Title / Desc(Text) / Icon / Image / Color / Buttons ============
         function Tab:CreateParagraph(c)
             c = type(c) == "table" and c or {}
+            local titleText = c.Title and tostring(Library:Translate(c.Title)) or nil
+            local bodyRaw = c.Text or c.Desc or c.Content or c.Description
+            local bodyText = bodyRaw ~= nil and tostring(Library:Translate(bodyRaw)) or ((titleText == nil and not c.Image) and "Paragraph" or "")
+
+            local tint
+            if typeof(c.Color) == "Color3" then tint = c.Color
+            elseif type(c.Color) == "string" then tint = (c.Color == "Accent") and Theme.AccentA or Theme[c.Color] end
+
             local Frame = Instance.new("Frame")
+            Frame.Name = "Paragraph"
             Frame.Size = UDim2.new(1, 0, 0, 0)
             Frame.AutomaticSize = Enum.AutomaticSize.Y
-            applyThemeColor(Frame, "Element")
+            if tint then
+                Frame.BackgroundColor3 = Theme.Element:Lerp(tint, 0.1)
+            else
+                applyThemeColor(Frame, "Element")
+            end
             Frame.Parent = TabContent
             corner(Frame, 9)
             applyGlowOnHover(Frame)
+            if tint then
+                local ts = stroke(Frame, "Stroke", 1)
+                ts.Color = tint
+                ts.Transparency = 0.55
+            end
 
             local Pad = Instance.new("UIPadding")
-            Pad.PaddingLeft = UDim.new(0, 10)
-            Pad.PaddingRight = UDim.new(0, 10)
-            Pad.PaddingTop = UDim.new(0, 8)
-            Pad.PaddingBottom = UDim.new(0, 8)
+            Pad.PaddingLeft = UDim.new(0, 12)
+            Pad.PaddingRight = UDim.new(0, 12)
+            Pad.PaddingTop = UDim.new(0, 10)
+            Pad.PaddingBottom = UDim.new(0, 10)
             Pad.Parent = Frame
+            local Lay = Instance.new("UIListLayout")
+            Lay.Padding = UDim.new(0, 6)
+            Lay.SortOrder = Enum.SortOrder.LayoutOrder
+            Lay.Parent = Frame
+
+            if c.Image then
+                local Img = Instance.new("ImageLabel")
+                Img.Size = UDim2.new(1, 0, 0, tonumber(c.ImageHeight) or 120)
+                Img.BackgroundTransparency = 1
+                Img.Image = normalizeAssetId(c.Image)
+                Img.ScaleType = Enum.ScaleType.Crop
+                Img.LayoutOrder = 1
+                Img.Parent = Frame
+                corner(Img, 7)
+            end
+
+            local TitleLbl
+            if titleText or c.Icon then
+                local Head = Instance.new("Frame")
+                Head.Size = UDim2.new(1, 0, 0, 0)
+                Head.AutomaticSize = Enum.AutomaticSize.Y
+                Head.BackgroundTransparency = 1
+                Head.LayoutOrder = 2
+                Head.Parent = Frame
+                local hl = Instance.new("UIListLayout")
+                hl.FillDirection = Enum.FillDirection.Horizontal
+                hl.Padding = UDim.new(0, 8)
+                hl.SortOrder = Enum.SortOrder.LayoutOrder
+                hl.Parent = Head
+                local iconW = 0
+                if c.Icon then
+                    local Ic = Instance.new("ImageLabel")
+                    Ic.Size = UDim2.new(0, 16, 0, 16)
+                    Ic.BackgroundTransparency = 1
+                    Ic.Image = Library.Icons[c.Icon] or normalizeAssetId(c.Icon)
+                    if tint then Ic.ImageColor3 = tint else applyThemeColor(Ic, "AccentA", "ImageColor3") end
+                    Ic.ScaleType = Enum.ScaleType.Fit
+                    Ic.LayoutOrder = 1
+                    Ic.Parent = Head
+                    iconW = 24
+                end
+                TitleLbl = Instance.new("TextLabel")
+                TitleLbl.Size = UDim2.new(1, -iconW, 0, 0)
+                TitleLbl.AutomaticSize = Enum.AutomaticSize.Y
+                TitleLbl.BackgroundTransparency = 1
+                TitleLbl.Text = titleText or ""
+                applyThemeColor(TitleLbl, "Text", "TextColor3")
+                TitleLbl.FontFace = UI_Font("Bold")
+                TitleLbl.TextSize = 14
+                TitleLbl.TextWrapped = true
+                TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+                TitleLbl.LayoutOrder = 2
+                TitleLbl.Parent = Head
+            end
+
+            local BodyLbl = Instance.new("TextLabel")
+            BodyLbl.Size = UDim2.new(1, 0, 0, 0)
+            BodyLbl.AutomaticSize = Enum.AutomaticSize.Y
+            BodyLbl.BackgroundTransparency = 1
+            BodyLbl.Text = bodyText
+            BodyLbl.Visible = bodyText ~= ""
+            BodyLbl.RichText = c.RichText == true
+            applyThemeColor(BodyLbl, "SubText", "TextColor3")
+            BodyLbl.FontFace = UI_Font("Medium")
+            BodyLbl.TextSize = 13.5
+            BodyLbl.LineHeight = 1.3
+            BodyLbl.TextWrapped = true
+            BodyLbl.TextXAlignment = Enum.TextXAlignment.Left
+            BodyLbl.TextYAlignment = Enum.TextYAlignment.Top
+            BodyLbl.LayoutOrder = 3
+            BodyLbl.Parent = Frame
+
+            if type(c.Buttons) == "table" and #c.Buttons > 0 then
+                local Row = Instance.new("Frame")
+                Row.Size = UDim2.new(1, 0, 0, 0)
+                Row.AutomaticSize = Enum.AutomaticSize.Y
+                Row.BackgroundTransparency = 1
+                Row.LayoutOrder = 4
+                Row.Parent = Frame
+                local rl = Instance.new("UIListLayout")
+                rl.FillDirection = Enum.FillDirection.Horizontal
+                rl.Padding = UDim.new(0, 6)
+                rl.SortOrder = Enum.SortOrder.LayoutOrder
+                pcall(function() rl.Wraps = true end)
+                rl.Parent = Row
+                for idx, b in ipairs(c.Buttons) do
+                    local variant = b.Variant or (idx == 1 and "Primary" or "Secondary")
+                    local Btn = Instance.new("TextButton")
+                    Btn.Size = UDim2.new(0, 0, 0, 28)
+                    Btn.AutomaticSize = Enum.AutomaticSize.X
+                    Btn.LayoutOrder = idx
+                    Btn.AutoButtonColor = false
+                    Btn.Text = ""
+                    Btn.Parent = Row
+                    corner(Btn, 7)
+                    local white = false
+                    if variant == "Primary" then applyThemeColor(Btn, "AccentA"); accentGradient(Btn, 100); white = true
+                    elseif variant == "Danger" then applyThemeColor(Btn, "Danger"); white = true
+                    else applyThemeColor(Btn, "ElementHover") end
+                    local bp = Instance.new("UIPadding")
+                    bp.PaddingLeft = UDim.new(0, 12)
+                    bp.PaddingRight = UDim.new(0, 12)
+                    bp.Parent = Btn
+                    local bl = Instance.new("UIListLayout")
+                    bl.FillDirection = Enum.FillDirection.Horizontal
+                    bl.HorizontalAlignment = Enum.HorizontalAlignment.Center
+                    bl.VerticalAlignment = Enum.VerticalAlignment.Center
+                    bl.Padding = UDim.new(0, 6)
+                    bl.SortOrder = Enum.SortOrder.LayoutOrder
+                    bl.Parent = Btn
+                    if b.Icon then
+                        local BI = Instance.new("ImageLabel")
+                        BI.Size = UDim2.new(0, 13, 0, 13)
+                        BI.BackgroundTransparency = 1
+                        BI.Image = Library.Icons[b.Icon] or normalizeAssetId(b.Icon)
+                        BI.ImageColor3 = white and Color3.fromRGB(255, 255, 255) or Theme.Text
+                        BI.ScaleType = Enum.ScaleType.Fit
+                        BI.LayoutOrder = 1
+                        BI.Parent = Btn
+                    end
+                    local BL = Instance.new("TextLabel")
+                    BL.Size = UDim2.new(0, 0, 1, 0)
+                    BL.AutomaticSize = Enum.AutomaticSize.X
+                    BL.BackgroundTransparency = 1
+                    BL.Text = tostring(Library:Translate(b.Title or b.Text or "OK"))
+                    if white then BL.TextColor3 = Color3.fromRGB(255, 255, 255) else applyThemeColor(BL, "Text", "TextColor3") end
+                    BL.FontFace = UI_Font("SemiBold")
+                    BL.TextSize = 12
+                    BL.LayoutOrder = 2
+                    BL.Parent = Btn
+                    applyPressAnimation(Btn, 0.95)
+                    ripple(Btn, "AccentA")
+                    Btn.MouseButton1Click:Connect(function() safeCallback(b.Callback) end)
+                end
+            end
+
+            if c.Tooltip then Library:AttachTooltip(Frame, c.Tooltip) end
+            local elem = newElement(Frame, function() return BodyLbl.Text end, function(_, newText)
+                BodyLbl.Text = tostring(newText)
+                BodyLbl.Visible = tostring(newText) ~= ""
+            end)
+            elem._setTitle = function(t) if TitleLbl then TitleLbl.Text = t end end
+            elem._setDesc = function(t) BodyLbl.Text = t; BodyLbl.Visible = t ~= "" end
+            return elem
+        end
+
+        -- ============ Checkbox (ทางเลือกของ Toggle — Toggle({Type="Checkbox"}) ก็เรียกตัวนี้) ============
+        function Tab:CreateCheckbox(c)
+            c = type(c) == "table" and c or {}
+            local state = c.Default == true
+            bindFlag(c.Flag, state)
+            local Row = Instance.new("TextButton")
+            Row.Size = UDim2.new(1, 0, 0, 40)
+            applyThemeColor(Row, "Element")
+            Row.AutoButtonColor = false
+            Row.Text = ""
+            Row.Parent = TabContent
+            corner(Row, 9)
+            applyHoverEffect(Row, "Element", "ElementHover")
+            applyGlowOnHover(Row)
+            applyPressAnimation(Row, 0.98)
+            ripple(Row, "AccentA")
 
             local Label = Instance.new("TextLabel")
-            Label.Size = UDim2.new(1, 0, 0, 0)
-            Label.AutomaticSize = Enum.AutomaticSize.Y
+            Label.Size = UDim2.new(1, -56, 1, 0)
+            Label.Position = UDim2.new(0, 12, 0, 0)
             Label.BackgroundTransparency = 1
-            Label.Text = c.Text or "Paragraph"
-            applyThemeColor(Label, "SubText", "TextColor3")
-            Label.FontFace = UI_Font("Medium")
-            Label.TextSize = 13.5
-            Label.LineHeight = 1.3
-            Label.TextWrapped = true
+            Label.Text = c.Text or "Checkbox"
+            applyThemeColor(Label, "Text", "TextColor3")
+            Label.FontFace = UI_Font("SemiBold")
+            Label.TextSize = 14
             Label.TextXAlignment = Enum.TextXAlignment.Left
-            Label.Parent = Frame
-            return newElement(Frame, function() return Label.Text end, function(_, newText) Label.Text = newText end)
+            Label.Parent = Row
+
+            local Box = Instance.new("Frame")
+            Box.Size = UDim2.new(0, 20, 0, 20)
+            Box.Position = UDim2.new(1, -32, 0.5, -10)
+            applyThemeColor(Box, state and "AccentA" or "ToggleOff")
+            Box.Parent = Row
+            corner(Box, 6)
+            stroke(Box)
+            local Check = Instance.new("TextLabel")
+            Check.Size = UDim2.new(1, 0, 1, 0)
+            Check.BackgroundTransparency = 1
+            Check.Text = "✓"
+            Check.TextColor3 = Color3.fromRGB(255, 255, 255)
+            Check.FontFace = UI_Font("Bold")
+            Check.TextSize = 14
+            Check.TextTransparency = state and 0 or 1
+            Check.Parent = Box
+
+            local function applyState(newState, fire)
+                state = newState and true or false
+                bindFlag(c.Flag, state)
+                Box:SetAttribute("ThemeKey", state and "AccentA" or "ToggleOff")
+                Box:SetAttribute("ThemeBinds", "BackgroundColor3=" .. (state and "AccentA" or "ToggleOff"))
+                TweenService:Create(Box, TI.d015_Sine_Out, {BackgroundColor3 = state and Theme.AccentA or Theme.ToggleOff}):Play()
+                TweenService:Create(Check, TI.d015_Sine_Out, {TextTransparency = state and 0 or 1}):Play()
+                if state then pulseRing(Box, "AccentA", 6) end
+                if fire then
+                    if c.Notify == true then
+                        Library:Notify({Title = c.Text or "Checkbox", Content = state and "เปิดใช้งานแล้ว" or "ปิดใช้งานแล้ว", Type = state and "success" or "warning", Duration = 1.5})
+                    end
+                    safeCallback(c.Callback, state)
+                end
+            end
+            Row.MouseButton1Click:Connect(function() applyState(not state, true) end)
+            if c.Tooltip then Library:AttachTooltip(Row, c.Tooltip) end
+            if c.Command ~= false then
+                Library:RegisterCommand({Title = c.Text or "Checkbox", SubText = "Checkbox", TabName = name, Type = "Toggle", Action = function() applyState(not state, true) end})
+            end
+            return newElement(Row, function() return state end, function(_, v) applyState(v, true) end, nil, c.Flag)
+        end
+
+        -- ============ Code: บล็อกโค้ด + highlight Lua + ปุ่ม Copy ============
+        function Tab:CreateCode(c)
+            c = type(c) == "table" and c or {}
+            local current = tostring(c.Code or c.Text or "")
+            local titleText = c.Title and tostring(Library:Translate(c.Title)) or string.upper(tostring(c.Language or "lua"))
+            local maxBody = tonumber(c.MaxHeight) or 240
+
+            local Frame = Instance.new("Frame")
+            Frame.Name = "Code"
+            applyThemeColor(Frame, "Background")
+            Frame.ClipsDescendants = true
+            Frame.Parent = TabContent
+            corner(Frame, 9)
+            local fs = stroke(Frame, "Stroke", 1)
+            fs.Transparency = 0.45
+
+            local TitleLbl = Instance.new("TextLabel")
+            TitleLbl.Position = UDim2.new(0, 12, 0, 0)
+            TitleLbl.Size = UDim2.new(1, -90, 0, 30)
+            TitleLbl.BackgroundTransparency = 1
+            TitleLbl.Text = titleText
+            applyThemeColor(TitleLbl, "SubText", "TextColor3")
+            TitleLbl.FontFace = UI_Font("Bold")
+            TitleLbl.TextSize = 11
+            TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+            TitleLbl.TextTruncate = Enum.TextTruncate.AtEnd
+            TitleLbl.Parent = Frame
+
+            local CopyBtn = Instance.new("TextButton")
+            CopyBtn.AnchorPoint = Vector2.new(1, 0.5)
+            CopyBtn.Position = UDim2.new(1, -8, 0, 15)
+            CopyBtn.Size = UDim2.new(0, 66, 0, 20)
+            applyThemeColor(CopyBtn, "Element")
+            CopyBtn.AutoButtonColor = false
+            CopyBtn.Text = "Copy"
+            applyThemeColor(CopyBtn, "SubText", "TextColor3")
+            CopyBtn.FontFace = UI_Font("SemiBold")
+            CopyBtn.TextSize = 11
+            CopyBtn.Parent = Frame
+            corner(CopyBtn, 6)
+            applyHoverEffect(CopyBtn, "Element", "ElementHover")
+            applyPressAnimation(CopyBtn, 0.94)
+
+            local Sep = Instance.new("Frame")
+            Sep.Position = UDim2.new(0, 0, 0, 30)
+            Sep.Size = UDim2.new(1, 0, 0, 1)
+            applyThemeColor(Sep, "Stroke")
+            Sep.BackgroundTransparency = 0.5
+            Sep.BorderSizePixel = 0
+            Sep.Parent = Frame
+
+            local Scroll = Instance.new("ScrollingFrame")
+            Scroll.Position = UDim2.new(0, 0, 0, 31)
+            Scroll.Size = UDim2.new(1, 0, 1, -31)
+            Scroll.BackgroundTransparency = 1
+            Scroll.BorderSizePixel = 0
+            Scroll.ScrollBarThickness = 3
+            applyThemeColor(Scroll, "AccentA", "ScrollBarImageColor3")
+            Scroll.AutomaticCanvasSize = Enum.AutomaticSize.XY
+            Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+            Scroll.ScrollingDirection = Enum.ScrollingDirection.XY
+            Scroll.Parent = Frame
+
+            local CodeLbl = Instance.new("TextLabel")
+            CodeLbl.Size = UDim2.new(0, 0, 0, 0)
+            CodeLbl.AutomaticSize = Enum.AutomaticSize.XY
+            CodeLbl.BackgroundTransparency = 1
+            CodeLbl.RichText = true
+            CodeLbl.FontFace = Font.fromEnum(Enum.Font.Code)
+            CodeLbl.TextSize = 12.5
+            CodeLbl.TextWrapped = false
+            CodeLbl.TextXAlignment = Enum.TextXAlignment.Left
+            CodeLbl.TextYAlignment = Enum.TextYAlignment.Top
+            applyThemeColor(CodeLbl, "Text", "TextColor3")
+            CodeLbl.Parent = Scroll
+            local cp = Instance.new("UIPadding")
+            cp.PaddingLeft = UDim.new(0, 12)
+            cp.PaddingRight = UDim.new(0, 12)
+            cp.PaddingTop = UDim.new(0, 10)
+            cp.PaddingBottom = UDim.new(0, 10)
+            cp.Parent = CodeLbl
+
+            local function fit()
+                local body = math.min(math.max(CodeLbl.TextBounds.Y + 20, 40), maxBody)
+                Frame.Size = UDim2.new(1, 0, 0, 31 + body)
+            end
+            local function render(text)
+                current = tostring(text)
+                local shown = string.gsub(current, "\t", "    ")
+                if c.Highlight == false then
+                    CodeLbl.Text = xmlEscape(shown)
+                else
+                    local okh, res = pcall(highlightLua, shown)
+                    CodeLbl.Text = okh and res or xmlEscape(shown)
+                end
+                local _, lines = string.gsub(shown, "\n", "\n")
+                Frame.Size = UDim2.new(1, 0, 0, 31 + math.min((lines + 1) * 16 + 20, maxBody))
+                task.defer(fit)
+            end
+            CodeLbl:GetPropertyChangedSignal("TextBounds"):Connect(fit)
+            render(current)
+
+            CopyBtn.MouseButton1Click:Connect(function()
+                local ok = copyToClipboard(current)
+                CopyBtn.Text = ok and "Copied!" or "No clipboard"
+                task.delay(1.2, function() if CopyBtn.Parent then CopyBtn.Text = "Copy" end end)
+            end)
+            if c.Tooltip then Library:AttachTooltip(Frame, c.Tooltip) end
+            local elem = newElement(Frame, function() return current end, function(_, t) render(t) end)
+            elem._setTitle = function(t) TitleLbl.Text = t end
+            return elem
+        end
+
+        -- ============ Group: เรียง element แนวนอนเท่าๆ กัน (เหมาะกับ Button/Toggle/Checkbox) ============
+        function Tab:CreateGroup(c)
+            c = type(c) == "table" and c or {}
+            local gap = tonumber(c.Gap) or 8
+            local Row = Instance.new("Frame")
+            Row.Name = "Group"
+            Row.BackgroundTransparency = 1
+            Row.Size = UDim2.new(1, 0, 0, 0)
+            Row.AutomaticSize = Enum.AutomaticSize.Y
+            Row.Parent = TabContent
+            local rl = Instance.new("UIListLayout")
+            rl.FillDirection = Enum.FillDirection.Horizontal
+            rl.Padding = UDim.new(0, gap)
+            rl.SortOrder = Enum.SortOrder.LayoutOrder
+            rl.Parent = Row
+            local function relayout()
+                local kids = {}
+                for _, ch in ipairs(Row:GetChildren()) do
+                    if ch:IsA("GuiObject") then kids[#kids + 1] = ch end
+                end
+                local n = #kids
+                if n == 0 then return end
+                local sub = math.floor(gap * (n - 1) / n)
+                for i, ch in ipairs(kids) do
+                    ch.LayoutOrder = i
+                    local sz = ch.Size
+                    ch.Size = UDim2.new(1 / n, -sub, sz.Y.Scale, sz.Y.Offset)
+                end
+            end
+            local elem = newElement(Row)
+            attachCreators(elem, Row, relayout)
+            return elem
         end
 
         -- ============ Accordion: หัวข้อกดขยาย/ย่อ พร้อมลูกศรหมุนและความสูงเด้งสปริง ============
@@ -3646,6 +5092,8 @@ function Library:CreateWindow(config)
             local function applyState(newState, fireCallback)
                 state = newState
                 bindFlag(c.Flag, state)
+                Switch:SetAttribute("ThemeKey", state and "AccentA" or "ToggleOff")
+                Switch:SetAttribute("ThemeBinds", "BackgroundColor3=" .. (state and "AccentA" or "ToggleOff"))
                 TweenService:Create(Switch, TI.d015_Sine_Out, {BackgroundColor3 = state and Theme.AccentA or Theme.ToggleOff}):Play()
                 TweenService:Create(switchGradProxy, TI.d015_Sine_Out, {Value = state and 0 or 1}):Play()
                 -- ลูกบิดยืด-หด (squash & stretch) ก่อนเด้งไปตำแหน่งใหม่แบบสปริง ให้ความรู้สึก "หนึบ" ขึ้น
@@ -3692,7 +5140,16 @@ function Library:CreateWindow(config)
         function Tab:CreateSlider(c)
             c = type(c) == "table" and c or {}
             local min, max = c.Min or 0, c.Max or 100
-            local places = c.Places or 0
+            local step = tonumber(c.Step)
+            if step and step <= 0 then step = nil end
+            local places = c.Places
+            if places == nil then
+                places = 0
+                if step then
+                    local dec = string.match(tostring(step), "%.(%d+)$")
+                    places = dec and math.min(#dec, 4) or 0
+                end
+            end
             local suffix = c.Suffix or ""
             local val = math.clamp(c.Default or min, min, max)
             bindFlag(c.Flag, val)
@@ -3744,7 +5201,14 @@ function Library:CreateWindow(config)
                 local pos = xPos - Bar.AbsolutePosition.X
                 local percent = math.clamp(pos / Bar.AbsoluteSize.X, 0, 1)
                 local value = min + (max - min) * percent
-                value = math.floor(value * (10 ^ places)) / (10 ^ places)
+                if step then
+                    value = min + math.floor((value - min) / step + 0.5) * step
+                    value = math.clamp(value, min, max)
+                    value = math.floor(value * (10 ^ places) + 0.5) / (10 ^ places)
+                    percent = (max - min) > 0 and (value - min) / (max - min) or 0
+                else
+                    value = math.floor(value * (10 ^ places)) / (10 ^ places)
+                end
                 Fill.Size = UDim2.new(percent, 0, 1, 0)
                 Label.Text = (c.Text or "Slider") .. ": " .. string.format("%." .. places .. "f", value) .. suffix
                 val = value
@@ -5448,7 +6912,192 @@ function Library:CreateWindow(config)
             end
         end
 
+        -- ============ v7: WRAPPER — ทำให้ทุก element รับ config แบบ WindUI + Desc/Locked/Localization/ขอบบาง ============
+        local DESC_OK = {CreateButton = true, CreateToggle = true, CreateCheckbox = true, CreateSlider = true,
+            CreateDropdown = true, CreateColorPicker = true, CreateKeybind = true}
+        local OUTLINE_OK = {CreateButton = true, CreateToggle = true, CreateCheckbox = true, CreateSlider = true,
+            CreateColorPicker = true, CreateKeybind = true, CreateInput = true, CreateParagraph = true, CreateAccordion = true}
+        local LIST_ELEMENTS = {CreateDropdown = true, CreateMultiDropdown = true, CreateRadioGroup = true, CreateSegmentedControl = true}
+
+        -- ใส่บรรทัดคำอธิบาย (Desc) ใต้ชื่อ element แถวเดียว: ขยายความสูง + เลื่อนของเดิมขึ้น
+        local function attachDesc(cname, elem, root, text)
+            local existing = elem._descLabel
+            if existing and existing.Parent then
+                existing.Text = text
+                existing.Visible = text ~= ""
+                return
+            end
+            if text == "" then return end
+            local isSlider = cname == "CreateSlider"
+            local extra = isSlider and 16 or 12
+            local baseH = root.Size.Y.Offset
+            local textX = 12
+            for _, ch in ipairs(root:GetChildren()) do
+                if ch:IsA("TextLabel") then textX = ch.Position.X.Offset break end
+            end
+            for _, ch in ipairs(root:GetChildren()) do
+                if ch:IsA("GuiObject") and ch.Name ~= "__RippleHolder" and ch.Name ~= "__Lock" then
+                    local sz, ps = ch.Size, ch.Position
+                    if sz.Y.Scale == 1 then
+                        ch.Size = UDim2.new(sz.X.Scale, sz.X.Offset, 1, sz.Y.Offset - extra)
+                    end
+                    if ps.Y.Scale > 0 then
+                        ch.Position = UDim2.new(ps.X.Scale, ps.X.Offset, ps.Y.Scale, ps.Y.Offset - math.floor(extra * ps.Y.Scale))
+                    end
+                end
+            end
+            root.Size = UDim2.new(root.Size.X.Scale, root.Size.X.Offset, 0, baseH + extra)
+            local Lbl = Instance.new("TextLabel")
+            Lbl.Name = "__DescLabel"
+            Lbl.Position = UDim2.new(0, textX, 0, isSlider and (baseH + 1) or (baseH - 8))
+            Lbl.Size = UDim2.new(1, -(textX + 12), 0, 14)
+            Lbl.BackgroundTransparency = 1
+            Lbl.Text = text
+            applyThemeColor(Lbl, "SubText", "TextColor3")
+            Lbl.FontFace = UI_Font("Medium")
+            Lbl.TextSize = 11.5
+            Lbl.TextTruncate = Enum.TextTruncate.AtEnd
+            Lbl.TextXAlignment = Enum.TextXAlignment.Left
+            Lbl.Parent = root
+            elem._descLabel = Lbl
+        end
+
+        -- คืน (cfg, ชื่อ creator ที่ต้องส่งต่อ) — แปลง key แบบ WindUI เป็น key ของ SpectreUI
+        local function normalizeConfig(cname, c)
+            if type(c) ~= "table" then
+                if type(c) == "string" then c = {Text = c} else c = {} end
+            end
+            if cname ~= "CreateAccordion" then
+                if c.Text == nil then c.Text = c.Title or c.Name or c.Label end
+            else
+                if c.Title ~= nil then c.Title = Library:Translate(c.Title) end
+                if c.Content ~= nil then c.Content = Library:Translate(c.Content) end
+                if c.Content == nil and (c.Desc or c.Text) then c.Content = Library:Translate(c.Desc or c.Text) end
+            end
+            if c.Text ~= nil then c.Text = Library:Translate(c.Text) end
+            if c.Tooltip == nil and c.Hint ~= nil then c.Tooltip = c.Hint end
+            if c.Callback == nil and c.OnChange ~= nil then c.Callback = c.OnChange end
+
+            if cname == "CreateSlider" then
+                local v = c.Value
+                if type(v) == "table" then
+                    if c.Min == nil then c.Min = v.Min end
+                    if c.Max == nil then c.Max = v.Max end
+                    if c.Default == nil then c.Default = v.Default end
+                elseif type(v) == "number" and c.Default == nil then
+                    c.Default = v
+                end
+            elseif c.Default == nil and c.Value ~= nil then
+                c.Default = c.Value
+            end
+
+            if LIST_ELEMENTS[cname] then
+                if c.Options == nil and c.Values ~= nil then c.Options = c.Values end
+                if type(c.Options) == "table" then
+                    local conv, changed = {}, false
+                    for i, v in ipairs(c.Options) do
+                        if type(v) == "table" then
+                            conv[i] = tostring(Library:Translate(v.Title or v.Name or v.Text or i))
+                            changed = true
+                        else
+                            conv[i] = v
+                        end
+                    end
+                    if changed then c.Options = conv end
+                end
+            end
+
+            if cname == "CreateInput" then
+                if c.Placeholder ~= nil then c.Text = Library:Translate(c.Placeholder) end
+                local t = c.Type
+                if type(t) == "string" and string.lower(t) == "textarea" then return c, "CreateTextArea" end
+            elseif cname == "CreateDropdown" and c.Multi == true then
+                return c, "CreateMultiDropdown"
+            elseif cname == "CreateToggle" then
+                local t = c.Type
+                if type(t) == "string" and string.lower(t) == "checkbox" then return c, "CreateCheckbox" end
+            elseif cname == "CreateKeybind" then
+                if type(c.Default) == "string" then
+                    local okk, kc = pcall(function() return Enum.KeyCode[c.Default] end)
+                    c.Default = okk and kc or nil
+                end
+            end
+            return c, nil
+        end
+
+        local function decorate(cname, elem, c, rawText, rawDesc)
+            if type(elem) ~= "table" or elem.Instance == nil or elem._decorated then return elem end
+            elem._decorated = true
+            elem._cfg = c
+            elem.ElementType = string.sub(cname, 7)
+            local root = elem.Instance
+
+            if OUTLINE_OK[cname] and root:IsA("GuiObject") and root.BackgroundTransparency < 0.5 then
+                local hasBase = false
+                for _, ch in ipairs(root:GetChildren()) do
+                    if ch:IsA("UIStroke") and ch:GetAttribute("ThemeKey") == "Stroke" then hasBase = true break end
+                end
+                if not hasBase then
+                    local st = stroke(root, "Stroke", 1)
+                    st.Transparency = 0.75
+                end
+            end
+
+            if DESC_OK[cname] then
+                elem._descHook = function(text) attachDesc(cname, elem, root, tostring(text)) end
+                if rawDesc ~= nil then elem._descHook(tostring(Library:Translate(rawDesc))) end
+            end
+
+            if c.Locked then elem:Lock(c.LockedTitle or c.LockedText) end
+
+            if Library:IsLocalizedKey(rawText) then
+                Library:BindLocalized(function() return root.Parent ~= nil end, function()
+                    elem:SetTitle(Library:Translate(rawText))
+                end)
+            end
+            if Library:IsLocalizedKey(rawDesc) then
+                Library:BindLocalized(function() return root.Parent ~= nil end, function()
+                    elem:SetDesc(Library:Translate(rawDesc))
+                end)
+            end
+            return elem
+        end
+
+        local function wrapCreator(cname)
+            local orig = Tab[cname]
+            if type(orig) ~= "function" then return end
+            Tab[cname] = function(self, c)
+                local rawText, rawDesc
+                if type(c) == "table" then
+                    rawText = c.Text or c.Title or c.Name or c.Label
+                    rawDesc = c.Desc or c.Description
+                elseif type(c) == "string" then
+                    rawText = c
+                end
+                local cfg, route = normalizeConfig(cname, c)
+                if route then return Tab[route](Tab, cfg) end
+                local elem = orig(self, cfg)
+                if cname == "CreateParagraph" or cname == "CreateAccordion" or cname == "CreateCode" then rawText, rawDesc = nil, nil end
+                return decorate(cname, elem, cfg, rawText, rawDesc)
+            end
+        end
+        for _, cname in ipairs({"CreateButton", "CreateToggle", "CreateCheckbox", "CreateSlider", "CreateDropdown", "CreateColorPicker",
+            "CreateInput", "CreateKeybind", "CreateLabel", "CreateTextArea", "CreateErrorLog", "CreateProgressBar", "CreateGraph",
+            "CreateRadioGroup", "CreateMultiDropdown", "CreateSearchBox", "CreateImage", "CreateSegmentedControl", "CreateAccordion",
+            "CreateParagraph", "CreateCode"}) do
+            wrapCreator(cname)
+        end
+        -- alias แบบ WindUI: Tab:Button / Tab:Toggle / Tab:Slider / Tab:Section / Tab:Code / Tab:Group ...
+        for _, cname in ipairs(CREATOR_NAMES) do
+            Tab[string.sub(cname, 7)] = function(_, cfg) return Tab[cname](Tab, cfg) end
+        end
+        Tab.Colorpicker = Tab.ColorPicker
+        Tab.Segmented = Tab.SegmentedControl
+        Tab.Radio = Tab.RadioGroup
+        Tab.Progress = Tab.ProgressBar
+
         Tab.Btn = TabBtn
+        table.insert(windowTabList, Tab)
         table.insert(Tabs, {Btn = TabBtn, Content = TabContent, SetActive = setActive, BasePos = ContentBasePos, Scale = ContentScale})
         if #Tabs == 1 then
             setActive(true)
@@ -5505,7 +7154,7 @@ function Library:CreateWindow(config)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             -- HideBtn อยู่ใน TopBar เหมือน CloseBtn: Roblox ยิง InputBegan ให้ทั้ง Frame แม่และปุ่มลูกพร้อมกัน
             -- ถ้าเช็คแค่ CloseBtn จุดเดียว การแตะปุ่ม Hide จะลาก window ไปด้วยพร้อมๆ กับสั่งซ่อน (ค้าง connection/สั่น)
-            if isPointOverGui(input.Position, CloseBtn) or isPointOverGui(input.Position, HideBtn) then return end
+            if isPointOverGui(input.Position, CloseBtn) or isPointOverGui(input.Position, HideBtn) or topbarButtonHit(input.Position) then return end
             -- กัน connection ค้างจากรอบลากก่อนหน้าที่ InputEnded ไม่ยิง (เช่น touch โดนขัดจังหวะกลางทางบนมือถือ
             -- - แจ้งเตือนดึงลงมา, สลับแอป, สาย โทรเข้า) ไม่งั้นหน้าต่างจะเกาะตามนิ้ว/เมาส์ครั้งถัดไปค้างตลอดไป
             stopWindowDrag()
@@ -5541,7 +7190,7 @@ function Library:CreateWindow(config)
     end)
 
     -- ============ Resizable ============
-    local MIN_SIZE, MAX_SIZE = Vector2.new(380, 340), Vector2.new(650, 550)
+    local MIN_SIZE, MAX_SIZE = Vector2.new(380, 340), Vector2.new(1100, 780)
     local resizeStart, startSize, resizeTouch = nil, nil, nil
     local resizeChangedConn, resizeEndedConn = nil, nil
 
@@ -5597,6 +7246,556 @@ function Library:CreateWindow(config)
             end)
         end
     end)
+
+    -- ============ v7: WINDOW API (เทียบเท่า WindUI) ============
+    table.insert(Library._Guis, ScreenGui)
+    table.insert(Library._Guis, NotifyGui)
+    table.insert(Library._Guis, TooltipGui)
+    table.insert(Library._Guis, RestoreGui)
+
+    local visibleCallbacks = {open = {}, close = {}}
+    local windowShown = true
+    local acrylicEnabled = false
+    local blurEffect = nil
+    local uiTransparency = 0
+    local BgImage = nil
+    local openButtonHidden = false
+    local searchHidden = false
+    local userPanel = nil
+    local syncBlur, applyUiTransparency, updateSidebarLayout
+    Window.VisibilityChanged = Instance.new("BindableEvent")
+
+    if Library:IsLocalizedKey(rawWindowTitle) then
+        Library:BindLocalized(function() return TitleLabel.Parent ~= nil end, function()
+            TitleLabel.Text = tostring(Library:Translate(rawWindowTitle))
+        end)
+    end
+
+    applyUiTransparency = function()
+        local barT = uiTransparency
+        if BgImage then barT = math.max(uiTransparency, 0.4) end
+        MainFrame.BackgroundTransparency = uiTransparency
+        TopBar.BackgroundTransparency = barT
+        topBarFix.BackgroundTransparency = barT
+        TabContainer.BackgroundTransparency = barT
+    end
+
+    syncBlur = function()
+        if not acrylicEnabled then
+            if blurEffect and blurEffect.Parent then TweenService:Create(blurEffect, TI.d028_Sine_Out, {Size = 0}):Play() end
+            return
+        end
+        if not blurEffect or not blurEffect.Parent then
+            local okb, eff = pcall(function()
+                local e = Instance.new("BlurEffect")
+                e.Name = "SpectreUI_Blur"
+                e.Size = 0
+                e.Parent = game:GetService("Lighting")
+                return e
+            end)
+            if not okb then return end
+            blurEffect = eff
+        end
+        TweenService:Create(blurEffect, TI.d028_Sine_Out, {Size = windowShown and 18 or 0}):Play()
+    end
+
+    do
+        local baseSetVisible = setUiVisible
+        setUiVisible = function(visible)
+            visible = visible and true or false
+            baseSetVisible(visible)
+            if visible == windowShown then return end
+            windowShown = visible
+            syncBlur()
+            if visible then
+                task.delay(0.32, function() if windowShown then applyUiTransparency() end end)
+                for _, cb in ipairs(visibleCallbacks.open) do safeCallback(cb) end
+            else
+                if openButtonHidden then
+                    task.delay(0.28, function()
+                        if not windowShown and openButtonHidden then
+                            RestoreBtn.Visible = false
+                            FpsPill.Visible = false
+                        end
+                    end)
+                end
+                for _, cb in ipairs(visibleCallbacks.close) do safeCallback(cb) end
+            end
+            Window.VisibilityChanged:Fire(visible)
+        end
+    end
+
+    function Window:IsVisible() return windowShown end
+    function Window:Open() setUiVisible(true) end
+    function Window:Close() setUiVisible(false) end
+    function Window:OnOpen(cb) if type(cb) == "function" then table.insert(visibleCallbacks.open, cb) end return Window end
+    function Window:OnClose(cb) if type(cb) == "function" then table.insert(visibleCallbacks.close, cb) end return Window end
+    function Window:OnDestroy(cb) Window:BindToClose(cb) return Window end
+
+    function Window:SetToggleKey(key)
+        if type(key) == "string" then
+            local okk, kc = pcall(function() return Enum.KeyCode[key] end)
+            key = okk and kc or nil
+        end
+        config.ToggleKeybind = key
+        return Window
+    end
+    function Window:GetToggleKey() return config.ToggleKeybind end
+
+    -- ---------- appearance ----------
+    function Window:SetTransparency(alpha)
+        uiTransparency = math.clamp(tonumber(alpha) or 0, 0, 0.9)
+        if windowShown then applyUiTransparency() end
+        return Window
+    end
+    function Window:GetTransparency() return uiTransparency end
+
+    function Window:SetAcrylic(state)
+        acrylicEnabled = state and true or false
+        syncBlur()
+        return Window
+    end
+    function Window:IsAcrylic() return acrylicEnabled end
+
+    function Window:SetBackgroundImage(asset, transparency)
+        if asset == nil or asset == "" then
+            if BgImage then BgImage:Destroy() BgImage = nil end
+            if windowShown then applyUiTransparency() end
+            return Window
+        end
+        if not BgImage then
+            BgImage = Instance.new("ImageLabel")
+            BgImage.Name = "BackgroundImage"
+            BgImage.Size = UDim2.new(1, 0, 1, 0)
+            BgImage.BackgroundTransparency = 1
+            BgImage.ScaleType = Enum.ScaleType.Crop
+            BgImage.ImageTransparency = 0.6
+            BgImage.ZIndex = 0
+            BgImage.Parent = MainContent
+            corner(BgImage, 14)
+        end
+        BgImage.Image = normalizeAssetId(asset)
+        if transparency ~= nil then BgImage.ImageTransparency = math.clamp(transparency, 0, 1) end
+        if windowShown then applyUiTransparency() end
+        return Window
+    end
+    function Window:SetBackgroundImageTransparency(t)
+        if BgImage then BgImage.ImageTransparency = math.clamp(tonumber(t) or 0.6, 0, 1) end
+        return Window
+    end
+
+    function Window:SetUIScale(s)
+        UserScale = math.clamp(tonumber(s) or 1, 0.5, 1.75)
+        ResponsiveScale = computeResponsiveScale()
+        if ScreenGui.Enabled then TweenService:Create(WindowScale, TI.d02_Sine_Out, {Scale = ResponsiveScale}):Play() end
+        return Window
+    end
+    function Window:GetUIScale() return UserScale end
+
+    function Window:SetSize(size, animate)
+        if typeof(size) ~= "UDim2" then return Window end
+        local w = math.clamp(size.X.Offset, MIN_SIZE.X, MAX_SIZE.X)
+        local h = math.clamp(size.Y.Offset, MIN_SIZE.Y, MAX_SIZE.Y)
+        local target = UDim2.new(0, w, 0, h)
+        if animate == false then MainFrame.Size = target else TweenService:Create(MainFrame, TI.d028_Sine_Out, {Size = target}):Play() end
+        return Window
+    end
+    function Window:GetSize() return Vector2.new(MainFrame.Size.X.Offset, MainFrame.Size.Y.Offset) end
+    function Window:SetMinSize(v) if typeof(v) == "Vector2" then MIN_SIZE = v end return Window end
+    function Window:SetMaxSize(v) if typeof(v) == "Vector2" then MAX_SIZE = v end return Window end
+    function Window:Center()
+        TweenService:Create(Shadow, TI.d028_Sine_Out, {Position = UDim2.new(0, ScreenGui.AbsoluteSize.X / 2, 0, ScreenGui.AbsoluteSize.Y / 2)}):Play()
+        return Window
+    end
+
+    local fullscreenState = nil
+    function Window:ToggleFullscreen()
+        local sc = WindowScale.Scale
+        if sc <= 0 then sc = 1 end
+        if fullscreenState then
+            TweenService:Create(MainFrame, TI.d028_Sine_Out, {Size = fullscreenState.size}):Play()
+            TweenService:Create(Shadow, TI.d028_Sine_Out, {Position = fullscreenState.pos}):Play()
+            fullscreenState = nil
+        else
+            local ss = ScreenGui.AbsoluteSize
+            fullscreenState = {size = MainFrame.Size, pos = Shadow.Position}
+            TweenService:Create(MainFrame, TI.d028_Sine_Out, {Size = UDim2.new(0, (ss.X - 24) / sc, 0, (ss.Y - 24) / sc)}):Play()
+            TweenService:Create(Shadow, TI.d028_Sine_Out, {Position = UDim2.new(0, ss.X / 2, 0, ss.Y / 2)}):Play()
+        end
+        return Window
+    end
+    function Window:IsFullscreen() return fullscreenState ~= nil end
+
+    -- ---------- open button ----------
+    function Window:EditOpenButton(cfg)
+        cfg = type(cfg) == "table" and cfg or {}
+        if cfg.Icon ~= nil then Window:SetIcon(cfg.Icon) end
+        local letter = RestoreBtn:FindFirstChild("LetterLabel")
+        if cfg.Text and letter then letter.Text = tostring(cfg.Text) end
+        if cfg.CornerRadius then
+            local cr = RestoreBtn:FindFirstChildOfClass("UICorner")
+            if cr then cr.CornerRadius = UDim.new(0, cfg.CornerRadius) end
+        end
+        if cfg.Color ~= nil then
+            local g = RestoreBtn:FindFirstChildOfClass("UIGradient")
+            if g then
+                g:SetAttribute("IsAccent", nil)
+                if typeof(cfg.Color) == "Color3" then g.Color = ColorSequence.new(cfg.Color)
+                elseif typeof(cfg.Color) == "ColorSequence" then g.Color = cfg.Color end
+            end
+        end
+        if cfg.Enabled ~= nil then Window:SetOpenButtonVisible(cfg.Enabled) end
+        return Window
+    end
+    function Window:SetOpenButtonVisible(state)
+        openButtonHidden = not state
+        if openButtonHidden and not windowShown then
+            RestoreBtn.Visible = false
+            FpsPill.Visible = false
+        elseif not openButtonHidden and not windowShown then
+            RestoreBtn.Visible = true
+            FpsPill.Visible = true
+        end
+        return Window
+    end
+
+    -- ---------- topbar: tags + extra buttons ----------
+    local TagHolder = nil
+    function Window:Tag(cfg)
+        if type(cfg) ~= "table" then cfg = {Title = tostring(cfg)} end
+        if not TagHolder then
+            TagHolder = Instance.new("Frame")
+            TagHolder.Name = "Tags"
+            TagHolder.BackgroundTransparency = 1
+            TagHolder.Size = UDim2.new(0, 0, 0, 16)
+            TagHolder.AutomaticSize = Enum.AutomaticSize.X
+            TagHolder.ZIndex = 4
+            TagHolder.Parent = TopBar
+            local tl = Instance.new("UIListLayout")
+            tl.FillDirection = Enum.FillDirection.Horizontal
+            tl.Padding = UDim.new(0, 4)
+            tl.VerticalAlignment = Enum.VerticalAlignment.Center
+            tl.SortOrder = Enum.SortOrder.LayoutOrder
+            tl.Parent = TagHolder
+            local function place()
+                TagHolder.Position = UDim2.new(0, 30 + TitleLabel.TextBounds.X + 8, 0, config.SubTitle and 9 or math.floor((topBarH - 16) / 2))
+            end
+            TitleLabel:GetPropertyChangedSignal("TextBounds"):Connect(place)
+            place()
+        end
+        local color = typeof(cfg.Color) == "Color3" and cfg.Color or Theme.AccentA
+        local Chip = Instance.new("Frame")
+        Chip.Size = UDim2.new(0, 0, 1, 0)
+        Chip.AutomaticSize = Enum.AutomaticSize.X
+        Chip.BackgroundColor3 = color
+        Chip.BackgroundTransparency = 0.82
+        Chip.LayoutOrder = #TagHolder:GetChildren()
+        Chip.Parent = TagHolder
+        corner(Chip, 8)
+        local chipStroke = Instance.new("UIStroke")
+        chipStroke.Color = color
+        chipStroke.Transparency = 0.55
+        chipStroke.Thickness = 1
+        pcall(function() chipStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border end)
+        chipStroke.Parent = Chip
+        local cPad = Instance.new("UIPadding")
+        cPad.PaddingLeft = UDim.new(0, 7)
+        cPad.PaddingRight = UDim.new(0, 7)
+        cPad.Parent = Chip
+        local Lbl = Instance.new("TextLabel")
+        Lbl.Size = UDim2.new(0, 0, 1, 0)
+        Lbl.AutomaticSize = Enum.AutomaticSize.X
+        Lbl.BackgroundTransparency = 1
+        Lbl.Text = tostring(Library:Translate(cfg.Title or cfg.Text or "Tag"))
+        Lbl.TextColor3 = color
+        Lbl.FontFace = UI_Font("Bold")
+        Lbl.TextSize = 10.5
+        Lbl.Parent = Chip
+        local tag = {Instance = Chip}
+        function tag:SetTitle(t) Lbl.Text = tostring(t) return tag end
+        function tag:SetColor(col) Lbl.TextColor3 = col Chip.BackgroundColor3 = col chipStroke.Color = col return tag end
+        function tag:Destroy() Chip:Destroy() end
+        return tag
+    end
+
+    local function relayoutTopbar()
+        local reserve = 96 + 36 * #topbarButtons
+        TitleLabel.Size = UDim2.new(1, -reserve, TitleLabel.Size.Y.Scale, TitleLabel.Size.Y.Offset)
+        if SubTitleLabel then SubTitleLabel.Size = UDim2.new(1, -reserve, 0, 14) end
+        for i, b in ipairs(topbarButtons) do
+            b.Btn.Position = UDim2.new(1, -(46 + 36 * i), 0.5, 0)
+        end
+    end
+    function Window:CreateTopbarButton(cfg)
+        if type(cfg) ~= "table" then cfg = {Text = tostring(cfg)} end
+        local Btn = Instance.new("TextButton")
+        Btn.Name = "TopbarButton"
+        Btn.Size = UDim2.new(0, 26, 0, 26)
+        Btn.AnchorPoint = Vector2.new(1, 0.5)
+        applyThemeColor(Btn, "ElementHover")
+        Btn.BackgroundTransparency = 1
+        Btn.AutoButtonColor = false
+        Btn.Text = ""
+        Btn.ZIndex = 5
+        Btn.Parent = TopBar
+        corner(Btn, 8)
+        applyPressAnimation(Btn, 0.85)
+        local Icon = Instance.new("ImageLabel")
+        Icon.AnchorPoint = Vector2.new(0.5, 0.5)
+        Icon.Position = UDim2.new(0.5, 0, 0.5, 0)
+        Icon.Size = UDim2.new(0, 16, 0, 16)
+        Icon.BackgroundTransparency = 1
+        applyThemeColor(Icon, "SubText", "ImageColor3")
+        Icon.ScaleType = Enum.ScaleType.Fit
+        Icon.ZIndex = 6
+        Icon.Parent = Btn
+        local Glyph = Instance.new("TextLabel")
+        Glyph.Size = UDim2.new(1, 0, 1, 0)
+        Glyph.BackgroundTransparency = 1
+        applyThemeColor(Glyph, "SubText", "TextColor3")
+        Glyph.FontFace = UI_Font("Bold")
+        Glyph.TextSize = 14
+        Glyph.ZIndex = 6
+        Glyph.Parent = Btn
+        local function setContent(icon, text)
+            if icon ~= nil and icon ~= "" then
+                Icon.Image = Library.Icons[icon] or normalizeAssetId(icon)
+                Icon.Visible = true
+                Glyph.Visible = false
+            else
+                Icon.Visible = false
+                Glyph.Text = text and tostring(text) or "•"
+                Glyph.Visible = true
+            end
+        end
+        setContent(cfg.Icon, cfg.Text)
+        Btn.MouseEnter:Connect(function() TweenService:Create(Btn, TI.d015_Sine_Out, {BackgroundTransparency = 0.3}):Play() end)
+        Btn.MouseLeave:Connect(function() TweenService:Create(Btn, TI.d015_Sine_Out, {BackgroundTransparency = 1}):Play() end)
+        Btn.MouseButton1Click:Connect(function() safeCallback(cfg.Callback) end)
+        if cfg.Tooltip then Library:AttachTooltip(Btn, cfg.Tooltip) end
+        local obj = {Btn = Btn, Instance = Btn}
+        function obj:SetIcon(icon) setContent(icon, nil) return obj end
+        function obj:SetText(text) setContent(nil, text) return obj end
+        function obj:SetVisible(v) Btn.Visible = v return obj end
+        function obj:Destroy()
+            for i, b in ipairs(topbarButtons) do if b == obj then table.remove(topbarButtons, i) break end end
+            Btn:Destroy()
+            relayoutTopbar()
+        end
+        table.insert(topbarButtons, obj)
+        relayoutTopbar()
+        return obj
+    end
+
+    -- ---------- sidebar: layout / user panel / dividers ----------
+    updateSidebarLayout = function()
+        local top = searchHidden and 6 or 40
+        local bottom = userPanel and 62 or 6
+        TabSearchWrap.Visible = not searchHidden
+        TabList.Position = UDim2.new(0, 6, 0, top)
+        TabList.Size = UDim2.new(1, -12, 1, -(top + bottom))
+    end
+    function Window:SetSearchBarVisible(state)
+        searchHidden = not state
+        updateSidebarLayout()
+        return Window
+    end
+
+    function Window:CreateUserPanel(cfg)
+        if userPanel then userPanel.Frame:Destroy() userPanel = nil end
+        cfg = type(cfg) == "table" and cfg or {}
+        local lp = game:GetService("Players").LocalPlayer
+        local anonymous = cfg.Anonymous == true or lp == nil
+        local Panel = Instance.new("TextButton")
+        Panel.Name = "UserPanel"
+        Panel.AnchorPoint = Vector2.new(0, 1)
+        Panel.Position = UDim2.new(0, 6, 1, -6)
+        Panel.Size = UDim2.new(1, -12, 0, 50)
+        applyThemeColor(Panel, "Element")
+        Panel.AutoButtonColor = false
+        Panel.Text = ""
+        Panel.Parent = TabContainer
+        corner(Panel, 12)
+        local ps = stroke(Panel, "Stroke", 1)
+        ps.Transparency = 0.6
+        applyHoverEffect(Panel, "Element", "ElementHover")
+        applyPressAnimation(Panel, 0.97)
+        local Avatar = Instance.new("ImageLabel")
+        Avatar.Position = UDim2.new(0, 8, 0.5, -17)
+        Avatar.Size = UDim2.new(0, 34, 0, 34)
+        applyThemeColor(Avatar, "Background")
+        Avatar.Parent = Panel
+        corner(Avatar, 17)
+        if anonymous then
+            local Q = Instance.new("TextLabel")
+            Q.Size = UDim2.new(1, 0, 1, 0)
+            Q.BackgroundTransparency = 1
+            Q.Text = "?"
+            applyThemeColor(Q, "SubText", "TextColor3")
+            Q.FontFace = UI_Font("Bold")
+            Q.TextSize = 16
+            Q.Parent = Avatar
+        else
+            Avatar.Image = "rbxthumb://type=AvatarHeadShot&id=" .. tostring(lp.UserId) .. "&w=150&h=150"
+        end
+        local NameLbl = Instance.new("TextLabel")
+        NameLbl.Position = UDim2.new(0, 48, 0, 9)
+        NameLbl.Size = UDim2.new(1, -54, 0, 16)
+        NameLbl.BackgroundTransparency = 1
+        NameLbl.Text = anonymous and "Anonymous" or tostring(lp.DisplayName)
+        applyThemeColor(NameLbl, "Text", "TextColor3")
+        NameLbl.FontFace = UI_Font("Bold")
+        NameLbl.TextSize = 12
+        NameLbl.TextXAlignment = Enum.TextXAlignment.Left
+        NameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+        NameLbl.Parent = Panel
+        local SubLbl = Instance.new("TextLabel")
+        SubLbl.Position = UDim2.new(0, 48, 0, 26)
+        SubLbl.Size = UDim2.new(1, -54, 0, 14)
+        SubLbl.BackgroundTransparency = 1
+        SubLbl.Text = anonymous and "Guest" or ("@" .. tostring(lp.Name))
+        applyThemeColor(SubLbl, "SubText", "TextColor3")
+        SubLbl.FontFace = UI_Font("Medium")
+        SubLbl.TextSize = 10.5
+        SubLbl.TextXAlignment = Enum.TextXAlignment.Left
+        SubLbl.TextTruncate = Enum.TextTruncate.AtEnd
+        SubLbl.Parent = Panel
+        Panel.MouseButton1Click:Connect(function() safeCallback(cfg.Callback) end)
+        userPanel = {Frame = Panel}
+        function userPanel:SetName(t) NameLbl.Text = tostring(t) end
+        function userPanel:SetSubText(t) SubLbl.Text = tostring(t) end
+        updateSidebarLayout()
+        return userPanel
+    end
+
+    function Window:CreateTabDivider(cfg)
+        if type(cfg) == "string" then cfg = {Title = cfg} end
+        cfg = type(cfg) == "table" and cfg or {}
+        tabOrderCounter = tabOrderCounter + 1
+        local title = cfg.Title and tostring(Library:Translate(cfg.Title)) or nil
+        local Holder = Instance.new("Frame")
+        Holder.Name = "TabDivider"
+        Holder.Size = UDim2.new(1, 0, 0, title and 24 or 12)
+        Holder.BackgroundTransparency = 1
+        Holder.LayoutOrder = tabOrderCounter
+        Holder.Parent = TabHolder
+        if title then
+            local Lbl = Instance.new("TextLabel")
+            Lbl.Position = UDim2.new(0, 6, 0, 4)
+            Lbl.Size = UDim2.new(1, -6, 1, -4)
+            Lbl.BackgroundTransparency = 1
+            Lbl.Text = string.upper(title)
+            applyThemeColor(Lbl, "SubText", "TextColor3")
+            Lbl.FontFace = UI_Font("Bold")
+            Lbl.TextSize = 10
+            Lbl.TextXAlignment = Enum.TextXAlignment.Left
+            Lbl.TextTruncate = Enum.TextTruncate.AtEnd
+            Lbl.Parent = Holder
+        else
+            local Line = Instance.new("Frame")
+            Line.Position = UDim2.new(0, 6, 0.5, 0)
+            Line.Size = UDim2.new(1, -12, 0, 1)
+            applyThemeColor(Line, "Stroke")
+            Line.BackgroundTransparency = 0.3
+            Line.BorderSizePixel = 0
+            Line.Parent = Holder
+        end
+        return newElement(Holder)
+    end
+    Window.Divider = Window.CreateTabDivider
+
+    -- Window:Section({Title="..."}) → หัวข้อกลุ่มแท็บ (สร้างแท็บต่อจากนี้ด้วย group:Tab{...})
+    function Window:Section(cfg)
+        local title = type(cfg) == "table" and (cfg.Title or cfg.Name) or cfg
+        local group = {Header = Window:CreateTabDivider({Title = title})}
+        function group:Tab(c, icon) return Window:CreateTab(c, icon) end
+        group.CreateTab = group.Tab
+        return group
+    end
+
+    -- ---------- tabs ----------
+    function Window:Tab(cfg, icon) return Window:CreateTab(cfg, icon) end
+    function Window:GetTabs()
+        local copy = {}
+        for i, t in ipairs(windowTabList) do copy[i] = t end
+        return copy
+    end
+    function Window:GetTab(key)
+        if type(key) == "number" then return windowTabList[key] end
+        for _, t in ipairs(windowTabList) do
+            if t == key or t.Name == key then return t end
+        end
+        return nil
+    end
+    function Window:GetCurrentTab()
+        for _, t in ipairs(windowTabList) do
+            if CurrentTab and CurrentTab.Btn == t.Btn then return t end
+        end
+        return nil
+    end
+    function Window:SelectTab(key)
+        local t = Window:GetTab(key)
+        if t and t.Select then t.Select() end
+        return t
+    end
+
+    -- ---------- settings tab (ขยาย: ธีม/สเกล/โปร่งใส/เบลอ/ปุ่มเปิดปิด/ฟอนต์/ภาษา) ----------
+    function Window:CreateSettingsTab(opts)
+        opts = type(opts) == "table" and opts or {}
+        local tab = Window:CreateTab(opts.Title or "Settings", opts.Icon or "settings")
+        tab.Btn.LayoutOrder = 9999
+        tab:CreateThemeDropdown()
+        if opts.Extended ~= false then
+            tab:CreateSection("Interface")
+            tab:CreateSlider({Text = "UI Scale", Min = 50, Max = 175, Step = 5, Suffix = "%",
+                Default = math.clamp(math.floor(UserScale * 100 + 0.5), 50, 175),
+                Callback = function(v) Window:SetUIScale(v / 100) end})
+            tab:CreateSlider({Text = "Transparency", Min = 0, Max = 60, Step = 5, Suffix = "%",
+                Default = math.floor(uiTransparency * 100 + 0.5),
+                Callback = function(v) Window:SetTransparency(v / 100) end})
+            tab:CreateToggle({Text = "Acrylic Blur", Default = acrylicEnabled, Notify = false, Command = false,
+                Callback = function(v) Window:SetAcrylic(v) end})
+            tab:CreateKeybind({Text = "Toggle UI Key", Default = config.ToggleKeybind,
+                Callback = function(k) Window:SetToggleKey(k) end})
+            local fontNames = {}
+            for fname in pairs(Library.FontPresets) do table.insert(fontNames, fname) end
+            table.sort(fontNames)
+            tab:CreateDropdown({Text = "Font", Options = fontNames, Default = Library.FontPresets[Library.CurrentFont] and Library.CurrentFont or "BuilderSans",
+                Callback = function(v) Library:SetFont(v) end})
+            local langs = Library:GetLanguages()
+            if #langs > 1 then
+                tab:CreateDropdown({Text = "Language", Options = langs, Default = Library:GetLanguage(),
+                    Callback = function(v) Library:SetLanguage(v) end})
+            end
+        end
+        return tab
+    end
+
+    -- ---------- destroy: เก็บ blur ด้วย ----------
+    do
+        local baseDestroy = Window.Destroy
+        function Window:Destroy()
+            if blurEffect then pcall(function() blurEffect:Destroy() end) blurEffect = nil end
+            return baseDestroy(self)
+        end
+    end
+
+    -- ---------- apply config options (WindUI-style) ----------
+    if config.HideSearchBar == true then Window:SetSearchBarVisible(false) end
+    if type(config.User) == "table" and config.User.Enabled ~= false then Window:CreateUserPanel(config.User)
+    elseif config.User == true then Window:CreateUserPanel({}) end
+    if config.Theme and Library.Themes[config.Theme] then Library:SetTheme(config.Theme) end
+    if config.Transparent == true then Window:SetTransparency(0.18)
+    elseif type(config.Transparent) == "number" then Window:SetTransparency(config.Transparent) end
+    if config.Acrylic == true then Window:SetAcrylic(true) end
+    if config.Fullscreen == true then
+        Window:CreateTopbarButton({Text = "□", Tooltip = "Fullscreen", Callback = function() Window:ToggleFullscreen() end})
+    end
+    if config.BackgroundImage or config.Background then
+        Window:SetBackgroundImage(config.BackgroundImage or config.Background, config.BackgroundImageTransparency)
+    end
+    if config.OpenButton == false then Window:SetOpenButtonVisible(false) end
+    if config.UIScale then Window:SetUIScale(config.UIScale) end
 
     -- ============ GRAND ENTRANCE ============
     -- เอฟเฟกต์เด้งสปริง+เอียงสะบัด+fade ที่ setUiVisible(true) ทำไว้แล้ว (เดิมใช้แค่ตอน Restore จากการซ่อน)
