@@ -5378,7 +5378,7 @@ function Library:CreateWindow(config)
             Arrow.ScaleType = Enum.ScaleType.Fit
             Arrow.Parent = ArrowWrap
 
-            local isOpen, list, shadow, outsideConn = false, nil, nil, nil
+            local isOpen, list, shadow, outsideConn, scrollConn = false, nil, nil, nil, nil
             local function closeDropdown()
                 if list then
                     isOpen = false
@@ -5398,6 +5398,7 @@ function Library:CreateWindow(config)
                     t.Completed:Connect(function() closingList:Destroy() end)
                 end
                 if outsideConn then outsideConn:Disconnect(); outsideConn = nil end
+                if scrollConn then scrollConn:Disconnect(); scrollConn = nil end
             end
             local function selectOption(opt, fireCallback)
                 selected = opt
@@ -5412,7 +5413,7 @@ function Library:CreateWindow(config)
                 TweenService:Create(dropStroke, TI.d015_Sine_Out, {Transparency = 0.15}):Play()
                 TweenService:Create(Arrow, TI.d02_Back_Out, {Rotation = 180}):Play()
 
-                local itemH, gap, pad = 38, 6, 8
+                local itemH, gap, pad = 42, 6, 8 -- 42px แถว: เผื่อจุดแตะบนมือถือ (เดิม 38 แน่นไปสำหรับนิ้ว)
                 local maxVisible = 5
                 -- ช่องค้นหา: เปิดอัตโนมัติถ้าตัวเลือกเยอะ (>6) หรือบังคับเปิด/ปิดได้ผ่าน c.Searchable
                 local searchable = c.Searchable
@@ -5713,6 +5714,10 @@ function Library:CreateWindow(config)
                         if not isPointOverGui(pos, Drop) and (not list or not isPointOverGui(pos, list)) then closeDropdown() end
                     end
                 end)
+                -- popup ถูกวาดไว้ที่พิกัดจอตายตัวตอนเปิด (ลอยอยู่บน ScreenGui แยกจาก TabContent)
+                -- ถ้าลิสต์ที่ Drop อยู่เลื่อน (ลากนิ้วบนมือถือ หรือหมุนล้อเมาส์บน PC) ปุ่ม Drop จะขยับ
+                -- แต่ popup ไม่ขยับตาม กลายเป็นลอยค้างผิดตำแหน่ง → ปิดไปเลยตอนเนื้อหาเลื่อน ปลอดภัยกว่าปล่อยให้ค้าง
+                scrollConn = TabContent:GetPropertyChangedSignal("CanvasPosition"):Connect(closeDropdown)
 
                 -- SearchBox ไม่ auto-focus ตอนเปิด dropdown — user กดเองเมื่อต้องการค้นหา
             end
@@ -7217,6 +7222,9 @@ function Library:CreateWindow(config)
             -- HideBtn อยู่ใน TopBar เหมือน CloseBtn: Roblox ยิง InputBegan ให้ทั้ง Frame แม่และปุ่มลูกพร้อมกัน
             -- ถ้าเช็คแค่ CloseBtn จุดเดียว การแตะปุ่ม Hide จะลาก window ไปด้วยพร้อมๆ กับสั่งซ่อน (ค้าง connection/สั่น)
             if isPointOverGui(input.Position, CloseBtn) or isPointOverGui(input.Position, HideBtn) or topbarButtonHit(input.Position) then return end
+            -- ลากหน้าต่างเมื่อไหร่ ปิด dropdown/color picker ที่ค้างเปิดอยู่ก่อน ไม่งั้น popup ของมัน
+            -- (ลอยอยู่บนพิกัดจอตายตัว แยกจากหน้าต่างที่กำลังจะขยับ) จะค้างอยู่ที่เดิมไม่ตามหน้าต่างไป
+            closeActivePopup()
             -- กัน connection ค้างจากรอบลากก่อนหน้าที่ InputEnded ไม่ยิง (เช่น touch โดนขัดจังหวะกลางทางบนมือถือ
             -- - แจ้งเตือนดึงลงมา, สลับแอป, สาย โทรเข้า) ไม่งั้นหน้าต่างจะเกาะตามนิ้ว/เมาส์ครั้งถัดไปค้างตลอดไป
             stopWindowDrag()
