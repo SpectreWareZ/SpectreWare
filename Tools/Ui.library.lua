@@ -3103,6 +3103,17 @@ function Library:CreateWindow(config)
     --  2) calcPos ใช้ AbsolutePosition (พิกเซลจริงบนจอ) มาใส่ Position offset (หน่วยก่อนคูณ WindowScale) → เพี้ยนตามสเกล
     --     แถมบวก CanvasPosition.Y ซ้ำ (AbsolutePosition รวมการเลื่อนของ ScrollingFrame อยู่แล้ว)
     -- วิธีแก้: คำนวณ Y จากขนาด/ลำดับ layout (หน่วย local) ไม่พึ่ง AbsolutePosition หรือ UIScale ตอนกดปุ่ม
+    -- ค่าอนิเมชันของแท็บรวมไว้ที่เดียว: ทุกตัวใช้ easing แบบ "ไม่มี overshoot" (Back_Out เดิมทำให้แถบไฮไลต์/เนื้อหาเลยเป้าแล้วเด้งกลับ
+    -- ระยะไถลไกลๆ เลยโผล่พ้นลิสต์ + ทำให้ canvas ของลิสต์แท็บขยายชั่วคราวจนลิสต์สั่น)
+    local TabAnim = {
+        Slide      = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),  -- แถบไฮไลต์ไถลระหว่างแท็บ
+        Content    = TweenInfo.new(0.20, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),  -- เนื้อหาแท็บเลื่อนขึ้นมา
+        Rise       = 10,                                                                     -- ระยะเลื่อน (px) ของเนื้อหา
+        PressDown  = TweenInfo.new(0.08, Enum.EasingStyle.Quad,  Enum.EasingDirection.Out),
+        PressUp    = TweenInfo.new(0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+        PressScale = 0.94,
+        Ripple     = TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+    }
     local indicatorTween = nil
     local refreshIndicator   -- กำหนดค่าทีหลัง (หลังประกาศ CurrentTab)
 
@@ -3151,7 +3162,7 @@ function Library:CreateWindow(config)
             indicatorStroke.Transparency = 0.7
             return
         end
-        local tw = TweenService:Create(ActiveIndicator, TI.d02_Back_Out, {
+        local tw = TweenService:Create(ActiveIndicator, TabAnim.Slide, {
             Position = goalPos,
             Size = targetBtn.Size,
             BackgroundTransparency = 0.88,
@@ -3164,7 +3175,7 @@ function Library:CreateWindow(config)
             end
         end)
         tw:Play()
-        TweenService:Create(indicatorStroke, TI.d02_Back_Out, {Transparency = 0.7}):Play()
+        TweenService:Create(indicatorStroke, TabAnim.Slide, {Transparency = 0.7}):Play()
     end
 
     -- registry ของแท็บทั้งหมด (ใช้กรองตอนค้นหา) + label "ไม่พบแท็บ"
@@ -3255,6 +3266,20 @@ function Library:CreateWindow(config)
 
     local Tabs = {}
     local CurrentTab = nil
+    -- SAFETY NET กลาง (แทน UserInputService.TouchEnded ที่เคยผูกซ้ำทีละแท็บ): เมื่อนิ้ว/เมาส์ปล่อย
+    -- ให้เคลียร์สถานะ "กดค้าง/ไฮไลต์ค้าง" ของทุกแท็บ กรณีเหตุการณ์ Up/Leave ไม่ยิง (ไถลิสต์, สลับแอป, สายเข้า ฯลฯ)
+    local tabFx = {}   -- [TabBtn] = function(includeHover)
+    local tabFxConn = UserInputService.InputEnded:Connect(function(input)
+        local it = input.UserInputType
+        if it == Enum.UserInputType.Touch then
+            for _, fx in pairs(tabFx) do fx(true) end
+        elseif it == Enum.UserInputType.MouseButton1 then
+            for _, fx in pairs(tabFx) do fx(false) end
+        end
+    end)
+    local tabFxFocusConn = UserInputService.WindowFocusReleased:Connect(function()
+        for _, fx in pairs(tabFx) do fx(true) end
+    end)
     local closeActivePopup = function() end
     local tabOrderCounter = 0
     local windowTabList = {}   -- Tab object ทั้งหมด (ใช้กับ Window:SelectTab/GetTabs)
@@ -3347,6 +3372,8 @@ function Library:CreateWindow(config)
             if activeKeyList then pcall(function() activeKeyList:Destroy() end) end
             if fpsConn then fpsConn:Disconnect() end
             if toggleKeyConn then toggleKeyConn:Disconnect() end
+            if tabFxConn then tabFxConn:Disconnect() end
+            if tabFxFocusConn then tabFxFocusConn:Disconnect() end
             ScreenGui:Destroy(); RestoreGui:Destroy(); NotifyGui:Destroy(); TooltipGui:Destroy()
         end
         if ScreenGui.Enabled then
@@ -4235,9 +4262,30 @@ function Library:CreateWindow(config)
         tabOrderCounter = tabOrderCounter + 1
         TabBtn.LayoutOrder = tabOrderCounter
         corner(TabBtn, 8)
-        applyPressAnimation(TabBtn, 0.96)
-        ripple(TabBtn, "AccentA")
 
+        -- ===== FEEDBACK ตอนกดแท็บ (แทน applyPressAnimation/ripple เดิม) =====
+        -- เดิมใส่ UIScale ที่ TabBtn ตรงๆ ทั้งที่ปุ่มอยู่ใน UIListLayout → กดแล้วปุ่มย่อ = layout ขยับ
+        -- (ปุ่มข้างเคียงสั่น + ตัวจับ layout ไปดีดแถบไฮไลต์) ตอนนี้ย่อเฉพาะ "เนื้อใน" (ไอคอน+ชื่อ) ที่ TabInner
+        -- ตัวปุ่มขนาดคงที่ตลอด layout จึงนิ่งทั้ง PC และมือถือ
+        local RippleHolder = Instance.new("Frame")
+        RippleHolder.Name = "__RippleHolder"
+        RippleHolder.BackgroundTransparency = 1
+        RippleHolder.Size = UDim2.new(1, 0, 1, 0)
+        RippleHolder.ClipsDescendants = true
+        RippleHolder.Parent = TabBtn
+        corner(RippleHolder, 8)
+
+        local TabInner = Instance.new("Frame")
+        TabInner.Name = "TabInner"
+        TabInner.BackgroundTransparency = 1
+        TabInner.AnchorPoint = Vector2.new(0, 0.5)
+        TabInner.Position = UDim2.new(0, 0, 0.5, 0)
+        TabInner.Size = UDim2.new(1, 0, 1, 0)
+        TabInner.Parent = TabBtn
+        local TabInnerScale = Instance.new("UIScale")
+        TabInnerScale.Parent = TabInner
+
+        local TabIconImg = nil
         local iconOffset = 10
         if icon then
             local IconImg = Instance.new("ImageLabel")
@@ -4248,7 +4296,8 @@ function Library:CreateWindow(config)
             IconImg.Image = Library.Icons[icon] or icon
             IconImg.ScaleType = Enum.ScaleType.Fit
             applyThemeColor(IconImg, "SubText", "ImageColor3")
-            IconImg.Parent = TabBtn
+            IconImg.Parent = TabInner
+            TabIconImg = IconImg
             iconOffset = 36
         end
 
@@ -4261,7 +4310,7 @@ function Library:CreateWindow(config)
         TabTitle.FontFace = UI_Font("SemiBold")
         TabTitle.TextSize = 13
         TabTitle.TextXAlignment = Enum.TextXAlignment.Left
-        TabTitle.Parent = TabBtn
+        TabTitle.Parent = TabInner
         if Library:IsLocalizedKey(rawTabName) then
             Library:BindLocalized(function() return TabTitle.Parent ~= nil end, function()
                 name = tostring(Library:Translate(rawTabName))
@@ -4285,21 +4334,96 @@ function Library:CreateWindow(config)
             TabBtn.Visible = string.find(name:lower(), TabSearchBox.Text:lower(), 1, true) ~= nil
         end
 
+        -- ===== สถานะ hover/press ของแท็บ =====
+        -- PC: กดลง = ย่อ + ripple ทันที  |  มือถือ: ไม่เล่นตอนนิ้วแตะลง (เพราะอาจเป็นการไถลิสต์ ทำให้กระพริบ/ค้าง)
+        --     เล่น "pulse" สั้นๆ เฉพาะตอนแตะสำเร็จ (Click) และไม่โชว์ hover บน touch เลย
+        local isPressed, hoverOn, pulsing = false, false, false
+        local pressTween = nil
+        local lastDownX, lastDownY = nil, nil
+
+        local function isCurrent() return CurrentTab ~= nil and CurrentTab.Btn == TabBtn end
+        local function usingTouch()
+            return UserInputService:GetLastInputType() == Enum.UserInputType.Touch
+        end
+
+        local function setPressed(down)
+            if down == isPressed then return end
+            isPressed = down
+            if pressTween then pressTween:Cancel() end
+            pressTween = TweenService:Create(TabInnerScale, down and TabAnim.PressDown or TabAnim.PressUp, {
+                Scale = down and TabAnim.PressScale or 1,
+            })
+            pressTween:Play()
+        end
+        local function releasePress()
+            if not pulsing then setPressed(false) end
+        end
+
+        -- ripple: input.Position เป็นพิกเซลจริงบนจอ แต่ Position/Size ของวงกลมเป็นหน่วยก่อนคูณ WindowScale
+        -- ต้องหารด้วยสเกลหน้าต่าง ไม่งั้นบนมือถือ (สเกลสูง) วงจะเกิดผิดที่และใหญ่เกิน
+        local function spawnRipple(px, py)
+            if not (px and py) then return end
+            local scale = WindowScale.Scale
+            if scale <= 0 then scale = 1 end
+            local absPos, absSize = TabBtn.AbsolutePosition, TabBtn.AbsoluteSize
+            local relX = math.clamp((px - absPos.X) / scale, 0, absSize.X / scale)
+            local relY = math.clamp((py - absPos.Y) / scale, 0, absSize.Y / scale)
+            local maxDim = math.max(absSize.X, absSize.Y) / scale * 2.2
+            local circle = Instance.new("Frame")
+            circle.AnchorPoint = Vector2.new(0.5, 0.5)
+            circle.Position = UDim2.new(0, relX, 0, relY)
+            circle.Size = UDim2.new(0, 0, 0, 0)
+            circle.BackgroundColor3 = Theme.AccentA
+            circle.BackgroundTransparency = 0.6
+            circle.BorderSizePixel = 0
+            circle.Parent = RippleHolder
+            corner(circle, 999)
+            local tw = TweenService:Create(circle, TabAnim.Ripple, {
+                Size = UDim2.new(0, maxDim, 0, maxDim),
+                BackgroundTransparency = 1,
+            })
+            tw.Completed:Connect(function() circle:Destroy() end)
+            tw:Play()
+        end
+
         TabBtn.MouseEnter:Connect(function()
-            if CurrentTab and CurrentTab.Btn == TabBtn then return end
+            if usingTouch() then return end
+            hoverOn = true
+            if isCurrent() then return end
             TweenService:Create(TabBtn, TI.d015_Sine_Out, {BackgroundTransparency = 0.4, BackgroundColor3 = Theme.Element}):Play()
         end)
         TabBtn.MouseLeave:Connect(function()
-            if CurrentTab and CurrentTab.Btn == TabBtn then return end
+            hoverOn = false
+            releasePress()
+            if isCurrent() then return end
             TweenService:Create(TabBtn, TI.d015_Sine_Out, {BackgroundTransparency = 1}):Play()
         end)
-        -- SAFETY NET: บนมือถือบางที touch แตะ MouseEnter ติดแต่ปล่อยนิ้วแล้ว MouseLeave ไม่ยิงกลับมา
-        -- (ปัญหาเดียวกับ Radial Menu ที่เจอก่อนหน้า) ทำให้ปุ่มแท็บที่ไม่ได้เลือกค้าง highlight ค้างตลอดไป
-        -- ต้อง force เคลียร์ทุกครั้งที่มีนิ้วปล่อยจากจอ ถ้าแท็บนี้ไม่ใช่แท็บที่ active อยู่จริง
-        UserInputService.TouchEnded:Connect(function()
-            if CurrentTab and CurrentTab.Btn == TabBtn then return end
-            TweenService:Create(TabBtn, TI.d015_Sine_Out, {BackgroundTransparency = 1}):Play()
+        TabBtn.MouseButton1Down:Connect(function(x, y)
+            lastDownX, lastDownY = x, y
+            if usingTouch() then return end
+            setPressed(true)
+            spawnRipple(x, y)
         end)
+        TabBtn.MouseButton1Up:Connect(releasePress)
+        TabBtn.MouseButton1Click:Connect(function()
+            if not usingTouch() then return end
+            pulsing = true
+            setPressed(true)
+            spawnRipple(lastDownX, lastDownY)
+            task.delay(0.08, function()
+                pulsing = false
+                setPressed(false)
+            end)
+        end)
+        tabFx[TabBtn] = function(includeHover)
+            releasePress()
+            if includeHover and hoverOn then
+                hoverOn = false
+                if not isCurrent() then
+                    TweenService:Create(TabBtn, TI.d015_Sine_Out, {BackgroundTransparency = 1}):Play()
+                end
+            end
+        end
 
         local TabContent = Instance.new("ScrollingFrame")
         TabContent.Size = UDim2.new(1, -20, 1, -20)
@@ -4329,33 +4453,36 @@ function Library:CreateWindow(config)
                 BackgroundColor3 = active and Theme.AccentA or Theme.Element
             }):Play()
             TweenService:Create(ActiveBar, TI.d018_Sine_Out, {Size = UDim2.new(0, 3, 0, active and 20 or 0)}):Play()
-            TabTitle.TextColor3 = active and Theme.Text or Theme.SubText
-            if icon then
-                local iconImg = TabBtn:FindFirstChildOfClass("ImageLabel")
-                if iconImg then
-                    TweenService:Create(iconImg, TI.d018_Sine_Out, {ImageColor3 = active and Theme.Text or Theme.SubText}):Play()
-                end
+            TweenService:Create(TabTitle, TI.d018_Sine_Out, {TextColor3 = active and Theme.Text or Theme.SubText}):Play()
+            if TabIconImg then
+                TweenService:Create(TabIconImg, TI.d018_Sine_Out, {ImageColor3 = active and Theme.Text or Theme.SubText}):Play()
             end
         end
 
         local function activateTab()
             if Tab.Locked then return end
+            -- แตะแท็บที่เปิดอยู่ซ้ำ → ไม่ต้องเล่นอนิเมชันเปลี่ยนหน้าซ้ำ (เดิมเนื้อหากระตุก/วาบทุกครั้งที่แตะซ้ำ)
+            if CurrentTab and CurrentTab.Btn == TabBtn then return end
             -- ห่อ pcall: ต่อให้ popup/indicator error ก็ต้องสลับเนื้อหาแท็บให้เสร็จ ไม่งั้นหน้าจอจะค้างที่แท็บเดิม
             pcall(closeActivePopup)
             for _, t in ipairs(Tabs) do
                 local isThis = (t.Btn == TabBtn)
                 t.SetActive(isThis)
+                -- ยกเลิก tween เนื้อหาที่ค้างจากการสลับรัวๆ ก่อนเสมอ กัน tween เก่าแย่งค่า Position กับอันใหม่
+                if t.ContentTween then t.ContentTween:Cancel(); t.ContentTween = nil end
                 if isThis then
                     local okSlide, errSlide = pcall(slideIndicatorTo, t.Btn)
                     if not okSlide then Library:LogError("TabIndicator", errSlide) end
-                    -- เด้งขึ้นมาจากด้านล่างนิดๆ พร้อม pop สเกล ให้รู้สึกลื่นไหลตอนสลับแท็บ
-                    t.Content.Position = t.BasePos + UDim2.new(0, 0, 0, 12)
-                    t.Scale.Scale = 0.96
+                    -- เนื้อหาเลื่อนขึ้นจากด้านล่างนิดเดียว (เลื่อนอย่างเดียว ไม่ย่อ/ขยาย UIScale ทั้งหน้า
+                    -- เพราะสเกลทั้งก้อนต้อง re-layout ทุก element ทุกเฟรม ทำให้กระตุกบนมือถือ)
+                    t.Scale.Scale = 1
+                    t.Content.Position = t.BasePos + UDim2.new(0, 0, 0, TabAnim.Rise)
                     t.Content.Visible = true
-                    TweenService:Create(t.Content, TI.d02_Back_Out, {Position = t.BasePos}):Play()
-                    TweenService:Create(t.Scale, TI.d02_Back_Out, {Scale = 1}):Play()
+                    t.ContentTween = TweenService:Create(t.Content, TabAnim.Content, {Position = t.BasePos})
+                    t.ContentTween:Play()
                 else
                     t.Content.Visible = false
+                    t.Content.Position = t.BasePos   -- รีเซ็ตกลับที่เดิม เผื่อถูกซ่อนกลางอนิเมชัน
                 end
             end
             CurrentTab = {Btn = TabBtn, Content = TabContent, SetActive = setActive}
@@ -4386,6 +4513,7 @@ function Library:CreateWindow(config)
             for i, t in ipairs(windowTabList) do if t == Tab then table.remove(windowTabList, i) break end end
             Library:UnregisterCommandsByTab(name)
             local wasCurrent = CurrentTab and CurrentTab.Btn == TabBtn
+            tabFx[TabBtn] = nil
             TabBtn:Destroy()
             TabContent:Destroy()
             if wasCurrent then
