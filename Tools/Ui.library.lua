@@ -3096,31 +3096,74 @@ function Library:CreateWindow(config)
     local indicatorStroke = stroke(ActiveIndicator, "AccentA")
     indicatorStroke.Transparency = 1
 
-    local function slideIndicatorTo(targetBtn, instant)
-        ActiveIndicator.Visible = true
-        -- UIListLayout ไม่เซต .Position ของลูก — มันจัดผ่าน internal layout (AbsolutePosition)
-        -- ดังนั้น targetBtn.Position จะเป็น UDim2(0,0,0,0) ตลอด ทำให้ indicator ติดอยู่ที่ Y=0 เสมอ
-        -- แก้: คำนวณ offsetY จาก AbsolutePosition เทียบกับ TabHolder origin + canvas scroll
-        local function calcPos()
-            local offsetY = targetBtn.AbsolutePosition.Y - TabHolder.AbsolutePosition.Y + TabList.CanvasPosition.Y
-            return UDim2.new(0, 0, 0, offsetY)
+    -- ---------- FIX: กดแท็บอื่นแล้วแถบไฮไลต์หาย/เด้งไปค้างบนสุด (ทับคำว่า GENERAL) ----------
+    -- สาเหตุเดิม:
+    --  1) handler ของ AbsoluteContentSize ใช้ CurrentTab.Btn.Position ซึ่งเป็น (0,0,0,0) เสมอ (UIListLayout ไม่เซต Position)
+    --     ตอนกดแท็บ applyPressAnimation ย่อ/ขยาย UIScale ของปุ่ม → layout ขยับ → indicator ถูกดีดกลับ Y=0 ทุกครั้งที่กด
+    --  2) calcPos ใช้ AbsolutePosition (พิกเซลจริงบนจอ) มาใส่ Position offset (หน่วยก่อนคูณ WindowScale) → เพี้ยนตามสเกล
+    --     แถมบวก CanvasPosition.Y ซ้ำ (AbsolutePosition รวมการเลื่อนของ ScrollingFrame อยู่แล้ว)
+    -- วิธีแก้: คำนวณ Y จากขนาด/ลำดับ layout (หน่วย local) ไม่พึ่ง AbsolutePosition หรือ UIScale ตอนกดปุ่ม
+    local indicatorTween = nil
+    local refreshIndicator   -- กำหนดค่าทีหลัง (หลังประกาศ CurrentTab)
+
+    local function getTabButtonY(targetBtn)
+        local items = {}
+        for i, child in ipairs(TabHolder:GetChildren()) do
+            if child:IsA("GuiObject") then
+                items[#items + 1] = {obj = child, order = child.LayoutOrder, idx = i}
+            end
         end
+        table.sort(items, function(a, b)
+            if a.order ~= b.order then return a.order < b.order end
+            return a.idx < b.idx
+        end)
+        local pad = TabLayout.Padding.Offset
+        local y = 0
+        for _, it in ipairs(items) do
+            if it.obj == targetBtn then return y end
+            if it.obj.Visible then
+                y = y + it.obj.Size.Y.Offset + pad
+            end
+        end
+        return nil
+    end
+
+    local function calcIndicatorPos(targetBtn)
+        local y = getTabButtonY(targetBtn)
+        if y == nil then
+            -- สำรอง: ใช้ตำแหน่งจริงบนจอ แต่หารด้วย WindowScale ให้กลับเป็นหน่วย local
+            local scale = WindowScale.Scale
+            if scale <= 0 then scale = 1 end
+            y = (targetBtn.AbsolutePosition.Y - TabHolder.AbsolutePosition.Y) / scale
+        end
+        return UDim2.new(0, 0, 0, y)
+    end
+
+    local function slideIndicatorTo(targetBtn, instant)
+        if not (targetBtn and targetBtn.Parent) then return end
+        ActiveIndicator.Visible = true
+        local goalPos = calcIndicatorPos(targetBtn)
+        if indicatorTween then indicatorTween:Cancel(); indicatorTween = nil end
         if instant then
-            -- defer 1 frame เพื่อให้ UIListLayout คำนวณ AbsolutePosition เสร็จก่อน (กรณีสร้างใหม่)
-            task.defer(function()
-                if not ActiveIndicator.Parent then return end
-                ActiveIndicator.Position = calcPos()
-                ActiveIndicator.Size = targetBtn.Size
-                ActiveIndicator.BackgroundTransparency = 0.88
-                indicatorStroke.Transparency = 0.7
-            end)
+            ActiveIndicator.Position = goalPos
+            ActiveIndicator.Size = targetBtn.Size
+            ActiveIndicator.BackgroundTransparency = 0.88
+            indicatorStroke.Transparency = 0.7
             return
         end
-        TweenService:Create(ActiveIndicator, TI.d02_Back_Out, {
-            Position = calcPos(),
+        local tw = TweenService:Create(ActiveIndicator, TI.d02_Back_Out, {
+            Position = goalPos,
             Size = targetBtn.Size,
             BackgroundTransparency = 0.88,
-        }):Play()
+        })
+        indicatorTween = tw
+        tw.Completed:Connect(function()
+            if indicatorTween == tw then
+                indicatorTween = nil
+                if refreshIndicator then refreshIndicator() end   -- จบไถลแล้วเช็คซ้ำ เผื่อ layout ขยับระหว่างทาง
+            end
+        end)
+        tw:Play()
         TweenService:Create(indicatorStroke, TI.d02_Back_Out, {Transparency = 0.7}):Play()
     end
 
@@ -3223,17 +3266,27 @@ function Library:CreateWindow(config)
         return false
     end
     -- ค้นหา/ซ่อนแท็บแล้ว layout ขยับ → ให้ indicator ตามปุ่มแท็บปัจจุบันเสมอ
+    -- (แก้: เดิมเซต Position = CurrentTab.Btn.Position ซึ่งเป็น (0,0) เสมอ ทำให้ไฮไลต์เด้งไปบนสุดทุกครั้งที่กดแท็บ)
+    refreshIndicator = function()
+        local cur = CurrentTab
+        if not (cur and cur.Btn and cur.Btn.Parent) then return end
+        if not cur.Btn.Visible then
+            ActiveIndicator.Visible = false
+            return
+        end
+        if indicatorTween then return end   -- กำลังไถลอยู่ ปล่อยให้ tween ทำงาน (จบแล้วจะ refresh ซ้ำเอง)
+        ActiveIndicator.Visible = true
+        local goalPos = calcIndicatorPos(cur.Btn)
+        if ActiveIndicator.Position ~= goalPos then ActiveIndicator.Position = goalPos end
+        if ActiveIndicator.Size ~= cur.Btn.Size then ActiveIndicator.Size = cur.Btn.Size end
+    end
+    local refreshQueued = false
     TabLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        if refreshQueued then return end   -- รวมหลาย event ในเฟรมเดียว
+        refreshQueued = true
         task.defer(function()
-            if CurrentTab and CurrentTab.Btn and CurrentTab.Btn.Parent then
-                if CurrentTab.Btn.Visible then
-                    ActiveIndicator.Position = CurrentTab.Btn.Position
-                    ActiveIndicator.Size = CurrentTab.Btn.Size
-                    ActiveIndicator.Visible = true
-                else
-                    ActiveIndicator.Visible = false
-                end
-            end
+            refreshQueued = false
+            refreshIndicator()
         end)
     end)
 
@@ -4287,12 +4340,14 @@ function Library:CreateWindow(config)
 
         local function activateTab()
             if Tab.Locked then return end
-            closeActivePopup()
+            -- ห่อ pcall: ต่อให้ popup/indicator error ก็ต้องสลับเนื้อหาแท็บให้เสร็จ ไม่งั้นหน้าจอจะค้างที่แท็บเดิม
+            pcall(closeActivePopup)
             for _, t in ipairs(Tabs) do
                 local isThis = (t.Btn == TabBtn)
                 t.SetActive(isThis)
                 if isThis then
-                    slideIndicatorTo(t.Btn)
+                    local okSlide, errSlide = pcall(slideIndicatorTo, t.Btn)
+                    if not okSlide then Library:LogError("TabIndicator", errSlide) end
                     -- เด้งขึ้นมาจากด้านล่างนิดๆ พร้อม pop สเกล ให้รู้สึกลื่นไหลตอนสลับแท็บ
                     t.Content.Position = t.BasePos + UDim2.new(0, 0, 0, 12)
                     t.Scale.Scale = 0.96
