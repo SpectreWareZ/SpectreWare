@@ -1220,6 +1220,18 @@ local function resolveFloatingPosition(anchorAbsPos, anchorAbsSize, popupW, popu
     return posX, edgeY, openUp
 end
 
+-- สเกลรวมของ UIScale ตั้งแต่ ScrollingFrame ขึ้นไปถึงราก ใช้แปลงพิกเซลจริงบนจอ (AbsolutePosition)
+-- เป็นหน่วย canvas (CanvasPosition) — ไม่งั้นบนมือถือ/UI Scale ≠ 1 จะเลื่อนเลยหรือไม่ถึงเป้า
+function Library.CanvasScale(sf)
+    local s, node = 1, sf
+    while node do
+        local us = node:FindFirstChildOfClass("UIScale")
+        if us then s = s * us.Scale end
+        node = node.Parent
+    end
+    return s > 0 and s or 1
+end
+
 local function newElement(root, getter, setter, destroyer, flag)
     local elem
     elem = {
@@ -1305,7 +1317,7 @@ local function newElement(root, getter, setter, destroyer, flag)
         pcall(function()
             local sf = root:FindFirstAncestorOfClass("ScrollingFrame")
             if sf then
-                local y = root.AbsolutePosition.Y - sf.AbsolutePosition.Y + sf.CanvasPosition.Y
+                local y = (root.AbsolutePosition.Y - sf.AbsolutePosition.Y) / Library.CanvasScale(sf) + sf.CanvasPosition.Y
                 sf.CanvasPosition = Vector2.new(0, math.max(0, y - 16))
             end
         end)
@@ -3200,9 +3212,7 @@ function Library:CreateWindow(config)
         end
         TabEmptyLbl.Visible = visibleCount == 0
     end
-    TabSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
-        applyTabFilter(TabSearchBox.Text)
-    end)
+    -- (ไม่กรองรายชื่อแท็บที่ sidebar แล้ว: ระบบค้นหาใหม่ด้านล่างแสดงแท็บที่ตรงเป็นผลลัพธ์อยู่แล้ว)
 
     local ContentArea = Instance.new("Frame")
     ContentArea.Size = UDim2.new(1, -SIDEBAR_W, 1, -topBarH)
@@ -3290,6 +3300,815 @@ function Library:CreateWindow(config)
         end
         return false
     end
+    -- ============ GLOBAL SEARCH (ค้นหาทุกแท็บ/ทุกฟีเจอร์ → กดแล้วกระโดดไปหา + เลื่อน + วูบไฮไลต์) ============
+    -- เดิมช่องค้นหาที่ sidebar กรองได้แค่ "ชื่อแท็บ" ตอนนี้ค้นได้ทุก element ในทุกแท็บ (ชื่อ / คำอธิบาย / ชื่อแท็บ / หัวข้อ / ประเภท)
+    -- • หลายคำพร้อมกัน (AND) เช่น "player speed"    • พิมพ์ตัวย่อ/ตกหล่นได้ เช่น "spdhk" → Speed Hack    • รองรับภาษาไทย
+    -- • ตัวอักษรที่ตรงถูกไฮไลต์สี    • ↑/↓/Enter บน PC    • จำรายการที่เพิ่งเปิด    • toggle โชว์ ON/OFF ในผลลัพธ์
+    -- • กดผลลัพธ์ → สลับแท็บ + กางหัวข้อที่พับอยู่ + เลื่อนไปหา element + วูบขอบไฮไลต์
+    local Search = {
+        index = {},                                       -- element ที่ลงทะเบียนจาก wrapCreator ของแต่ละแท็บ
+        bodyOwner = setmetatable({}, {__mode = "k"}),     -- Body ของ Section box → element (ใช้กางส่วนที่พับก่อนกระโดดไป)
+        recents = {},
+        items = {},
+        rows = {},
+        sel = 1,
+        active = false,
+        pressing = false,
+        suppress = false,
+        version = 0,
+        conns = {},
+    }
+    do
+        local ROW_H, ROW_GAP, MAX_ROWS = 50, 4, 24
+
+        -- ชื่อประเภท + คำพ้อง (ค้นด้วย "toggle" / "สไลด์" / "ปุ่ม" ก็เจอ)
+        local TYPE_INFO = {
+            CreateButton           = {"Button",   "button ปุ่ม"},
+            CreateToggle           = {"Toggle",   "toggle switch สวิตช์"},
+            CreateCheckbox         = {"Checkbox", "checkbox toggle ติ๊ก"},
+            CreateSlider           = {"Slider",   "slider สไลด์ ปรับค่า"},
+            CreateDropdown         = {"Dropdown", "dropdown เมนู เลือก"},
+            CreateMultiDropdown    = {"Multi",    "dropdown multi เลือกหลายอัน"},
+            CreateColorPicker      = {"Color",    "color picker สี"},
+            CreateInput            = {"Input",    "input textbox กรอก ช่องพิมพ์"},
+            CreateTextArea         = {"Text",     "textarea ข้อความ"},
+            CreateKeybind          = {"Keybind",  "keybind key ปุ่มลัด คีย์"},
+            CreateRadioGroup       = {"Radio",    "radio เลือก"},
+            CreateSegmentedControl = {"Options",  "options segmented เลือก"},
+            CreateAccordion        = {"Info",     "info accordion"},
+            CreateParagraph        = {"Info",     "info text ข้อความ"},
+        }
+        Search.typeInfo = TYPE_INFO
+
+        -- ---------- ตัวช่วยจัดการข้อความ (UTF-8 / ไทย) ----------
+        local charCache, charCacheN = {}, 0
+        local function getChars(str)
+            local c = charCache[str]
+            if c then return c end
+            local chars, lower, cps = {}, {}, {}
+            local ok = pcall(function()
+                for _, cp in utf8.codes(str) do
+                    local ch = utf8.char(cp)
+                    chars[#chars + 1] = ch
+                    lower[#lower + 1] = string.lower(ch)
+                    cps[#cps + 1] = cp
+                end
+            end)
+            if not ok then
+                chars, lower, cps = {}, {}, {}
+                for i = 1, #str do
+                    local ch = string.sub(str, i, i)
+                    chars[i], lower[i], cps[i] = ch, string.lower(ch), string.byte(ch)
+                end
+            end
+            c = {chars = chars, lower = lower, cps = cps}
+            charCacheN += 1
+            if charCacheN > 3000 then charCache, charCacheN = {}, 0 end
+            charCache[str] = c
+            return c
+        end
+        local function isSep(ch) return ch == nil or string.find(ch, "^[%s%p]") ~= nil end
+        local function isMark(cp)   -- สระบน/ล่าง วรรณยุกต์ไทย + combining marks
+            return cp == 0x0E31 or (cp >= 0x0E34 and cp <= 0x0E3A) or (cp >= 0x0E47 and cp <= 0x0E4E) or (cp >= 0x0300 and cp <= 0x036F)
+        end
+        local function esc(ch)
+            if ch == "&" then return "&amp;" elseif ch == "<" then return "&lt;" elseif ch == ">" then return "&gt;"
+            elseif ch == "\"" then return "&quot;" elseif ch == "'" then return "&apos;" end
+            return ch
+        end
+
+        -- ---------- ให้คะแนนการจับคู่ 1 คำค้น กับ 1 ฟิลด์ ----------
+        -- คืน (คะแนน, ตำแหน่งตัวอักษรที่ตรง) — 0 = ไม่ตรง
+        -- ลำดับความดี: ตรงทั้งคำ > ขึ้นต้นคำ > อยู่กลางคำ > ตัวย่อ/ตกหล่น (fuzzy, เฉพาะฟิลด์ที่อนุญาต)
+        local function matchToken(lower, tq, allowFuzzy)
+            local n, m = #lower, #tq
+            if m == 0 or n < m then return 0 end
+            local bestI, bestScore = nil, 0
+            for i = 1, n - m + 1 do
+                local ok = true
+                for j = 1, m do
+                    if lower[i + j - 1] ~= tq[j] then ok = false break end
+                end
+                if ok then
+                    local wordStart = (i == 1) or isSep(lower[i - 1])
+                    local sc = 60 + (wordStart and 25 or 0) + (i == 1 and 15 or 0) + (m == n and 40 or 0) - math.min(i - 1, 20) * 0.5
+                    if sc > bestScore then bestScore, bestI = sc, i end
+                end
+            end
+            if bestI then
+                local pos = {}
+                for j = 0, m - 1 do pos[#pos + 1] = bestI + j end
+                return bestScore, pos
+            end
+            if allowFuzzy and m >= 2 then
+                local pos, k = {}, 1
+                for i = 1, n do
+                    if lower[i] == tq[k] then
+                        pos[k] = i
+                        k += 1
+                        if k > m then break end
+                    end
+                end
+                if k > m then
+                    local span = pos[m] - pos[1] + 1
+                    if span <= m * 2 + 2 then
+                        local consecutive = 0
+                        for j = 2, m do
+                            if pos[j] == pos[j - 1] + 1 then consecutive += 1 end
+                        end
+                        local sc = 18 + consecutive * 4 - (span - m) * 1.5 + ((pos[1] == 1 or isSep(lower[pos[1] - 1])) and 6 or 0)
+                        if sc > 4 then return sc, pos end
+                    end
+                end
+            end
+            return 0
+        end
+
+        local function splitTokens(q)
+            local toks = {}
+            for w in string.gmatch(q, "%S+") do toks[#toks + 1] = getChars(w).lower end
+            return toks
+        end
+
+        -- ทุกคำต้องตรงอย่างน้อย 1 ฟิลด์ (AND) → คืน (คะแนนรวม, ตำแหน่งที่ต้องไฮไลต์ในชื่อ, ตรงจากคำอธิบายหรือไม่)
+        local function scoreCandidate(toks, fields)
+            local total, titlePos, descHit = 0, nil, false
+            for _, tq in ipairs(toks) do
+                local best, bestField = 0, nil
+                for _, f in ipairs(fields) do
+                    local sc, pos = matchToken(f.lower, tq, f.fuzzy)
+                    if sc > 0 then
+                        if f.isTitle then
+                            titlePos = titlePos or {}
+                            for _, p in ipairs(pos) do titlePos[p] = true end
+                        end
+                        sc = sc * f.weight
+                        if sc > best then best, bestField = sc, f end
+                    end
+                end
+                if best == 0 then return 0 end
+                total += best
+                if bestField and bestField.isDesc then descHit = true end
+            end
+            return total, titlePos, descHit
+        end
+
+        -- สร้างข้อความ RichText ที่ไฮไลต์เฉพาะตัวอักษรที่ตรง (ขยายให้คลุมสระ/วรรณยุกต์ไทยที่ติดกัน กัน cluster แตกเป็นคนละสี)
+        local function buildRich(tc, pos, hex)
+            local chars, cps = tc.chars, tc.cps
+            local marked = {}
+            if pos then
+                for i in pairs(pos) do marked[i] = true end
+                for i = 1, #chars do
+                    if marked[i] then
+                        local j = i + 1
+                        while cps[j] and isMark(cps[j]) do marked[j] = true; j += 1 end
+                        local k = i
+                        while k > 1 and isMark(cps[k]) do k -= 1; marked[k] = true end
+                    end
+                end
+            end
+            local out, inRun = {}, false
+            for i, ch in ipairs(chars) do
+                local hit = marked[i]
+                if hit and not inRun then
+                    out[#out + 1] = "<font color=\"#" .. hex .. "\">"
+                    inRun = true
+                elseif (not hit) and inRun then
+                    out[#out + 1] = "</font>"
+                    inRun = false
+                end
+                out[#out + 1] = esc(ch)
+            end
+            if inRun then out[#out + 1] = "</font>" end
+            return table.concat(out)
+        end
+
+        function Search.isTouch()
+            return UserInputService:GetLastInputType() == Enum.UserInputType.Touch
+        end
+
+        -- ---------- ลงทะเบียน element (เรียกจาก wrapCreator ของแต่ละแท็บ) ----------
+        function Search.register(tab, cname, elem, cfg, section)
+            if type(elem) ~= "table" or not elem.Instance then return end
+            table.insert(Search.index, {tab = tab, cname = cname, elem = elem, root = elem.Instance, cfg = cfg, section = section})
+        end
+
+        -- ---------- ข้อมูลที่ใช้แสดง/ค้นของแต่ละ element และแท็บ ----------
+        local function describeEntry(e)
+            local cfg = (e.elem and e.elem._cfg) or e.cfg or {}
+            local title = cfg.Text or cfg.Title or cfg.Name or cfg.Label
+            if type(title) ~= "string" or title == "" then return nil end
+            title = tostring(Library:Translate(title))
+            local desc = ""
+            local dl = e.elem and e.elem._descLabel
+            if dl and dl.Parent then
+                desc = dl.Text
+            else
+                local d = cfg.Desc or cfg.Description or cfg.Content
+                if type(d) == "string" then desc = tostring(Library:Translate(d)) end
+            end
+            if #desc > 140 then
+                local ok, cut = pcall(utf8.offset, desc, 100)
+                desc = (ok and cut) and (string.sub(desc, 1, cut - 1) .. "…") or string.sub(desc, 1, 140)
+            end
+            local info = TYPE_INFO[e.cname] or {"Item", ""}
+            local pill, pillOn = string.upper(info[1]), nil
+            if e.cname == "CreateToggle" or e.cname == "CreateCheckbox" then
+                local ok, v = pcall(e.elem.Get, e.elem)
+                if ok and type(v) == "boolean" then pill, pillOn = v and "ON" or "OFF", v end
+            end
+            local tabName = tostring(e.tab.Name or "")
+            local crumb = tabName
+            if e.section and e.section ~= "" then crumb = crumb .. "  ›  " .. e.section end
+            return {
+                kind = "element", entry = e, title = title, tc = getChars(title), desc = desc, crumb = crumb,
+                tabName = tabName, section = e.section, aliases = info[2], pill = pill, pillOn = pillOn, icon = e.tab.Icon,
+            }
+        end
+
+        local function describeTab(tab, counts)
+            local title = tostring(tab.Name or "")
+            return {
+                kind = "tab", tab = tab, title = title, tc = getChars(title), icon = tab.Icon, pill = "TAB", desc = "",
+                crumb = "แท็บ  ·  " .. tostring((counts and counts[tab]) or 0) .. " ตัวเลือก",
+            }
+        end
+
+        local function pruneIndex()
+            local counts = {}
+            for i = #Search.index, 1, -1 do
+                local e = Search.index[i]
+                if not (e.root and e.root.Parent) then
+                    table.remove(Search.index, i)
+                else
+                    counts[e.tab] = (counts[e.tab] or 0) + 1
+                end
+            end
+            return counts
+        end
+
+        -- ---------- ค้นหา ----------
+        function Search.query(q)
+            local toks = splitTokens(q)
+            if #toks == 0 then return {}, 0 end
+            local counts = pruneIndex()
+            local cands = {}
+
+            for _, tab in ipairs(windowTabList) do
+                local d = describeTab(tab, counts)
+                if d.title ~= "" then
+                    local sc, pos = scoreCandidate(toks, {{lower = d.tc.lower, weight = 3.4, fuzzy = true, isTitle = true}})
+                    if sc > 0 then
+                        d.score, d.pos, d.sub = sc + 30, pos, d.crumb   -- แท็บได้แต้มต่อ อยู่บนสุดเมื่อพิมพ์ชื่อตรง
+                        cands[#cands + 1] = d
+                    end
+                end
+            end
+
+            for _, e in ipairs(Search.index) do
+                if e.root.Visible ~= false then
+                    local d = describeEntry(e)
+                    if d then
+                        local fields = {{lower = d.tc.lower, weight = 3, fuzzy = true, isTitle = true}}
+                        fields[#fields + 1] = {lower = getChars(d.tabName).lower, weight = 1.4}
+                        if d.section and d.section ~= "" then fields[#fields + 1] = {lower = getChars(d.section).lower, weight = 1.2} end
+                        fields[#fields + 1] = {lower = getChars(d.aliases).lower, weight = 0.8}
+                        if d.desc ~= "" then fields[#fields + 1] = {lower = getChars(d.desc).lower, weight = 1.0, isDesc = true} end
+                        local sc, pos, descHit = scoreCandidate(toks, fields)
+                        if sc > 0 then
+                            d.score, d.pos = sc, pos
+                            d.sub = (descHit and d.desc ~= "") and d.desc or d.crumb
+                            cands[#cands + 1] = d
+                        end
+                    end
+                end
+            end
+
+            table.sort(cands, function(a, b)
+                if a.score ~= b.score then return a.score > b.score end
+                if a.kind ~= b.kind then return a.kind == "tab" end
+                if #a.tc.chars ~= #b.tc.chars then return #a.tc.chars < #b.tc.chars end
+                return a.title < b.title
+            end)
+            local total = #cands
+            for i = total, MAX_ROWS + 1, -1 do cands[i] = nil end
+            return cands, total
+        end
+
+        -- ---------- UI: แผงผลลัพธ์ (อยู่ทับ ContentArea) ----------
+        local Panel = Instance.new("CanvasGroup")
+        Panel.Name = "SearchPanel"
+        Panel.Size = UDim2.new(1, 0, 1, 0)
+        Panel.BackgroundTransparency = 1
+        Panel.GroupTransparency = 1
+        Panel.Visible = false
+        Panel.ZIndex = 40
+        Panel.Parent = ContentArea
+
+        local Header = Instance.new("Frame")
+        Header.BackgroundTransparency = 1
+        Header.Position = UDim2.new(0, 12, 0, 8)
+        Header.Size = UDim2.new(1, -24, 0, 22)
+        Header.Parent = Panel
+        local HBar = Instance.new("Frame")
+        HBar.Size = UDim2.new(0, 3, 0, 12)
+        HBar.Position = UDim2.new(0, 0, 0.5, -6)
+        HBar.BorderSizePixel = 0
+        applyThemeColor(HBar, "AccentA")
+        HBar.Parent = Header
+        corner(HBar, 2)
+        accentGradient(HBar, 90)
+        local HTitle = Instance.new("TextLabel")
+        HTitle.BackgroundTransparency = 1
+        HTitle.Position = UDim2.new(0, 10, 0, 0)
+        HTitle.Size = UDim2.new(0.62, -10, 1, 0)
+        HTitle.FontFace = UI_Font("Bold")
+        HTitle.TextSize = 11.5
+        HTitle.TextXAlignment = Enum.TextXAlignment.Left
+        HTitle.TextTruncate = Enum.TextTruncate.AtEnd
+        applyThemeColor(HTitle, "SubText", "TextColor3")
+        HTitle.Parent = Header
+        local HCount = Instance.new("TextLabel")
+        HCount.BackgroundTransparency = 1
+        HCount.AnchorPoint = Vector2.new(1, 0)
+        HCount.Position = UDim2.new(1, 0, 0, 0)
+        HCount.Size = UDim2.new(0.38, 0, 1, 0)
+        HCount.FontFace = UI_Font("Medium")
+        HCount.TextSize = 11
+        HCount.TextXAlignment = Enum.TextXAlignment.Right
+        applyThemeColor(HCount, "SubText", "TextColor3")
+        HCount.Parent = Header
+
+        local List = Instance.new("ScrollingFrame")
+        List.Name = "Results"
+        List.BackgroundTransparency = 1
+        List.BorderSizePixel = 0
+        List.Position = UDim2.new(0, 0, 0, 36)
+        List.Size = UDim2.new(1, 0, 1, -36)
+        List.ScrollBarThickness = 2
+        applyThemeColor(List, "AccentA", "ScrollBarImageColor3")
+        List.Active = true
+        List.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        List.CanvasSize = UDim2.new(0, 0, 0, 0)
+        List.Parent = Panel
+        local listPad = Instance.new("UIPadding")
+        listPad.PaddingLeft = UDim.new(0, 10)
+        listPad.PaddingRight = UDim.new(0, 12)
+        listPad.PaddingBottom = UDim.new(0, 10)
+        listPad.Parent = List
+        local listLayout = Instance.new("UIListLayout")
+        listLayout.Padding = UDim.new(0, ROW_GAP)
+        listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        listLayout.Parent = List
+
+        local Footer = Instance.new("TextLabel")
+        Footer.BackgroundTransparency = 1
+        Footer.LayoutOrder = 9999
+        Footer.Size = UDim2.new(1, 0, 0, 24)
+        Footer.FontFace = UI_Font("Medium")
+        Footer.TextSize = 11
+        Footer.Visible = false
+        applyThemeColor(Footer, "SubText", "TextColor3")
+        Footer.Parent = List
+
+        local Empty = Instance.new("Frame")
+        Empty.BackgroundTransparency = 1
+        Empty.AnchorPoint = Vector2.new(0.5, 0.5)
+        Empty.Position = UDim2.new(0.5, 0, 0.5, 8)
+        Empty.Size = UDim2.new(1, -40, 0, 100)
+        Empty.Visible = false
+        Empty.Parent = Panel
+        local EmptyIcon = Instance.new("ImageLabel")
+        EmptyIcon.BackgroundTransparency = 1
+        EmptyIcon.AnchorPoint = Vector2.new(0.5, 0)
+        EmptyIcon.Position = UDim2.new(0.5, 0, 0, 0)
+        EmptyIcon.Size = UDim2.new(0, 26, 0, 26)
+        EmptyIcon.Image = Library.Icons.search or ""
+        EmptyIcon.ImageTransparency = 0.4
+        EmptyIcon.ScaleType = Enum.ScaleType.Fit
+        applyThemeColor(EmptyIcon, "SubText", "ImageColor3")
+        EmptyIcon.Parent = Empty
+        local EmptyTitle = Instance.new("TextLabel")
+        EmptyTitle.BackgroundTransparency = 1
+        EmptyTitle.Position = UDim2.new(0, 0, 0, 34)
+        EmptyTitle.Size = UDim2.new(1, 0, 0, 20)
+        EmptyTitle.FontFace = UI_Font("SemiBold")
+        EmptyTitle.TextSize = 13
+        EmptyTitle.TextTruncate = Enum.TextTruncate.AtEnd
+        applyThemeColor(EmptyTitle, "Text", "TextColor3")
+        EmptyTitle.Parent = Empty
+        local EmptyHint = Instance.new("TextLabel")
+        EmptyHint.BackgroundTransparency = 1
+        EmptyHint.Position = UDim2.new(0, 0, 0, 56)
+        EmptyHint.Size = UDim2.new(1, 0, 0, 34)
+        EmptyHint.FontFace = UI_Font("Medium")
+        EmptyHint.TextSize = 11.5
+        EmptyHint.TextWrapped = true
+        EmptyHint.TextYAlignment = Enum.TextYAlignment.Top
+        applyThemeColor(EmptyHint, "SubText", "TextColor3")
+        EmptyHint.Parent = Empty
+
+        -- ---------- แถวผลลัพธ์ (สร้างครั้งเดียวแล้ว reuse ทุกครั้งที่พิมพ์ ไม่สร้าง/ทำลาย instance รัวๆ บนมือถือ) ----------
+        local function makeRow(i)
+            local R = {index = i}
+            local Btn = Instance.new("TextButton")
+            Btn.Name = "Row"
+            Btn.Size = UDim2.new(1, 0, 0, ROW_H)
+            Btn.LayoutOrder = i
+            Btn.AutoButtonColor = false
+            Btn.Text = ""
+            Btn.BorderSizePixel = 0
+            Btn.BackgroundColor3 = Theme.Element
+            Btn.BackgroundTransparency = 0.45
+            Btn.Visible = false
+            Btn.Parent = List
+            corner(Btn, 10)
+            R.Btn = Btn
+            R.Stroke = stroke(Btn, "Stroke", 1)
+            R.Stroke.Transparency = 0.8
+
+            local Chip = Instance.new("Frame")
+            Chip.Size = UDim2.new(0, 30, 0, 30)
+            Chip.AnchorPoint = Vector2.new(0, 0.5)
+            Chip.Position = UDim2.new(0, 10, 0.5, 0)
+            Chip.BackgroundColor3 = Theme.AccentA
+            Chip.BackgroundTransparency = 0.86
+            Chip.BorderSizePixel = 0
+            Chip.Parent = Btn
+            corner(Chip, 8)
+            R.Chip = Chip
+            R.Ico = Instance.new("ImageLabel")
+            R.Ico.BackgroundTransparency = 1
+            R.Ico.AnchorPoint = Vector2.new(0.5, 0.5)
+            R.Ico.Position = UDim2.new(0.5, 0, 0.5, 0)
+            R.Ico.Size = UDim2.new(0, 16, 0, 16)
+            R.Ico.ScaleType = Enum.ScaleType.Fit
+            R.Ico.Parent = Chip
+            R.Letter = Instance.new("TextLabel")
+            R.Letter.BackgroundTransparency = 1
+            R.Letter.Size = UDim2.new(1, 0, 1, 0)
+            R.Letter.FontFace = UI_Font("Bold")
+            R.Letter.TextSize = 13
+            R.Letter.Parent = Chip
+
+            R.Title = Instance.new("TextLabel")
+            R.Title.BackgroundTransparency = 1
+            R.Title.RichText = true
+            R.Title.Position = UDim2.new(0, 50, 0, 8)
+            R.Title.Size = UDim2.new(1, -142, 0, 18)
+            R.Title.FontFace = UI_Font("SemiBold")
+            R.Title.TextSize = 13.5
+            R.Title.TextXAlignment = Enum.TextXAlignment.Left
+            R.Title.TextTruncate = Enum.TextTruncate.AtEnd
+            R.Title.Parent = Btn
+
+            R.Sub = Instance.new("TextLabel")
+            R.Sub.BackgroundTransparency = 1
+            R.Sub.Position = UDim2.new(0, 50, 0, 27)
+            R.Sub.Size = UDim2.new(1, -142, 0, 14)
+            R.Sub.FontFace = UI_Font("Medium")
+            R.Sub.TextSize = 11
+            R.Sub.TextXAlignment = Enum.TextXAlignment.Left
+            R.Sub.TextTruncate = Enum.TextTruncate.AtEnd
+            R.Sub.Parent = Btn
+
+            R.Pill = Instance.new("Frame")
+            R.Pill.AnchorPoint = Vector2.new(1, 0.5)
+            R.Pill.Position = UDim2.new(1, -10, 0.5, 0)
+            R.Pill.Size = UDim2.new(0, 0, 0, 0)
+            R.Pill.AutomaticSize = Enum.AutomaticSize.XY
+            R.Pill.BackgroundTransparency = 0.88
+            R.Pill.BorderSizePixel = 0
+            R.Pill.Parent = Btn
+            corner(R.Pill, 6)
+            local pillPad = Instance.new("UIPadding")
+            pillPad.PaddingLeft, pillPad.PaddingRight = UDim.new(0, 7), UDim.new(0, 7)
+            pillPad.PaddingTop, pillPad.PaddingBottom = UDim.new(0, 3), UDim.new(0, 3)
+            pillPad.Parent = R.Pill
+            R.PillLbl = Instance.new("TextLabel")
+            R.PillLbl.BackgroundTransparency = 1
+            R.PillLbl.Size = UDim2.new(0, 0, 0, 0)
+            R.PillLbl.AutomaticSize = Enum.AutomaticSize.XY
+            R.PillLbl.FontFace = UI_Font("Bold")
+            R.PillLbl.TextSize = 10
+            R.PillLbl.Parent = R.Pill
+
+            Btn.MouseEnter:Connect(function()
+                if not Search.isTouch() and R.item then Search.select(i, false) end
+            end)
+            Btn.MouseButton1Down:Connect(function() Search.pressing = true end)
+            Btn.MouseButton1Up:Connect(function() task.defer(function() Search.pressing = false end) end)
+            Btn.MouseLeave:Connect(function() Search.pressing = false end)
+            Btn.MouseButton1Click:Connect(function()
+                Search.pressing = false
+                if R.item then Search.go(R.item) end
+            end)
+            return R
+        end
+
+        function Search.paint()
+            for i, R in ipairs(Search.rows) do
+                if R.Btn.Visible then
+                    local on = (i == Search.sel)
+                    R.Btn.BackgroundColor3 = on and Theme.AccentA or Theme.Element
+                    R.Btn.BackgroundTransparency = on and 0.82 or 0.45
+                    R.Stroke.Color = on and Theme.AccentA or Theme.Stroke
+                    R.Stroke.Transparency = on and 0.35 or 0.8
+                end
+            end
+        end
+
+        function Search.ensureVisible(i)
+            local top = (i - 1) * (ROW_H + ROW_GAP)
+            local scale = Library.CanvasScale(List)
+            local view = List.AbsoluteWindowSize.Y / scale
+            local cp = List.CanvasPosition.Y
+            if top < cp then
+                List.CanvasPosition = Vector2.new(0, math.max(0, top - 4))
+            elseif top + ROW_H > cp + view then
+                List.CanvasPosition = Vector2.new(0, top + ROW_H - view + 6)
+            end
+        end
+
+        function Search.select(i, scroll)
+            if i < 1 or i > #Search.items then return end
+            Search.sel = i
+            Search.paint()
+            if scroll then Search.ensureVisible(i) end
+        end
+
+        function Search.move(delta)
+            local n = #Search.items
+            if n == 0 then return end
+            Search.select(((Search.sel - 1 + delta) % n) + 1, true)
+        end
+
+        -- ---------- แสดงผล ----------
+        function Search.render(items, total, mode, q)
+            Search.items = items
+            Search.sel = 1
+            local hex = Theme.AccentA:Lerp(Color3.new(1, 1, 1), 0.5):ToHex()
+            while #Search.rows < #items do
+                Search.rows[#Search.rows + 1] = makeRow(#Search.rows + 1)
+            end
+            for i, R in ipairs(Search.rows) do
+                local item = items[i]
+                R.item = item
+                if item then
+                    R.Btn.Visible = true
+                    R.Title.Text = buildRich(item.tc, item.pos, hex)
+                    R.Title.TextColor3 = Theme.Text
+                    R.Sub.Text = item.sub or item.crumb or ""
+                    R.Sub.TextColor3 = Theme.SubText
+                    local raw = item.icon
+                    local img = raw and (Library.Icons[raw] or raw) or nil
+                    if type(img) == "string" and img ~= "" then
+                        R.Ico.Image = img
+                        R.Ico.ImageColor3 = Theme.AccentA
+                        R.Ico.Visible, R.Letter.Visible = true, false
+                    else
+                        R.Ico.Visible, R.Letter.Visible = false, true
+                        R.Letter.Text = string.upper(item.tc.chars[1] or "?")
+                        R.Letter.TextColor3 = Theme.AccentA
+                    end
+                    R.PillLbl.Text = item.pill
+                    local off = (item.pillOn == false)
+                    R.PillLbl.TextColor3 = off and Theme.SubText or Theme.AccentA
+                    R.Pill.BackgroundColor3 = off and Theme.SubText or Theme.AccentA
+                else
+                    R.Btn.Visible = false
+                end
+            end
+            Search.paint()
+            List.CanvasPosition = Vector2.new(0, 0)
+
+            if mode == "results" then
+                HTitle.Text = "ผลการค้นหา"
+                HCount.Text = total > 0 and (tostring(total) .. " รายการ") or ""
+            else
+                HTitle.Text = "ค้นหาล่าสุด"
+                HCount.Text = ""
+            end
+            Footer.Visible = total > #items
+            if Footer.Visible then
+                Footer.Text = "แสดง " .. #items .. " จาก " .. total .. " รายการ — พิมพ์เพิ่มเพื่อให้แคบลง"
+            end
+            Empty.Visible = #items == 0
+            if #items == 0 then
+                if mode == "results" then
+                    EmptyTitle.Text = "ไม่พบผลลัพธ์สำหรับ “" .. q .. "”"
+                    EmptyHint.Text = "ลองใช้คำที่สั้นลง พิมพ์เป็นตัวย่อ (เช่น spd) หรือค้นด้วยชื่อแท็บ / ประเภท (เช่น toggle, slider)"
+                else
+                    EmptyTitle.Text = "ค้นหาได้ทุกแท็บ ทุกฟีเจอร์"
+                    EmptyHint.Text = "พิมพ์ชื่อฟีเจอร์ ชื่อแท็บ หรือคำอธิบาย แล้วแตะผลลัพธ์เพื่อกระโดดไปหาทันที"
+                end
+            end
+        end
+
+        -- ---------- เปิด/ปิดแผง ----------
+        local panelTween = nil
+        function Search.open()
+            if Search.active then return end
+            Search.active = true
+            pcall(closeActivePopup)
+            if CurrentTab and CurrentTab.Content then CurrentTab.Content.Visible = false end
+            if panelTween then panelTween:Cancel() end
+            Panel.Visible = true
+            Panel.Position = UDim2.new(0, 0, 0, 8)
+            panelTween = TweenService:Create(Panel, TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                Position = UDim2.new(0, 0, 0, 0), GroupTransparency = 0,
+            })
+            panelTween:Play()
+        end
+
+        function Search.close()
+            if not Search.active then return end
+            Search.active = false
+            if CurrentTab and CurrentTab.Content then CurrentTab.Content.Visible = true end
+            if panelTween then panelTween:Cancel() end
+            local tw = TweenService:Create(Panel, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {GroupTransparency = 1})
+            panelTween = tw
+            tw.Completed:Connect(function(state)
+                if state == Enum.PlaybackState.Completed and not Search.active then Panel.Visible = false end
+            end)
+            tw:Play()
+        end
+
+        -- ปิดหน้าผลค้นหา + ล้างช่องพิมพ์ + คืนเนื้อหาแท็บ (เรียกตอนสลับแท็บ/กระโดดไปหา)
+        function Search.dismiss()
+            Search.suppress = true
+            Search.version += 1
+            if TabSearchBox.Text ~= "" then TabSearchBox.Text = "" end
+            if TabSearchBox:IsFocused() then TabSearchBox:ReleaseFocus() end
+            Search.suppress = false
+            Search.close()
+        end
+
+        function Search.remember(item)
+            local key = item.entry or item.tab
+            for i = #Search.recents, 1, -1 do
+                local r = Search.recents[i]
+                if (r.entry or r.tab) == key then table.remove(Search.recents, i) end
+            end
+            table.insert(Search.recents, 1, {entry = item.entry, tab = item.tab})
+            while #Search.recents > 6 do table.remove(Search.recents) end
+        end
+
+        function Search.showRecents()
+            Search.open()
+            local counts = pruneIndex()
+            local items = {}
+            for _, r in ipairs(Search.recents) do
+                local d
+                if r.entry and r.entry.root and r.entry.root.Parent then
+                    d = describeEntry(r.entry)
+                elseif r.tab and r.tab.Btn and r.tab.Btn.Parent then
+                    d = describeTab(r.tab, counts)
+                end
+                if d then
+                    d.sub = d.crumb
+                    items[#items + 1] = d
+                end
+            end
+            Search.render(items, #items, "recents", "")
+        end
+
+        function Search.run(text)
+            local q = (text or ""):match("^%s*(.-)%s*$") or ""
+            if q == "" then
+                if TabSearchBox:IsFocused() then Search.showRecents() else Search.close() end
+                return
+            end
+            Search.open()
+            local items, total = Search.query(q)
+            Search.render(items, total, "results", q)
+        end
+
+        function Search.schedule()
+            Search.version += 1
+            local v = Search.version
+            task.delay(0.09, function()
+                if v ~= Search.version then return end
+                Search.run(TabSearchBox.Text)
+            end)
+        end
+
+        -- ---------- กระโดดไปหา element: กางหัวข้อที่พับ → เลื่อน → วูบไฮไลต์ ----------
+        function Search.flash(root)
+            pcall(function()
+                local st = Instance.new("UIStroke")
+                st.Color = Theme.AccentA
+                st.Thickness = 2
+                st.Transparency = 1
+                pcall(function() st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border end)
+                st.Parent = root
+                local tint = Instance.new("Frame")
+                tint.Name = "__SearchFlash"
+                tint.Size = UDim2.new(1, 0, 1, 0)
+                tint.BackgroundColor3 = Theme.AccentA
+                tint.BackgroundTransparency = 1
+                tint.BorderSizePixel = 0
+                tint.ZIndex = 90
+                local rc = root:FindFirstChildOfClass("UICorner")
+                local tc = Instance.new("UICorner")
+                tc.CornerRadius = rc and rc.CornerRadius or UDim.new(0, 10)
+                tc.Parent = tint
+                tint.Parent = root
+                -- 2 จังหวะ: 0.28s × (ไป+กลับ) × 2 รอบ
+                local info = TweenInfo.new(0.28, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, 1, true)
+                TweenService:Create(st, info, {Transparency = 0}):Play()
+                TweenService:Create(tint, info, {BackgroundTransparency = 0.8}):Play()
+                task.delay(1.3, function()
+                    st:Destroy()
+                    tint:Destroy()
+                end)
+            end)
+        end
+
+        function Search.reveal(e)
+            local root, content = e.root, e.tab.Content
+            if not (root and root.Parent and content) then return end
+            local opened = false
+            local node = root.Parent
+            while node and node ~= content do
+                local owner = Search.bodyOwner[node]
+                if owner and owner.Get and not owner.Get(owner) then
+                    pcall(owner.Open, owner)
+                    opened = true
+                end
+                node = node.Parent
+            end
+            if opened then task.wait(0.3) end
+            -- รอให้แท็บที่เพิ่งเปิดคำนวณ layout เสร็จก่อนค่อยวัดตำแหน่ง
+            local t0 = os.clock()
+            while os.clock() - t0 < 0.6 do
+                if content.Visible and root.AbsoluteSize.Y > 0 and content.AbsoluteWindowSize.Y > 0 then break end
+                RunService.Heartbeat:Wait()
+            end
+            RunService.Heartbeat:Wait()
+            if not (root.Parent and content.Parent) then return end
+            local scale = Library.CanvasScale(content)
+            local y = (root.AbsolutePosition.Y - content.AbsolutePosition.Y) / scale + content.CanvasPosition.Y
+            local viewH = content.AbsoluteWindowSize.Y / scale
+            local rootH = root.AbsoluteSize.Y / scale
+            local target = y - math.max(12, (viewH - rootH) * 0.25)
+            local maxY = math.max(0, content.AbsoluteCanvasSize.Y / scale - viewH)
+            target = math.clamp(target, 0, maxY)
+            TweenService:Create(content, TweenInfo.new(0.38, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                CanvasPosition = Vector2.new(0, target),
+            }):Play()
+            task.wait(0.16)
+            Search.flash(root)
+        end
+
+        function Search.go(item)
+            if not item then return end
+            Search.remember(item)
+            Search.dismiss()
+            if item.kind == "tab" then
+                item.tab.Select()
+                return
+            end
+            local e = item.entry
+            if not (e and e.root and e.root.Parent) then return end
+            e.tab.Select()
+            if not (CurrentTab and CurrentTab.Btn == e.tab.Btn) then return end   -- แท็บถูกล็อก สลับไม่ได้
+            task.spawn(Search.reveal, e)
+        end
+
+        -- ---------- ผูกกับช่องค้นหา ----------
+        TabSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+            if Search.suppress then return end
+            Search.schedule()
+        end)
+        TabSearchBox.Focused:Connect(function()
+            Search.version += 1
+            if TabSearchBox.Text == "" then Search.showRecents() else Search.run(TabSearchBox.Text) end
+        end)
+        TabSearchBox.FocusLost:Connect(function(enterPressed)
+            -- Enter ไปผลลัพธ์แรกเฉพาะ PC (บนมือถือ Enter = ปิดคีย์บอร์ดเฉยๆ ไม่ให้กระโดดไปโดยไม่ตั้งใจ)
+            if enterPressed and not Search.isTouch() and Search.active and TabSearchBox.Text ~= "" then
+                local it = Search.items[Search.sel]
+                if it then Search.go(it) return end
+            end
+            if TabSearchBox.Text == "" then
+                task.delay(0.25, function()
+                    if Search.pressing or TabSearchBox:IsFocused() then return end
+                    if TabSearchBox.Text == "" then Search.close() end
+                end)
+            end
+        end)
+        table.insert(Search.conns, UserInputService.InputBegan:Connect(function(input)
+            if not Search.active or not TabSearchBox:IsFocused() then return end
+            if input.KeyCode == Enum.KeyCode.Down then
+                Search.move(1)
+            elseif input.KeyCode == Enum.KeyCode.Up then
+                Search.move(-1)
+            end
+        end))
+    end
+
     -- ค้นหา/ซ่อนแท็บแล้ว layout ขยับ → ให้ indicator ตามปุ่มแท็บปัจจุบันเสมอ
     -- (แก้: เดิมเซต Position = CurrentTab.Btn.Position ซึ่งเป็น (0,0) เสมอ ทำให้ไฮไลต์เด้งไปบนสุดทุกครั้งที่กดแท็บ)
     refreshIndicator = function()
@@ -3374,6 +4193,7 @@ function Library:CreateWindow(config)
             if toggleKeyConn then toggleKeyConn:Disconnect() end
             if tabFxConn then tabFxConn:Disconnect() end
             if tabFxFocusConn then tabFxFocusConn:Disconnect() end
+            for _, c in ipairs(Search.conns) do pcall(function() c:Disconnect() end) end
             ScreenGui:Destroy(); RestoreGui:Destroy(); NotifyGui:Destroy(); TooltipGui:Destroy()
         end
         if ScreenGui.Enabled then
@@ -4252,6 +5072,7 @@ function Library:CreateWindow(config)
         local rawTabName = name
         name = tostring(Library:Translate(name))
         local Tab = {}
+        local searchSection = nil   -- หัวข้อ (Section) ล่าสุด ใช้ทำ breadcrumb ให้ผลค้นหา
         local TabBtn = Instance.new("TextButton")
         TabBtn.Size = UDim2.new(1, 0, 0, 36)
         applyThemeColor(TabBtn, "Element")
@@ -4330,9 +5151,6 @@ function Library:CreateWindow(config)
         accentGradient(ActiveBar, 90)
 
         table.insert(allTabs, {btn = TabBtn, name = name})
-        if TabSearchBox and TabSearchBox.Text ~= "" then
-            TabBtn.Visible = string.find(name:lower(), TabSearchBox.Text:lower(), 1, true) ~= nil
-        end
 
         -- ===== สถานะ hover/press ของแท็บ =====
         -- PC: กดลง = ย่อ + ripple ทันที  |  มือถือ: ไม่เล่นตอนนิ้วแตะลง (เพราะอาจเป็นการไถลิสต์ ทำให้กระพริบ/ค้าง)
@@ -4461,6 +5279,7 @@ function Library:CreateWindow(config)
 
         local function activateTab()
             if Tab.Locked then return end
+            Search.dismiss()   -- ปิดหน้าผลค้นหา (ถ้าเปิดอยู่) + ล้างช่องพิมพ์ + คืนเนื้อหาแท็บ
             -- แตะแท็บที่เปิดอยู่ซ้ำ → ไม่ต้องเล่นอนิเมชันเปลี่ยนหน้าซ้ำ (เดิมเนื้อหากระตุก/วาบทุกครั้งที่แตะซ้ำ)
             if CurrentTab and CurrentTab.Btn == TabBtn then return end
             -- ห่อ pcall: ต่อให้ popup/indicator error ก็ต้องสลับเนื้อหาแท็บให้เสร็จ ไม่งั้นหน้าจอจะค้างที่แท็บเดิม
@@ -4489,6 +5308,8 @@ function Library:CreateWindow(config)
         end
         TabBtn.MouseButton1Click:Connect(activateTab)
         Tab.Name = name
+        Tab.Icon = icon
+        Tab.Content = TabContent
         Tab.Select = function() activateTab() end   -- เรียกได้ทั้ง tab:Select() และ tab.Select()
         function Tab:Lock(msg)
             Tab.Locked = true
@@ -4545,18 +5366,21 @@ function Library:CreateWindow(config)
 
         -- สร้าง element ลงใน container ที่กำหนด โดยสลับ TabContent ชั่วคราวระหว่างสร้าง
         -- (ทุก creator อ้าง TabContent ตอนสร้างเท่านั้น ส่วน runtime กลับไปใช้ ScrollingFrame ตัวจริงเสมอ)
-        local function withContainer(container, cname, cfg)
+        local function withContainer(container, cname, cfg, ctxTitle)
             local prev = TabContent
+            local prevSection = searchSection
             if container then TabContent = container end
+            if ctxTitle then searchSection = ctxTitle end
             local ok, res = pcall(Tab[cname], Tab, cfg)
             TabContent = prev
+            searchSection = prevSection
             if not ok then error(res, 0) end
             return res
         end
-        local function attachCreators(target, container, after)
+        local function attachCreators(target, container, after, ctxTitle)
             for _, cname in ipairs(CREATOR_NAMES) do
                 local fn = function(_, cfg)
-                    local res = withContainer(container, cname, cfg)
+                    local res = withContainer(container, cname, cfg, ctxTitle)
                     if after then after() end
                     return res
                 end
@@ -4653,7 +5477,8 @@ function Library:CreateWindow(config)
                     local rawT = c.Title or c.Text
                     Library:BindLocalized(function() return Holder.Parent ~= nil end, function() elem._setTitle(tostring(Library:Translate(rawT))) end)
                 end
-                attachCreators(elem, nil)
+                searchSection = title
+                attachCreators(elem, nil, nil, title)
                 return elem
             end
 
@@ -4800,7 +5625,8 @@ function Library:CreateWindow(config)
                 local rawT = c.Title or c.Text
                 Library:BindLocalized(function() return Outer.Parent ~= nil end, function() HTitle.Text = tostring(Library:Translate(rawT)) end)
             end
-            attachCreators(elem, Body)
+            Search.bodyOwner[Body] = elem   -- ให้ระบบค้นหากางหัวข้อนี้ได้ถ้าพับอยู่
+            attachCreators(elem, Body, nil, title)
             return elem
         end
 
@@ -7628,7 +8454,9 @@ function Library:CreateWindow(config)
                 if route then return Tab[route](Tab, cfg) end
                 local elem = orig(self, cfg)
                 if cname == "CreateParagraph" or cname == "CreateAccordion" or cname == "CreateCode" then rawText, rawDesc = nil, nil end
-                return decorate(cname, elem, cfg, rawText, rawDesc)
+                local decorated = decorate(cname, elem, cfg, rawText, rawDesc)
+                if Search.typeInfo[cname] then pcall(Search.register, Tab, cname, decorated, cfg, searchSection) end
+                return decorated
             end
         end
         for _, cname in ipairs({"CreateButton", "CreateToggle", "CreateCheckbox", "CreateSlider", "CreateDropdown", "CreateColorPicker",
@@ -8149,6 +8977,7 @@ function Library:CreateWindow(config)
     end
     function Window:SetSearchBarVisible(state)
         searchHidden = not state
+        if searchHidden then Search.dismiss() end
         updateSidebarLayout()
         return Window
     end
