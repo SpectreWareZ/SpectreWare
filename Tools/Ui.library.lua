@@ -3,6 +3,8 @@
     ใหม่ใน v7: Element API (Lock/Unlock/SetTitle/SetDesc/Highlight), Section แบบพับได้, Group, Code, Space, Checkbox,
     Paragraph แบบเต็ม (Title/Desc/Buttons), Desc ทุก element, Localization, SetFont, Dialog หลายปุ่ม, Notify (Icon/Buttons/Persistent),
     Window: Tag/TopbarButton/UserPanel/BackgroundImage/Acrylic/Transparency/SetUIScale/SelectTab/OnOpen/OnClose ฯลฯ, ธีมเพิ่ม 15 ชุด
+    
+    ใหม่ใน v7.1: API Key System (สร้าง/ตรวจสอบ/บัญชี API Keys, CreateAPIKeyManager UI)
     ------------------------------------------------------------------
     Pro Mobile & PC UI Library v6.1 (Massive Icon Update)
     =====================================================
@@ -91,6 +93,197 @@ function Library:UnregisterCommandsByTab(tabName)
     for i = #Library.Commands, 1, -1 do
         if Library.Commands[i].TabName == tabName then table.remove(Library.Commands, i) end
     end
+end
+
+-- ============ API KEY SYSTEM (ต่อขยาย: key generation, validation, storage, management) ============
+-- ระบบ API Key สำหรับ whitelist/access control
+Library.APIKeys = {}
+Library.APIKeysChanged = Instance.new("BindableEvent") -- ยิงทุกครั้งที่ key เปลี่ยน (add/revoke/update)
+Library.APIKeyFolder = "SpectreUI_APIKeys"
+
+-- สร้าง random key (36 chars format: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX)
+local function generateRandomKey()
+    local chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    local key = ""
+    for i = 1, 36 do
+        if i == 9 or i == 14 or i == 19 or i == 24 then
+            key = key .. "-"
+        else
+            local idx = math.random(1, #chars)
+            key = key .. string.sub(chars, idx, idx)
+        end
+    end
+    return key
+end
+
+-- Simple hash function (not cryptographically secure, just for obfuscation)
+local function hashKey(key)
+    local hash = 5381
+    for i = 1, #key do
+        local c = string.byte(key, i)
+        hash = ((hash * 33) + c) % 0xFFFFFFFF
+    end
+    return string.format("%X", hash)
+end
+
+-- สร้าง API Key ใหม่
+-- returns: {id, key, hash, createdTime, name, enabled}
+function Library:CreateAPIKey(name)
+    name = tostring(name or "API Key #" .. tostring(#Library.APIKeys + 1))
+    local key = generateRandomKey()
+    local entry = {
+        id = tostring(os.time() .. "_" .. math.random(1000, 9999)),
+        key = key,
+        hash = hashKey(key),
+        createdTime = os.time(),
+        name = name,
+        enabled = true,
+        lastUsed = 0,
+        usageCount = 0,
+    }
+    table.insert(Library.APIKeys, entry)
+    Library.APIKeysChanged:Fire("created", entry)
+    return entry
+end
+
+-- ตรวจสอบว่า key ถูกต้องไหม
+function Library:VerifyAPIKey(inputKey)
+    if type(inputKey) ~= "string" then return false, nil end
+    local inputHash = hashKey(inputKey)
+    for _, entry in ipairs(Library.APIKeys) do
+        if entry.enabled and entry.hash == inputHash then
+            entry.lastUsed = os.time()
+            entry.usageCount = (entry.usageCount or 0) + 1
+            Library.APIKeysChanged:Fire("used", entry)
+            return true, entry
+        end
+    end
+    return false, nil
+end
+
+-- คืนค่า API Key ทั้งหมด (ไม่แสดง key เต็มๆ เฉพาะ hash และ metadata)
+function Library:GetAPIKeys()
+    local keys = {}
+    for _, entry in ipairs(Library.APIKeys) do
+        table.insert(keys, {
+            id = entry.id,
+            name = entry.name,
+            enabled = entry.enabled,
+            hash = entry.hash,
+            createdTime = entry.createdTime,
+            lastUsed = entry.lastUsed,
+            usageCount = entry.usageCount,
+        })
+    end
+    return keys
+end
+
+-- หา key ตาม ID
+function Library:GetAPIKeyByID(id)
+    for _, entry in ipairs(Library.APIKeys) do
+        if entry.id == id then return entry end
+    end
+    return nil
+end
+
+-- ปิดใช้งาน API Key (soft delete)
+function Library:RevokeAPIKey(id)
+    local entry = Library:GetAPIKeyByID(id)
+    if entry then
+        entry.enabled = false
+        Library.APIKeysChanged:Fire("revoked", entry)
+        return true
+    end
+    return false
+end
+
+-- เปิดใช้งาน API Key ที่ปิดไปแล้ว
+function Library:EnableAPIKey(id)
+    local entry = Library:GetAPIKeyByID(id)
+    if entry then
+        entry.enabled = true
+        Library.APIKeysChanged:Fire("enabled", entry)
+        return true
+    end
+    return false
+end
+
+-- เปลี่ยนชื่อ key
+function Library:RenameAPIKey(id, newName)
+    local entry = Library:GetAPIKeyByID(id)
+    if entry then
+        entry.name = tostring(newName)
+        Library.APIKeysChanged:Fire("renamed", entry)
+        return true
+    end
+    return false
+end
+
+-- ลบ API Key ถาวร
+function Library:DeleteAPIKey(id)
+    for i, entry in ipairs(Library.APIKeys) do
+        if entry.id == id then
+            table.remove(Library.APIKeys, i)
+            Library.APIKeysChanged:Fire("deleted", entry)
+            return true
+        end
+    end
+    return false
+end
+
+-- บันทึก API Keys ลง config
+function Library:SaveAPIKeys(filename)
+    filename = filename or "api_keys.json"
+    local data = {}
+    for _, entry in ipairs(Library.APIKeys) do
+        table.insert(data, {
+            id = entry.id,
+            name = entry.name,
+            hash = entry.hash,
+            enabled = entry.enabled,
+            createdTime = entry.createdTime,
+            lastUsed = entry.lastUsed,
+            usageCount = entry.usageCount,
+        })
+    end
+    local json = game:GetService("HttpService"):JSONEncode(data)
+    local success = pcall(function()
+        writefile(Library.APIKeyFolder .. "/" .. filename, json)
+    end)
+    return success
+end
+
+-- โหลด API Keys จาก config
+function Library:LoadAPIKeys(filename)
+    filename = filename or "api_keys.json"
+    local path = Library.APIKeyFolder .. "/" .. filename
+    local success, content = pcall(function() return readfile(path) end)
+    if not success or not content then return false end
+    
+    local ok, data = pcall(function() return game:GetService("HttpService"):JSONDecode(content) end)
+    if not ok or not data then return false end
+    
+    Library.APIKeys = {}
+    for _, entry in ipairs(data) do
+        table.insert(Library.APIKeys, {
+            id = entry.id,
+            key = nil, -- ไม่เก็บ key ต้นฉบับหลังบันทึกแล้ว
+            hash = entry.hash,
+            name = entry.name,
+            enabled = entry.enabled,
+            createdTime = entry.createdTime,
+            lastUsed = entry.lastUsed,
+            usageCount = entry.usageCount,
+        })
+    end
+    Library.APIKeysChanged:Fire("loaded", #Library.APIKeys)
+    return true
+end
+
+-- ล้าง API Keys ทั้งหมด
+function Library:ClearAPIKeys()
+    Library.APIKeys = {}
+    Library.APIKeysChanged:Fire("cleared", nil)
 end
 
 -- ============ UNDO / REDO HISTORY (ต่อขยาย: จำค่า Flag ก่อน-หลังการเปลี่ยนทุกครั้ง) ============
@@ -2615,11 +2808,11 @@ function Library:CreateWindow(config)
     FpsLabel.Visible = true
     FpsLabel.Parent = FpsPill
 
-    -- เกาะติดขวาปุ่มเปิด UI เสมอ แม้จะลากปุ่มไปวางที่อื่น
+    -- ติดที่ top-left ของ MainFrame ข้างชื่อ
     local function repositionFpsPill()
         FpsPill.Position = UDim2.new(
-            0, RestoreBtn.Position.X.Offset + RestoreBtn.Size.X.Offset + 10,
-            0, RestoreBtn.Position.Y.Offset + (RestoreBtn.Size.Y.Offset - FpsPill.AbsoluteSize.Y) / 2
+            0, 120,
+            0, 10
         )
     end
     RestoreBtn:GetPropertyChangedSignal("Position"):Connect(repositionFpsPill)
@@ -4154,7 +4347,7 @@ function Library:CreateWindow(config)
         local CREATOR_NAMES = {"CreateSection", "CreateDivider", "CreateSpace", "CreateParagraph", "CreateAccordion", "CreateSegmentedControl",
             "CreateButton", "CreateToggle", "CreateCheckbox", "CreateSlider", "CreateDropdown", "CreateThemeDropdown", "CreateColorPicker",
             "CreateInput", "CreateKeybind", "CreateLabel", "CreateTextArea", "CreateErrorLog", "CreateProgressBar", "CreateGraph",
-            "CreateRadioGroup", "CreateMultiDropdown", "CreateSearchBox", "CreateImage", "CreateCode", "CreateGroup", "CreateConfigManager"}
+            "CreateRadioGroup", "CreateMultiDropdown", "CreateSearchBox", "CreateImage", "CreateCode", "CreateGroup", "CreateConfigManager", "CreateAPIKeyManager"}
 
         -- สร้าง element ลงใน container ที่กำหนด โดยสลับ TabContent ชั่วคราวระหว่างสร้าง
         -- (ทุก creator อ้าง TabContent ตอนสร้างเท่านั้น ส่วน runtime กลับไปใช้ ScrollingFrame ตัวจริงเสมอ)
@@ -6978,6 +7171,95 @@ function Library:CreateWindow(config)
             if c.AutoLoad ~= false and #existing > 0 then
                 Library:LoadConfig(existing[1])
             end
+        end
+
+        function Tab:CreateAPIKeyManager(c)
+            c = type(c) == "table" and c or {}
+            Tab:CreateSection(c.Title or "API Keys")
+
+            -- ปุ่มสร้าง key ใหม่
+            Tab:CreateButton({
+                Text = "🔑  สร้าง API Key",
+                Notify = true,
+                Callback = function()
+                    local newKey = Library:CreateAPIKey("New API Key")
+                    Library:Notify({
+                        Title = "API Key สร้างสำเร็จ",
+                        Content = "Key: " .. newKey.key,
+                        Icon = "check",
+                        Duration = 5,
+                    })
+                end,
+            })
+
+            -- รีเฟรช list
+            local function refreshKeyList()
+                keyListFrame:Clear()
+                local keys = Library:GetAPIKeys()
+                if #keys == 0 then
+                    keyListFrame:CreateLabel({Text = "ยังไม่มี API Key"})
+                    return
+                end
+                for _, keyInfo in ipairs(keys) do
+                    local statusText = keyInfo.enabled and "✓ Active" or "✗ Disabled"
+                    keyListFrame:CreateLabel({
+                        Text = keyInfo.name .. " - " .. statusText,
+                    })
+                    local keyBtnFrame = keyListFrame:CreateSection({Title = keyInfo.id, Box = false, Collapsible = false})
+                    keyBtnFrame:CreateButton({
+                        Text = keyInfo.enabled and "ปิดใช้งาน" or "เปิดใช้งาน",
+                        Callback = function()
+                            if keyInfo.enabled then
+                                Library:RevokeAPIKey(keyInfo.id)
+                            else
+                                Library:EnableAPIKey(keyInfo.id)
+                            end
+                            refreshKeyList()
+                        end,
+                    })
+                    keyBtnFrame:CreateButton({
+                        Text = "ลบ",
+                        Callback = function()
+                            Library:DeleteAPIKey(keyInfo.id)
+                            refreshKeyList()
+                        end,
+                    })
+                    keyBtnFrame:CreateLabel({
+                        Text = "Used: " .. keyInfo.usageCount .. " times",
+                    })
+                end
+            end
+
+            local keyListFrame = Tab:CreateSection({Title = "API Keys", Box = true, Collapsible = true, Opened = true})
+            refreshKeyList()
+
+            -- Subscribe to API Key changes
+            Library.APIKeysChanged.Event:Connect(function()
+                refreshKeyList()
+            end)
+
+            -- ปุ่ม Save/Load API Keys
+            Tab:CreateButton({
+                Text = "💾  บันทึก API Keys",
+                Notify = true,
+                Callback = function()
+                    Library:SaveAPIKeys("api_keys.json")
+                    Library:Notify({Title = "บันทึกสำเร็จ", Content = "API Keys saved", Icon = "check"})
+                end,
+            })
+            Tab:CreateButton({
+                Text = "📂  โหลด API Keys",
+                Notify = true,
+                Callback = function()
+                    local ok = Library:LoadAPIKeys("api_keys.json")
+                    Library:Notify({
+                        Title = ok and "โหลดสำเร็จ" or "โหลดล้มเหลว",
+                        Content = ok and "API Keys loaded" or "No saved keys found",
+                        Icon = ok and "check" or "alert",
+                    })
+                    refreshKeyList()
+                end,
+            })
         end
 
         function Tab:Clear()
