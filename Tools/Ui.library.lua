@@ -1407,6 +1407,7 @@ function Library:CreateWindow(config)
     NotifyHolder.BackgroundTransparency = 1
     NotifyHolder.Parent = NotifyGui
     local NotifyLayout = Instance.new("UIListLayout")
+    NotifyLayout.SortOrder = Enum.SortOrder.LayoutOrder
     NotifyLayout.Padding = UDim.new(0, 10)
     NotifyLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
     NotifyLayout.Parent = NotifyHolder
@@ -1959,6 +1960,7 @@ function Library:CreateWindow(config)
         BtnRow.ZIndex = 2
         BtnRow.Parent = Dialog
         local RowLayout = Instance.new("UIListLayout")
+        RowLayout.SortOrder = Enum.SortOrder.LayoutOrder
         RowLayout.FillDirection = Enum.FillDirection.Horizontal
         RowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
         RowLayout.Padding = UDim.new(0, 8)
@@ -3214,6 +3216,7 @@ function Library:CreateWindow(config)
         Pad.Parent = Holder
 
         local Layout = Instance.new("UIListLayout")
+        Layout.SortOrder = Enum.SortOrder.LayoutOrder
         Layout.Padding = UDim.new(0, 4)
         Layout.Parent = Holder
 
@@ -3651,6 +3654,7 @@ function Library:CreateWindow(config)
             ListHolder.ZIndex = 62
             ListHolder.Parent = Box
             local ListLayout = Instance.new("UIListLayout")
+            ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
             ListLayout.Padding = UDim.new(0, 4)
             ListLayout.Parent = ListHolder
 
@@ -4036,6 +4040,7 @@ function Library:CreateWindow(config)
         TabContent.CanvasSize = UDim2.new(0, 0, 0, 0)
         TabContent.Parent = ContentArea
         local ContentLayout = Instance.new("UIListLayout")
+        ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
         ContentLayout.Padding = UDim.new(0, 8)
         ContentLayout.Parent = TabContent
 
@@ -5535,6 +5540,7 @@ function Library:CreateWindow(config)
                 inner.ZIndex = 11
                 inner.Parent = scrollWrap
                 local innerLayout = Instance.new("UIListLayout")
+                innerLayout.SortOrder = Enum.SortOrder.LayoutOrder
                 innerLayout.Padding = UDim.new(0, gap)
                 innerLayout.Parent = inner
 
@@ -6223,6 +6229,7 @@ function Library:CreateWindow(config)
             Pad.Parent = Frame
 
             local Layout = Instance.new("UIListLayout")
+            Layout.SortOrder = Enum.SortOrder.LayoutOrder
             Layout.Padding = UDim.new(0, 6)
             Layout.Parent = Frame
 
@@ -6260,6 +6267,7 @@ function Library:CreateWindow(config)
             ListHolder.BackgroundTransparency = 1
             ListHolder.Parent = Frame
             local ListLayout = Instance.new("UIListLayout")
+            ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
             ListLayout.Padding = UDim.new(0, 4)
             ListLayout.Parent = ListHolder
 
@@ -6594,6 +6602,7 @@ function Library:CreateWindow(config)
             Pad.Parent = Frame
 
             local Layout = Instance.new("UIListLayout")
+            Layout.SortOrder = Enum.SortOrder.LayoutOrder
             Layout.Padding = UDim.new(0, 6)
             Layout.Parent = Frame
 
@@ -6695,6 +6704,7 @@ function Library:CreateWindow(config)
             Pad.Parent = Frame
 
             local Layout = Instance.new("UIListLayout")
+            Layout.SortOrder = Enum.SortOrder.LayoutOrder
             Layout.Padding = UDim.new(0, 6)
             Layout.Parent = Frame
 
