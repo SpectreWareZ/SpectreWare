@@ -1194,6 +1194,12 @@ function Library:CreateWindow(config)
     if type(config.Title) == "string" then config.Title = Library:Translate(config.Title) end
     local Window = setmetatable({}, Library)
 
+    -- Forward-declared here (assigned for real further down in ---- appearance ----)
+    -- so the notification/toast layer below can read the *current* value at the
+    -- moment each toast is created, keeping toast opacity in sync with whatever
+    -- transparency level the user has set for the main window.
+    local uiTransparency = 0
+
     local UiParent = getUiParent()
     -- เช็คจาก UiParent จริง (gethui()/protect_gui อาจไม่ใช่ CoreGui ตรงๆ) ไม่งั้นของเก่าจาก
     -- การรันสคริปต์ครั้งก่อนไม่ถูกลบ ค้างซ้อนกันทุกครั้งที่ inject ใหม่
@@ -1485,7 +1491,10 @@ function Library:CreateWindow(config)
         -- ===== CARD =====
         local Toast = Instance.new("Frame")
         applyThemeColor(Toast, "Element")
-        Toast.BackgroundTransparency = 0.08
+        -- ให้การ์ดแจ้งเตือนโปร่งตามระดับ Transparency ของ UI หลักด้วย (ไม่งั้นเวลาผู้ใช้ปรับ
+        -- ความโปร่งใสของหน้าต่างหลัก แจ้งเตือนจะยังทึบ 0.08 คงที่ ดูไม่เข้าชุดกับ UI ที่เหลือ)
+        -- ใช้ math.max กับค่าคง 0.08 เดิม กันไม่ให้ toast ทึบกว่าดีไซน์เดิมตอน Transparency = 0
+        Toast.BackgroundTransparency = math.max(uiTransparency, 0.08)
         Toast.Size = UDim2.new(1, 0, 0, 0)
         Toast.AutomaticSize = Enum.AutomaticSize.Y
         Toast.ClipsDescendants = false
@@ -7327,7 +7336,6 @@ function Library:CreateWindow(config)
     local windowShown = true
     local acrylicEnabled = false
     local blurEffect = nil
-    local uiTransparency = 0
     local BgImage = nil
     local openButtonHidden = false
     local searchHidden = false
