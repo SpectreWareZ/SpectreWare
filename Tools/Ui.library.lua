@@ -1816,7 +1816,7 @@ function Library:CreateWindow(config)
                     end
                 end
             end
-            IconImg.Image = custom or NOTIFY_ICON[ntype] or Library.Icons.info
+            IconImg.Image = custom or NOTIFY_ICON[ntype] or Library.Icons.info or ""
         end
         IconImg.ImageColor3 = color
         IconImg.ImageTransparency = 1
@@ -1938,7 +1938,7 @@ function Library:CreateWindow(config)
         CloseXIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
         CloseXIcon.Size = UDim2.new(0, 10, 0, 10)
         CloseXIcon.BackgroundTransparency = 1
-        CloseXIcon.Image = Library.Icons.close
+        CloseXIcon.Image = Library.Icons.close or ""
         applyThemeColor(CloseXIcon, "SubText", "ImageColor3")
         CloseXIcon.ImageTransparency = 1
         CloseXIcon.ScaleType = Enum.ScaleType.Fit
@@ -2648,7 +2648,7 @@ function Library:CreateWindow(config)
     applyThemeColor(CloseBtn, "Element")
     CloseBtn.BackgroundTransparency = 1
     CloseBtn.AutoButtonColor = false
-    CloseBtn.Image = Library.Icons.close
+    CloseBtn.Image = Library.Icons.close or ""
     applyThemeColor(CloseBtn, "SubText", "ImageColor3")
     CloseBtn.ScaleType = Enum.ScaleType.Fit
     CloseBtn.ZIndex = 5
@@ -2682,7 +2682,7 @@ function Library:CreateWindow(config)
     applyThemeColor(HideBtn, "Element")
     HideBtn.BackgroundTransparency = 1
     HideBtn.AutoButtonColor = false
-    HideBtn.Image = Library.Icons.minus
+    HideBtn.Image = Library.Icons.minus or ""
     applyThemeColor(HideBtn, "SubText", "ImageColor3")
     HideBtn.ScaleType = Enum.ScaleType.Fit
     HideBtn.ZIndex = 5
@@ -3014,7 +3014,7 @@ function Library:CreateWindow(config)
     TabSearchIcon.Position = UDim2.new(0, 9, 0.5, 0)
     TabSearchIcon.BackgroundTransparency = 1
     TabSearchIcon.ImageTransparency = 0.2
-    TabSearchIcon.Image = Library.Icons.search
+    TabSearchIcon.Image = Library.Icons.search or ""
     applyThemeColor(TabSearchIcon, "SubText", "ImageColor3")
     TabSearchIcon.ScaleType = Enum.ScaleType.Fit
     TabSearchIcon.Parent = TabSearchWrap
@@ -3040,7 +3040,7 @@ function Library:CreateWindow(config)
     TabSearchClear.Size = UDim2.new(0, 15, 0, 15)
     TabSearchClear.BackgroundTransparency = 1
     TabSearchClear.AutoButtonColor = false
-    TabSearchClear.Image = Library.Icons.close
+    TabSearchClear.Image = Library.Icons.close or ""
     applyThemeColor(TabSearchClear, "SubText", "ImageColor3")
     TabSearchClear.ImageTransparency = 1
     TabSearchClear.ScaleType = Enum.ScaleType.Fit
@@ -4735,7 +4735,7 @@ function Library:CreateWindow(config)
             SearchIcon.AnchorPoint = Vector2.new(0, 0.5)
             SearchIcon.Position = UDim2.new(0, 12, 0.5, 0)
             SearchIcon.BackgroundTransparency = 1
-            SearchIcon.Image = Library.Icons.search
+            SearchIcon.Image = Library.Icons.search or ""
             applyThemeColor(SearchIcon, "SubText", "ImageColor3")
             SearchIcon.ScaleType = Enum.ScaleType.Fit
             SearchIcon.ZIndex = 63
@@ -6630,7 +6630,7 @@ function Library:CreateWindow(config)
             Arrow.AnchorPoint = Vector2.new(0.5, 0.5)
             Arrow.Position = UDim2.new(0.5, 0, 0.5, 0)
             Arrow.BackgroundTransparency = 1
-            Arrow.Image = Library.Icons.chevronDown
+            Arrow.Image = Library.Icons.chevronDown or ""
             applyThemeColor(Arrow, "SubText", "ImageColor3")
             Arrow.ScaleType = Enum.ScaleType.Fit
             Arrow.Parent = ArrowWrap
@@ -6757,7 +6757,7 @@ function Library:CreateWindow(config)
                     SearchIcon.Position = UDim2.new(0, 11, 0.5, 0)
                     SearchIcon.BackgroundTransparency = 1
                     SearchIcon.ImageTransparency = 0.2
-                    SearchIcon.Image = Library.Icons.search
+                    SearchIcon.Image = Library.Icons.search or ""
                     applyThemeColor(SearchIcon, "SubText", "ImageColor3")
                     SearchIcon.ScaleType = Enum.ScaleType.Fit
                     SearchIcon.ZIndex = 12
@@ -6785,7 +6785,7 @@ function Library:CreateWindow(config)
                     SearchClear.Size = UDim2.new(0, 16, 0, 16)
                     SearchClear.BackgroundTransparency = 1
                     SearchClear.AutoButtonColor = false
-                    SearchClear.Image = Library.Icons.close
+                    SearchClear.Image = Library.Icons.close or ""
                     applyThemeColor(SearchClear, "SubText", "ImageColor3")
                     SearchClear.ImageTransparency = 1
                     SearchClear.ScaleType = Enum.ScaleType.Fit
@@ -6917,7 +6917,7 @@ function Library:CreateWindow(config)
                         check.AnchorPoint = Vector2.new(1, 0.5)
                         check.Position = UDim2.new(1, -12, 0.5, 0)
                         check.BackgroundTransparency = 1
-                        check.Image = Library.Icons.check
+                        check.Image = Library.Icons.check or ""
                         check.ImageTransparency = 1 -- เริ่มโปร่งใส แล้ว fade-in พร้อม label
                         applyThemeColor(check, "AccentA", "ImageColor3")
                         check.ScaleType = Enum.ScaleType.Fit
@@ -8097,7 +8097,7 @@ function Library:CreateWindow(config)
                 Check.AnchorPoint = Vector2.new(0.5, 0.5)
                 Check.Position = UDim2.new(0.5, 0, 0.5, 0)
                 Check.BackgroundTransparency = 1
-                Check.Image = Library.Icons.check
+                Check.Image = Library.Icons.check or ""
                 Check.ImageColor3 = Color3.fromRGB(255, 255, 255)
                 Check.ImageTransparency = selected[opt] and 0 or 1
                 Check.ScaleType = Enum.ScaleType.Fit
@@ -8179,7 +8179,7 @@ function Library:CreateWindow(config)
             IconImg.Size = UDim2.new(0, 15, 0, 15)
             IconImg.Position = UDim2.new(0, 12, 0.5, -7)
             IconImg.BackgroundTransparency = 1
-            IconImg.Image = Library.Icons.search
+            IconImg.Image = Library.Icons.search or ""
             applyThemeColor(IconImg, "SubText", "ImageColor3")
             IconImg.ScaleType = Enum.ScaleType.Fit
             IconImg.ZIndex = 2
