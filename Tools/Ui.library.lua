@@ -3892,6 +3892,21 @@ function Library:CreateWindow(config)
             end)
         end
 
+        -- SAFETY NET: บางเครื่อง/บางจังหวะ TouchLongPress ไม่ยิง End/Cancel กลับมาตอนปล่อยนิ้ว
+        -- (ชนกับ touch ของกล้อง/ระบบมือถือ หรือแอพถูกสลับ) ทำให้ radialOpen ค้าง true และ Root
+        -- (Active=true, เต็มจอ, ZIndex=70) บัง input ทั้งเกมแบบกดอะไรไม่ได้เลย ต้อง force-close ทุกครั้ง
+        -- ที่มีนิ้วปล่อยจากจอ หรือแอพเสีย focus ไป ไม่ให้ Root มีโอกาสค้างอยู่ได้
+        UserInputService.TouchEnded:Connect(function()
+            if radialOpen then
+                local chosen = highlighted
+                closeMenu()
+                if chosen then safeCallback(chosen.Callback) end
+            end
+        end)
+        UserInputService.WindowFocusReleased:Connect(function()
+            if radialOpen then closeMenu() end
+        end)
+
         -- PC: คลิกขวาค้างแล้วลากเมาส์ไปช่องที่ต้องการ ปล่อยคลิกเพื่อสั่งงาน (เปิดทันทีไม่ต้องรอ hold เหมือนมือถือ)
         triggerObj.InputBegan:Connect(function(input)
             if input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
