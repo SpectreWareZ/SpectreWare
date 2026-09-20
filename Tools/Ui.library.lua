@@ -4089,14 +4089,12 @@ function Library:CreateWindow(config)
                 t.SetActive(isThis)
                 if isThis then
                     slideIndicatorTo(t.Btn)
-                    if not t.Content.Visible then
-                        -- เด้งขึ้นมาจากด้านล่างนิดๆ พร้อม pop สเกล ให้รู้สึกลื่นไหลตอนสลับแท็บ
-                        t.Content.Position = t.BasePos + UDim2.new(0, 0, 0, 12)
-                        t.Scale.Scale = 0.96
-                        t.Content.Visible = true
-                        TweenService:Create(t.Content, TI.d02_Back_Out, {Position = t.BasePos}):Play()
-                        TweenService:Create(t.Scale, TI.d02_Back_Out, {Scale = 1}):Play()
-                    end
+                    -- เด้งขึ้นมาจากด้านล่างนิดๆ พร้อม pop สเกล ให้รู้สึกลื่นไหลตอนสลับแท็บ
+                    t.Content.Position = t.BasePos + UDim2.new(0, 0, 0, 12)
+                    t.Scale.Scale = 0.96
+                    t.Content.Visible = true
+                    TweenService:Create(t.Content, TI.d02_Back_Out, {Position = t.BasePos}):Play()
+                    TweenService:Create(t.Scale, TI.d02_Back_Out, {Scale = 1}):Play()
                 else
                     t.Content.Visible = false
                 end
