@@ -528,7 +528,7 @@ end
 -- IMPORTANT: whenever CFG.notifLibUrl's content is intentionally changed,
 -- this constant must be recomputed and updated, or every load will be
 -- refused with a hash-mismatch warning.
-local EXPECTED_NOTIFLIB_HASH = "F6B0888D" -- DJB2 of current Tools/notiflib.lua content (GitHub) — refreshed 2026-09-22
+local EXPECTED_NOTIFLIB_HASH = "CEF47771" -- DJB2 of current Tools/notiflib.lua content (GitHub) — refreshed 2026-09-22 (procedural rewrite)
 
 task.spawn(function()
     local _nlOk, _nlSrc = safeGet(CFG.notifLibUrl)
@@ -1000,6 +1000,7 @@ local ERR_MAP = {
     ["not found"]    = "Key not found",
     ["not activated"]= "Key not activated",
     already          = "Key already redeemed",
+    ["rate limit"]   = "ยิง API ถี่เกินไป — รอ 1 นาทีแล้วลองใหม่",
 }
 local CODE_MAP = {
     EXPIRED       = "Key has expired",
@@ -1286,17 +1287,17 @@ local function apiLookup(key, hwidStr, timeout)
                            Headers = { ["Content-Type"] = "application/json",
                                        ["X-Loader-Version"] = CFG.loaderVersion },
                            Body = body, Timeout = timeout, timeout = timeout })
-    if res and res.Body and res.Body ~= "" then return true, res.Body end
+    if res and res.Body and res.Body ~= "" then return true, res.Body, res.StatusCode end
     return false, ""
 end
 
 local function _awaitResult(fn, timeoutSec)
-    local done, r1, r2 = false, nil, nil
-    local co = task.spawn(function() r1, r2 = fn(); done = true end)
+    local done, r1, r2, r3 = false, nil, nil, nil
+    local co = task.spawn(function() r1, r2, r3 = fn(); done = true end)
     local t, max = 0, (timeoutSec or 5) * 10
     while not done and t < max do task.wait(0.1); t = t + 1 end
     if not done then pcall(task.cancel, co) end
-    return r1, r2
+    return r1, r2, r3
 end
 
 -- ══════════════════════════════════════════════════════════════════════════════
@@ -1438,9 +1439,13 @@ local _mainOk = xpcall(function()
     print("[ LuaSyncX ]: Authenticating to Server...")
     local _authStart = os.clock()
     local callOk, raw, result
+    local _whyFail, _lastStatus = "no response", nil
     for i = 1, 3 do
         log(("Connecting to API... (%d/3)"):format(i), "loading")
-        callOk, raw = _awaitResult(function() return apiLookup(_getKey(), hwid, 5) end, 5)
+        local _st
+        callOk, raw, _st = _awaitResult(function() return apiLookup(_getKey(), hwid, 5) end, 5)
+        if callOk == nil then _whyFail = "timeout" elseif callOk == false then _whyFail = "no response" end
+        if _st then _lastStatus = _st end
         callOk = callOk or false; raw = raw or ""
         if callOk and raw ~= "" then
             local _isHtml = raw:sub(1, 1) == "<" or raw:find("<!DOCTYPE", 1, true) ~= nil
@@ -1457,13 +1462,13 @@ local _mainOk = xpcall(function()
         end
     end
     if not callOk or not raw or raw == "" then
-        log("Cannot reach API", "error"); getgenv()[_GK.running] = nil; return
+        log(("Cannot reach API (%s)"):format(_whyFail), "error"); getgenv()[_GK.running] = nil; return
     end
     if not result then
         if raw:sub(1, 1) == "<" or raw:find("<!DOCTYPE", 1, true) ~= nil then
             log("Server ยังไม่พร้อม (offline/sleeping) — กรุณาลองใหม่อีกครั้ง", "error")
         else
-            log("Invalid API response after 3 attempts — server issue?", "error")
+            log(("Invalid API response after 3 attempts — server issue? (HTTP %s)"):format(tostring(_lastStatus or "?")), "error")
         end
         warn("LuaSyncX: raw response was → " .. tostring(raw):sub(1, 300))
         getgenv()[_GK.running] = nil; return
