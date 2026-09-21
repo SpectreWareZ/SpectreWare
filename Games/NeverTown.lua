@@ -60,6 +60,242 @@ pcall(function()
     })
 end)
 
+-- ── SpectreUI design tokens + helpers (shared by every floating panel) ──
+local SW = {
+    UIS      = game:GetService("UserInputService"),
+    Tween    = game:GetService("TweenService"),
+    Bg       = Color3.fromRGB(12, 10, 22),
+    BgTop    = Color3.fromRGB(28, 22, 52),
+    Row      = Color3.fromRGB(36, 30, 62),
+    Track    = Color3.fromRGB(18, 15, 32),
+    Text     = Color3.fromRGB(240, 237, 255),
+    Sub      = Color3.fromRGB(150, 141, 190),
+    Water    = Color3.fromRGB(86, 176, 255),
+    Food     = Color3.fromRGB(255, 118, 176),
+    Growth   = Color3.fromRGB(104, 240, 160),
+    Danger   = Color3.fromRGB(255, 96, 96),
+    Good     = Color3.fromRGB(110, 255, 165),
+    Edge1    = Color3.fromRGB(123, 142, 200),
+    Edge2    = SpectreAccent,
+}
+
+function SW.new(class, props, parent)
+    local o = Instance.new(class)
+    for k, v in pairs(props) do o[k] = v end
+    if parent then o.Parent = parent end
+    return o
+end
+
+function SW.round(obj, r)
+    return SW.new("UICorner", {CornerRadius = UDim.new(0, r)}, obj)
+end
+
+function SW.stroke(obj, color, thick, trans)
+    return SW.new("UIStroke", {
+        Color = color, Thickness = thick or 1, Transparency = trans or 0,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    }, obj)
+end
+
+-- ขอบไล่สี (ม่วง → ฟ้า) ใช้กับทุกแผงลอยให้หน้าตาเป็นชุดเดียวกัน
+function SW.edge(obj, thick, trans, rot)
+    local s = SW.stroke(obj, Color3.new(1, 1, 1), thick, trans)
+    SW.new("UIGradient", {Color = ColorSequence.new(SW.Edge1, SW.Edge2), Rotation = rot or 90}, s)
+    return s
+end
+
+-- SMOOTH: cache TweenInfo ต่อความยาว + ไม่สร้าง closure ใหม่ทุกครั้งที่เรียก (เรียกถี่ตอน hover/อัปเดตแท่ง)
+local _tweenInfoCache = {}
+function SW.tween(obj, t, props)
+    local info = _tweenInfoCache[t]
+    if not info then
+        info = TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        _tweenInfoCache[t] = info
+    end
+    local ok, tw = pcall(SW.Tween.Create, SW.Tween, obj, info, props)
+    if ok and tw then tw:Play() end
+end
+
+function SW.pop(frame)
+    pcall(function()
+        local sc = frame:FindFirstChild("SW_Scale") or SW.new("UIScale", {Name = "SW_Scale"}, frame)
+        sc.Scale = 0.92
+        SW.tween(sc, 0.2, {Scale = 1})
+    end)
+end
+
+function SW.fmt(n)
+    local s, k = tostring(m_floor(tonumber(n) or 0)), nil
+    repeat s, k = s:gsub("^(-?%d+)(%d%d%d)", "%1,%2") until k == 0
+    return s
+end
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- DRAG ENGINE v2 (ลากลื่นขึ้น) — ใช้ร่วมกันทั้งแผงลอย (Safe HUD / Candy) และหน้าต่าง WindUI
+--   • อ่านตำแหน่งเมาส์ล่าสุดจาก UIS:GetMouseLocation() ในเฟรมนั้นเลย ไม่ต้องรอ/ฟัง InputChanged
+--     (ของเดิมฟัง UIS.InputChanged ถาวรต่อ 1 แผง และมี input.Changed ยิงทุกครั้งที่เมาส์ขยับ)
+--   • ต่อ listener เฉพาะตอนกำลังลากเท่านั้น ปล่อยแล้วตัดทิ้งทั้งหมด
+--   • ขยับด้วย exponential smoothing แบบไม่ขึ้นกับ FPS → เฟรมตกก็ยังไหลนุ่ม ปล่อยนิ้วแล้วค่อยๆ หยุดเอง
+--   • เขียน Position เฉพาะเฟรมที่ค่าเปลี่ยนจริง (ไม่สร้าง/ตั้ง UDim2 ซ้ำตอนอยู่นิ่ง)
+--   • กัน "ลากค้าง" (ปล่อยเมาส์นอกจอ/นิ้วหลุด/สลับแอป) ด้วยการเช็คสถานะปุ่มทุกเฟรม
+--   • เก็บ Scale ของ Position เดิมไว้ (บวก Offset เพิ่ม) แผงเลยไม่หลุดตำแหน่งเมื่อหมุนจอ/ย่อขยายหน้าต่าง
+-- ══════════════════════════════════════════════════════════════════════════
+SW.DRAG_FOLLOW = 26                    -- ยิ่งสูงยิ่งตามนิ้วไว (≈ หน่วง 40ms) | 0 = ตามตรงๆ ไม่มี smoothing
+SW.THROTTLE_ESP_WHEN_DRAGGING = true   -- ระหว่างลาก ให้ ESP อัปเดตเฟรมเว้นเฟรม เหลือเฟรมไว้ให้ UI
+SW.isDragging = false
+SW._dragN = 0
+
+local m_exp, m_abs = math.exp, math.abs
+local IT_MOUSE1, IT_TOUCH = Enum.UserInputType.MouseButton1, Enum.UserInputType.Touch
+local IS_END, IS_CANCEL = Enum.UserInputState.End, Enum.UserInputState.Cancel
+
+-- target  : GuiObject ที่จะถูกขยับ
+-- handles : table ของ GuiObject ที่กดแล้วเริ่มลากได้ (เช่น header)
+-- opts    : { clamp = ไม่ให้หลุดขอบจอ, onDrag = function(dragging, handle) }
+-- return  : { CanDraggable = true, Set = fn }  (หน้าตาเดียวกับ Creator.Drag ของ WindUI)
+function SW.attachDrag(target, handles, opts)
+    opts = opts or {}
+    local mod = {CanDraggable = true}
+    function mod.Set(a, b)
+        if type(a) == "table" then mod.CanDraggable = b else mod.CanDraggable = a end
+    end
+
+    local dragging, isTouch, track, activeHandle = false, false, nil, nil
+    local sx, sy, startPos = 0, 0, nil          -- จุดเริ่มของ pointer + Position ตอนเริ่มลาก
+    local clampOn, dxMin, dxMax, dyMin, dyMax = false, 0, 0, 0, 0
+    local curX, curY, goalX, goalY = 0, 0, 0, 0 -- ระยะที่ขยับจากจุดเริ่ม (px): ปัจจุบัน / เป้าหมาย
+    local rsConn, endConn
+
+    local function finish()
+        if not dragging then return end
+        dragging = false
+        SW._dragN = m_max(0, SW._dragN - 1)
+        SW.isDragging = SW._dragN > 0
+        if endConn then endConn:Disconnect(); endConn = nil end
+        if opts.onDrag then pcall(opts.onDrag, false, activeHandle) end
+        activeHandle = nil
+    end
+
+    local function step(dt)
+        if not target.Parent then                -- แผงถูกลบไปแล้ว
+            finish()
+            if rsConn then rsConn:Disconnect(); rsConn = nil end
+            return
+        end
+
+        if dragging then
+            -- กันลากค้าง: event ปล่อยปุ่มหาย (ปล่อยนอกจอ/สลับแอป) ก็ยังหยุดได้
+            if isTouch then
+                local st = track.UserInputState
+                if st == IS_END or st == IS_CANCEL then finish() end
+            elseif not SW.UIS:IsMouseButtonPressed(IT_MOUSE1) then
+                finish()
+            end
+        end
+
+        if dragging and mod.CanDraggable then
+            local p = isTouch and track.Position or SW.UIS:GetMouseLocation()
+            local dx, dy = p.X - sx, p.Y - sy
+            if clampOn then
+                dx, dy = m_clamp(dx, dxMin, dxMax), m_clamp(dy, dyMin, dyMax)
+            end
+            goalX, goalY = dx, dy
+        end
+
+        local nx, ny = goalX, goalY
+        local k = SW.DRAG_FOLLOW
+        if k > 0 then
+            local a = 1 - m_exp(-k * dt)          -- ไม่ขึ้นกับ FPS
+            nx = curX + (goalX - curX) * a
+            ny = curY + (goalY - curY) * a
+            if m_abs(goalX - nx) < 0.25 and m_abs(goalY - ny) < 0.25 then nx, ny = goalX, goalY end
+        end
+
+        if nx ~= curX or ny ~= curY then
+            curX, curY = nx, ny
+            target.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + nx,
+                startPos.Y.Scale, startPos.Y.Offset + ny
+            )
+        end
+
+        -- ปล่อยแล้วและไหลถึงเป้าแล้ว → ตัด RenderStepped ทิ้ง (ตอนอยู่นิ่งไม่มีอะไรรันเลย)
+        if not dragging and curX == goalX and curY == goalY and rsConn then
+            rsConn:Disconnect(); rsConn = nil
+        end
+    end
+
+    local function begin(handle, input)
+        if dragging or not mod.CanDraggable then return end
+        local ut = input.UserInputType
+        if ut ~= IT_MOUSE1 and ut ~= IT_TOUCH then return end
+        local parent = target.Parent
+        if not parent then return end
+
+        dragging, activeHandle, track, isTouch = true, handle, input, (ut == IT_TOUCH)
+        SW._dragN = SW._dragN + 1
+        SW.isDragging = true
+
+        local p = isTouch and input.Position or SW.UIS:GetMouseLocation()
+        sx, sy = p.X, p.Y
+        startPos = target.Position               -- เริ่มจากตำแหน่งที่เห็นอยู่จริง (ต่อจากที่กำลังไหลค้างได้ ไม่กระตุก)
+        curX, curY, goalX, goalY = 0, 0, 0, 0
+
+        -- จำขอบเขตตอนเริ่มลากครั้งเดียว (ไม่อ่าน AbsoluteSize ทุก event เพราะบังคับ layout คำนวณใหม่ทั้งแผง)
+        clampOn = opts.clamp and parent:IsA("GuiBase2d") or false
+        if clampOn then
+            local rel = target.AbsolutePosition - parent.AbsolutePosition
+            local ps, sz = parent.AbsoluteSize, target.AbsoluteSize
+            local maxX, maxY = m_max(0, ps.X - sz.X), m_max(0, ps.Y - sz.Y)
+            dxMin, dxMax = -rel.X, maxX - rel.X
+            dyMin, dyMax = -rel.Y, maxY - rel.Y
+        end
+
+        endConn = SW.UIS.InputEnded:Connect(function(i)
+            if isTouch then
+                if i == track then finish() end
+            elseif i.UserInputType == IT_MOUSE1 then
+                finish()
+            end
+        end)
+        if not rsConn then rsConn = RunService.RenderStepped:Connect(step) end
+        if opts.onDrag then pcall(opts.onDrag, true, handle) end
+    end
+
+    for _, h in pairs(handles) do
+        h.InputBegan:Connect(function(input) begin(h, input) end)
+    end
+    return mod
+end
+
+-- ลากแผงลอยของเรา (ไม่ให้หลุดขอบจอ) — signature เดิม
+function SW.drag(handle, target)
+    SW.attachDrag(target, {handle}, {clamp = true})
+end
+
+-- ── แทน Creator.Drag ของ WindUI (หน้าต่างหลัก + ปุ่มเปิด) ──
+-- ของเดิมสร้าง Tween ใหม่ "ทุกครั้งที่เมาส์ขยับ" (0.02 วิ) → alloc ถี่ + ตำแหน่งกระตุกตามจังหวะ event
+-- ต้องแพตช์ก่อน WindUI:CreateWindow เพราะ WindUI เรียก Creator.Drag ตอนสร้างหน้าต่าง
+-- ถ้า library เวอร์ชันนั้นไม่มี Creator.Drag / เรียกผ่านทางอื่น จะไม่แพตช์ (มี warn บอก) และใช้ของเดิมต่อโดยไม่พัง
+SW.windDragPatched = false
+do
+    local Creator = type(WindUI) == "table" and WindUI.Creator or nil
+    if type(Creator) == "table" and type(Creator.Drag) == "function" then
+        local origDrag = Creator.Drag
+        Creator.Drag = function(mainFrame, dragFrames, ondrag)
+            local ok, mod = pcall(function()
+                local handles = type(dragFrames) == "table" and dragFrames or {mainFrame}
+                return SW.attachDrag(mainFrame, handles, {
+                    clamp = false,
+                    onDrag = type(ondrag) == "function" and ondrag or nil,
+                })
+            end)
+            if ok and mod then SW.windDragPatched = true; return mod end
+            return origDrag(mainFrame, dragFrames, ondrag)   -- ล้มเหลว → กลับไปใช้ของ WindUI
+        end
+    end
+end
+
 local AntiAFKEnabled = true
 local FriendSet = {}
 
@@ -117,9 +353,23 @@ local Window = WindUI:CreateWindow({
     Resizable=true, SideBarWidth=200, BackgroundImageTransparency=0.42,
     HideSearchBar=true, ScrollBarEnabled=false,
 })
+if not SW.windDragPatched then
+    warn("[SpectreWare] WindUI drag patch ไม่ทำงาน (library เวอร์ชันนี้ไม่ได้เรียก Creator.Drag ผ่านตารางที่แพตช์ได้) — หน้าต่างหลักใช้การลากของ WindUI เดิม; แผงลอย Candy/HUD ยังใช้ engine ใหม่")
+end
 Window:Tag({Title="v1.6.12", Icon="github", Color=Color3.fromRGB(123,142,200), Radius=13})
 Window:SetIconSize(80)
-Window:EditOpenButton({ Title="SpectreWare" }) -- ตัดชื่อบนปุ่มเปิดให้สั้นลง (ตัวเต็ม "SpectreWare | NEVER TOWN" ยาวเกินจอมือถือ)
+-- ตัดชื่อบนปุ่มเปิดให้สั้นลง (ตัวเต็ม "SpectreWare | NEVER TOWN" ยาวเกินจอมือถือ) + ขอบไล่สีตามธีม Spectre
+if not pcall(function()
+    Window:EditOpenButton({
+        Title = "SpectreWare",
+        CornerRadius = UDim.new(1, 0),
+        StrokeThickness = 2,
+        Color = ColorSequence.new(Color3.fromRGB(110, 168, 255), Color3.fromRGB(176, 104, 255)),
+        Draggable = true,
+    })
+end) then
+    pcall(function() Window:EditOpenButton({ Title = "SpectreWare" }) end)
+end
 
 task.spawn(function()
     allTrees = workspace:WaitForChild("AllPlantedTrees",30)
@@ -161,7 +411,11 @@ end
 local AmountDescLabel
 local function setAmount(text)
     if AmountDescLabel and AmountDescLabel.Parent then
-        pcall(function() AmountDescLabel.Text=tostring(text) end)
+        text = tostring(text)
+        -- SMOOTH: ข้อความเดิมไม่ต้องเขียนซ้ำ (การเขียน Text ของ label ใน WindUI ทำให้ layout คำนวณใหม่ ทุก 3 วิ)
+        if AmountDescLabel.Text ~= text then
+            pcall(function() AmountDescLabel.Text = text end)
+        end
     end
 end
 
@@ -188,83 +442,45 @@ local function buildSafeHud()
     _hudGui.ResetOnSpawn = false
     _hudGui.IgnoreGuiInset = true
     _hudGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    _hudGui.DisplayOrder = 40
     _hudGui.Parent = LP.PlayerGui
 
-    local card = Instance.new("Frame")
-    card.Name = "Card"
-    card.Size = UDim2.fromOffset(172, 64)
-    card.AnchorPoint = Vector2.new(0.5, 0.5)
-    card.Position = UDim2.new(0.12, 0, 0.78, 0)
-    card.BackgroundColor3 = Color3.fromRGB(10, 8, 18)
-    card.BackgroundTransparency = 0.08
-    card.BorderSizePixel = 0
-    card.Visible = false
-    card.Parent = _hudGui
+    local card = SW.new("Frame", {
+        Name = "Card", Size = UDim2.fromOffset(204, 66), AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.12, 0, 0.78, 0), BackgroundColor3 = Color3.new(1, 1, 1),
+        BackgroundTransparency = 0.02, BorderSizePixel = 0, Active = true, Visible = false,
+    }, _hudGui)
+    SW.round(card, 16)
+    SW.new("UIGradient", {Color = ColorSequence.new(SW.BgTop, SW.Bg), Rotation = 125}, card)
+    SW.edge(card, 1.5, 0.2, 45)
 
-    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 16)
+    local iconBg = SW.new("Frame", {
+        Size = UDim2.fromOffset(46, 46), Position = UDim2.new(0, 10, 0.5, -23),
+        BackgroundColor3 = SW.Row, BorderSizePixel = 0, ZIndex = 2,
+    }, card)
+    SW.round(iconBg, 12)
+    SW.stroke(iconBg, SpectreAccent, 1, 0.55)
 
-    local stroke = Instance.new("UIStroke")
-    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    stroke.Color = Color3.fromRGB(123, 142, 200)
-    stroke.Thickness = 1.8
-    stroke.Transparency = 0.15
-    stroke.Parent = card
+    _hudIcon = SW.new("ImageLabel", {
+        Size = UDim2.fromOffset(36, 36), AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 0), BackgroundTransparency = 1,
+        ScaleType = Enum.ScaleType.Fit, ZIndex = 3,
+    }, iconBg)
 
-    local grad = Instance.new("UIGradient")
-    grad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,   Color3.fromRGB(22, 18, 42)),
-        ColorSequenceKeypoint.new(0.55, Color3.fromRGB(14, 11, 26)),
-        ColorSequenceKeypoint.new(1,   Color3.fromRGB(10,  8, 18)),
-    })
-    grad.Rotation = 135
-    grad.Parent = card
+    _hudName = SW.new("TextLabel", {
+        Size = UDim2.new(1, -74, 0, 20), Position = UDim2.fromOffset(64, 9),
+        BackgroundTransparency = 1, TextColor3 = SW.Text, Font = Enum.Font.GothamBold,
+        TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2,
+    }, card)
 
-    local iconBg = Instance.new("Frame")
-    iconBg.Size = UDim2.fromOffset(48, 48)
-    iconBg.Position = UDim2.new(0, 8, 0.5, -24)
-    iconBg.BackgroundColor3 = Color3.fromRGB(28, 22, 50)
-    iconBg.BorderSizePixel = 0
-    iconBg.ZIndex = 2
-    iconBg.Parent = card
-    Instance.new("UICorner", iconBg).CornerRadius = UDim.new(0, 11)
+    _hudCount = SW.new("TextLabel", {
+        Size = UDim2.new(1, -74, 0, 24), Position = UDim2.fromOffset(64, 32),
+        BackgroundTransparency = 1, TextColor3 = SW.Good, Font = Enum.Font.GothamBold,
+        TextSize = 17, RichText = true, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 2,
+    }, card)
 
-    local iconStroke = Instance.new("UIStroke")
-    iconStroke.Color = Color3.fromRGB(107, 47, 160)
-    iconStroke.Thickness = 1
-    iconStroke.Transparency = 0.45
-    iconStroke.Parent = iconBg
-
-    _hudIcon = Instance.new("ImageLabel")
-    _hudIcon.Size = UDim2.fromOffset(36, 36)
-    _hudIcon.AnchorPoint = Vector2.new(0.5, 0.5)
-    _hudIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
-    _hudIcon.BackgroundTransparency = 1
-    _hudIcon.ScaleType = Enum.ScaleType.Fit
-    _hudIcon.ZIndex = 3
-    _hudIcon.Parent = iconBg
-
-    _hudName = Instance.new("TextLabel")
-    _hudName.Size = UDim2.new(1, -66, 0, 22)
-    _hudName.Position = UDim2.new(0, 62, 0, 7)
-    _hudName.BackgroundTransparency = 1
-    _hudName.TextColor3 = Color3.fromRGB(185, 170, 240)
-    _hudName.Font = Enum.Font.GothamBold
-    _hudName.TextSize = 12
-    _hudName.TextXAlignment = Enum.TextXAlignment.Left
-    _hudName.TextTruncate = Enum.TextTruncate.AtEnd
-    _hudName.ZIndex = 2
-    _hudName.Parent = card
-
-    _hudCount = Instance.new("TextLabel")
-    _hudCount.Size = UDim2.new(1, -66, 0, 22)
-    _hudCount.Position = UDim2.new(0, 62, 0, 30)
-    _hudCount.BackgroundTransparency = 1
-    _hudCount.TextColor3 = Color3.fromRGB(110, 255, 165)
-    _hudCount.Font = Enum.Font.GothamMedium
-    _hudCount.TextSize = 13
-    _hudCount.TextXAlignment = Enum.TextXAlignment.Left
-    _hudCount.ZIndex = 2
-    _hudCount.Parent = card
+    SW.drag(card, card)
 end
 
 local function getHudCard()
@@ -291,7 +507,11 @@ local Z_MARGIN       = 0.5  -- Z-buffer margin: kills edge-of-camera flicker
 -- ทุกตัวทุกเฟรมชั่วคราว จนกว่าจะหมุนช้าลงถึงจะกลับไปใช้ stride ประหยัดเฟรมตามเดิม
 local _lastCamLook = nil
 local _fastRotate  = false
-local ROTATE_ANGLE_THRESHOLD = 0.035 -- เรเดียนต่อเฟรม (~2 องศา) กะไว้ให้หมุนดูรอบตัวปกติไม่โดน แต่หมุนหนี/สะบัดเร็วโดน
+-- FIX: 0.035 rad/frame = ~120°/s at 60fps — way too permissive. Any normal camera
+-- turn sailed under it, so _fastRotate stayed false and the joint-stride cache kept
+-- serving stale on-screen coordinates. 0.010 rad/frame ≈ 34°/s catches typical
+-- turning without triggering on idle micro-jitter.
+local ROTATE_ANGLE_THRESHOLD = 0.010
 
 local ESP_EXCLUDE_PATHS = {
     {"System", "[Server] Npc_Seal"},
@@ -366,7 +586,6 @@ local function makeESP(model, isNPC)
         nameLabel= newText(CFG.NameSize,   Color3.fromRGB(185,170,240)),
         distLabel= newText(11,             Color3.fromRGB(140,130,175)),
         hpText   = newText(16,             Color3.fromRGB(110,255,165)),
-        lastPos3 = nil, lastTopPos3 = nil, lastBotPos3 = nil,
         _vis = false, lastDistStr = "", lastHpStr = "",
         staggerId = _staggerCounter % 4
     }
@@ -464,68 +683,48 @@ local function updateESPObject(model, obj, Camera, myRoot, myPos, fastRotate)
         end
     end
 
-    local pos3, topPos3, botPos3
-
-    -- OPTIMIZE: distance-tiered frame stride. Close targets (where flicker/lag would
-    -- actually be noticeable) still project every frame. Mid/far targets reuse last
-    -- frame's screen-space box and only re-project every 2nd/4th frame — cuts
-    -- WorldToViewportPoint calls (the single most expensive op in this loop) by
-    -- roughly half to three-quarters once the lobby/farm gets crowded.
-    local stride = 1
-    if not fastRotate then
-        if dist > 260 then stride = 4
-        elseif dist > 130 then stride = 2 end
-    end
-    local skipProjection = stride > 1 and obj.lastPos3 ~= nil
-        and ((_frameCounter + obj.staggerId) % stride ~= 0)
-
-    if isValid and skipProjection then
-        pos3, topPos3, botPos3 = obj.lastPos3, obj.lastTopPos3, obj.lastBotPos3
-    elseif isValid then
-        local vp = Camera.ViewportSize
-        local tempPos3 = Camera:WorldToViewportPoint(root.Position)
-
-        -- FIX v2: the "onScreen" 2nd return value from WorldToViewportPoint turned out to still
-        -- report true in some edge cases (grazing angles) on this executor, so don't rely on it
-        -- alone — manually check the projected X/Y actually land inside the camera's pixel
-        -- rectangle. This is what was still letting ESP get pinned to the screen edge.
-        if tempPos3.Z <= Z_MARGIN or tempPos3.X < 0 or tempPos3.X > vp.X or tempPos3.Y < 0 or tempPos3.Y > vp.Y then
-            isValid = false
-        else
-            pos3 = tempPos3
-            obj.lastPos3 = pos3
-
-            local head = obj.headCache
-            if not head or not head.Parent then
-                head = model:FindFirstChild("Head") or root
-                obj.headCache = head
-            end
-            local tempTop = Camera:WorldToViewportPoint(head.Position + v3_new(0, head.Size.Y / 2 + 0.3, 0))
-            local tempBot = Camera:WorldToViewportPoint(root.Position - v3_new(0, 3, 0))
-
-            if tempTop.Z <= Z_MARGIN or tempBot.Z <= Z_MARGIN
-                or tempTop.X < 0 or tempTop.X > vp.X or tempTop.Y < 0 or tempTop.Y > vp.Y
-                or tempBot.X < 0 or tempBot.X > vp.X or tempBot.Y < 0 or tempBot.Y > vp.Y then
-                isValid = false
-            else
-                topPos3 = tempTop
-                botPos3 = tempBot
-                obj.lastTopPos3 = topPos3
-                obj.lastBotPos3 = botPos3
-            end
-        end
-    end
-
+    -- FIX (flicker / ESP-sticks-to-screen): always re-project the 3 anchor points
+    -- every frame. The old code reused `lastPos3/lastTopPos3/lastBotPos3` on some
+    -- frames to save a few WorldToViewportPoint calls — but a cached *screen* coord
+    -- is only valid for the camera pose at the instant it was captured. The moment
+    -- the camera turned, the cached box was drawn at the previous screen position,
+    -- which is exactly why ESP "followed" the camera when you looked away and
+    -- flickered as it alternated between stale and fresh frames.
+    --
+    -- Cost of always projecting: 3 extra WorldToViewportPoint calls per target per
+    -- frame. The bone loop below already does up to 14 more per target, so this is
+    -- a rounding error and the flicker is gone.
     if not isValid then
         setVisible(obj, false)
         return
     end
 
-    obj._vis = true -- FIX: sync flag ตอน object valid จริง ไม่งั้น setVisible(false) รอบถัดไปจะเป็น no-op เพราะ _vis ค้างเป็น false ตลอด ทำให้ ESP เก่าค้างจอตอนหมุนกล้องเร็ว
+    local vp = Camera.ViewportSize
+    local pos3 = Camera:WorldToViewportPoint(root.Position)
+    if pos3.Z <= Z_MARGIN or pos3.X < 0 or pos3.X > vp.X or pos3.Y < 0 or pos3.Y > vp.Y then
+        setVisible(obj, false)
+        return
+    end
 
-    pos3 = obj.lastPos3
-    topPos3 = obj.lastTopPos3
-    botPos3 = obj.lastBotPos3
+    local head = obj.headCache
+    if not head or not head.Parent then
+        head = model:FindFirstChild("Head") or root
+        obj.headCache = head
+    end
+    local topPos3 = Camera:WorldToViewportPoint(head.Position + v3_new(0, head.Size.Y / 2 + 0.3, 0))
+    local botPos3 = Camera:WorldToViewportPoint(root.Position - v3_new(0, 3, 0))
+
+    if topPos3.Z <= Z_MARGIN or botPos3.Z <= Z_MARGIN
+        or topPos3.X < 0 or topPos3.X > vp.X or topPos3.Y < 0 or topPos3.Y > vp.Y
+        or botPos3.X < 0 or botPos3.X > vp.X or botPos3.Y < 0 or botPos3.Y > vp.Y then
+        setVisible(obj, false)
+        return
+    end
+
+    -- Sync visibility flag. Drawings are individually re-shown below (skeleton
+    -- lines / hpBar / labels), so we don't need to touch them here — this is just
+    -- so setVisible(obj,false) on a future invalid frame isn't a no-op.
+    obj._vis = true
 
     local cx = pos3.X
     local y1 = m_min(topPos3.Y, botPos3.Y)
@@ -546,10 +745,16 @@ local function updateESPObject(model, obj, Camera, myRoot, myPos, fastRotate)
     -- เพิ่มต่อเฟรม) ตัวที่อยู่ไกลหน่อย (แต่ยังอยู่ในระยะ detail) ไม่จำเป็นต้อง refresh ทุกเฟรม
     -- reuse jointScreen เดิมแล้ววาดเส้นซ้ำ — ใกล้มากๆ (DETAIL_CLOSE_RANGE) ยัง refresh ทุกเฟรมเหมือนเดิม
     -- เพื่อไม่ให้เห็นการหน่วงตอนประชิดตัว
+    --
+    -- FIX: joints are screen-space too — during any camera motion they must be
+    -- re-projected or the skeleton visibly lags the bounding box. fastRotate is
+    -- now sensitive enough (see ROTATE_ANGLE_THRESHOLD) to trip on real turns,
+    -- so the stride only kicks in when the camera is essentially static.
     local DETAIL_CLOSE_RANGE = 25
     local detailStride = (fastRotate or dist <= DETAIL_CLOSE_RANGE) and 1 or 3
     local skipDetailRefresh = useDetail and detailStride > 1
         and obj.jointScreen ~= nil
+        and not fastRotate
         and ((_frameCounter + obj.staggerId) % detailStride ~= 0)
 
     if useDetail and not skipDetailRefresh then
@@ -570,8 +775,8 @@ local function updateESPObject(model, obj, Camera, myRoot, myPos, fastRotate)
         if not jointScreen then jointScreen={}; obj.jointScreen=jointScreen end
         for jname, part in pairs(joints) do
             if part and part.Parent then
-                local vp = Camera:WorldToViewportPoint(part.Position)
-                jointScreen[jname] = (vp.Z > 0) and vp or nil
+                local vp2 = Camera:WorldToViewportPoint(part.Position)
+                jointScreen[jname] = (vp2.Z > 0) and vp2 or nil
             else
                 jointScreen[jname] = nil
             end
@@ -676,6 +881,9 @@ RunService.RenderStepped:Connect(function()
     if not IsESPAuthorized then return end
     if not CFG.Enabled then return end
     _frameCounter = _frameCounter + 1
+    -- SMOOTH: ระหว่างลาก UI ให้ ESP อัปเดตเฟรมเว้นเฟรม (Drawing ค้างตำแหน่งล่าสุดไว้) → เหลืองบเฟรมให้ UI ลื่น
+    -- ปล่อยแล้วกลับมาเต็มอัตราเอง ปิดได้ที่ SW.THROTTLE_ESP_WHEN_DRAGGING = false
+    if SW.THROTTLE_ESP_WHEN_DRAGGING and SW.isDragging and _frameCounter % 2 == 0 then return end
     local Camera = workspace.CurrentCamera
     local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     local myPos = myRoot and myRoot.Position
@@ -911,7 +1119,7 @@ local CustomMaxSet   = false
 local UserSelectedItem = false
 local ItemDropdown   = nil
 local _suppressItemCallback = false
-local FarmSection    = FarmTab:Section({Title="ตั้งค่าของที่จะเก็บใส่ตู้", Opened=true})
+local FarmSection    = FarmTab:Section({Title="ตั้งค่าของที่จะเก็บใส่ตู้", Icon="package", Opened=true})
 local AutoFarmToggle
 
 local function setInSafe(text)
@@ -933,7 +1141,7 @@ local function refreshSafePreview()
     setInSafe(SelectedItem.value .. "  ×  " .. tostring(qty) .. "  ในตู้")
     if _hudIcon  then _hudIcon.Image = icon end
     if _hudName  then _hudName.Text  = SelectedItem.value end
-    if _hudCount then _hudCount.Text = "×" .. tostring(qty) .. " ในตู้" end
+    if _hudCount then _hudCount.Text = "×" .. SW.fmt(qty) .. ' <font size="11" color="rgb(150,141,190)">ในตู้</font>' end
     if card then card.Visible = true end
 end
 
@@ -1239,7 +1447,7 @@ AutoFarmToggle = FarmSection:Toggle({
 })
 
 -- ── SECTION: AUTO WATER ──
-local WaterSection = FarmTab:Section({Title="ต้นแคนดี้ - Auto Water", Opened=true})
+local WaterSection = FarmTab:Section({Title="ต้นแคนดี้ - Auto Water", Icon="droplet", Opened=true})
 local autoWaterEnabled, selectedWaterFolders, waterPickDropdown, waterFolderMap = false, {}, nil, {}
 
 local function buildFolderLabel(folder)
@@ -1474,186 +1682,240 @@ task.spawn(function()
 end)
 
 -- ── Floating Candy Status Panel (toggleable, draggable, separate from WindUI tab) ──
-local CandyGui = Instance.new("ScreenGui")
-CandyGui.Name = "CandyStatusUI"
-CandyGui.ResetOnSpawn = false
-CandyGui.IgnoreGuiInset = true
-CandyGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-CandyGui.DisplayOrder = 50
-pcall(function() CandyGui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end)
-if not CandyGui.Parent then CandyGui.Parent = LP:WaitForChild("PlayerGui") end
+local CandyMain, refreshTreeStatus, CandyPanelToggle
+do
+    local CANDY_W, CANDY_MIN_H, CANDY_MAX_H, CANDY_LIST_Y = 316, 122, 300, 68
+    local CANDY_BAR_W = 0.19
+    local CANDY_STATS = {
+        {x = 0.36, label = "น้ำ",    color = SW.Water},
+        {x = 0.58, label = "อาหาร", color = SW.Food},
+        {x = 0.80, label = "โต",    color = SW.Growth},
+    }
 
-local CandyMain = Instance.new("Frame")
-CandyMain.Name = "MainFrame"
-CandyMain.Size = UDim2.new(0, 300, 0, 220)
-CandyMain.Position = UDim2.new(0, 20, 0, 120)
-CandyMain.BackgroundColor3 = Color3.fromRGB(18, 16, 28)
-CandyMain.BackgroundTransparency = 0.08
-CandyMain.BorderSizePixel = 0
-CandyMain.Active = true
-CandyMain.Draggable = true
-CandyMain.Visible = false
-CandyMain.Parent = CandyGui
-Instance.new("UICorner", CandyMain).CornerRadius = UDim.new(0, 14)
-local CandyStroke = Instance.new("UIStroke", CandyMain)
-CandyStroke.Color = SpectreAccent
-CandyStroke.Transparency = 0.55
-CandyStroke.Thickness = 1
+    local CandyGui = Instance.new("ScreenGui")
+    CandyGui.Name = "CandyStatusUI"
+    CandyGui.ResetOnSpawn = false
+    CandyGui.IgnoreGuiInset = true
+    CandyGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    CandyGui.DisplayOrder = 50
+    pcall(function() CandyGui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end)
+    if not CandyGui.Parent then CandyGui.Parent = LP:WaitForChild("PlayerGui") end
 
-local CandyHeader = Instance.new("TextLabel")
-CandyHeader.BackgroundTransparency = 1
-CandyHeader.Size = UDim2.new(1, -40, 0, 30)
-CandyHeader.Position = UDim2.new(0, 12, 0, 6)
-CandyHeader.Font = Enum.Font.GothamBold
-CandyHeader.TextSize = 15
-CandyHeader.TextColor3 = Color3.fromRGB(235, 232, 252)
-CandyHeader.TextXAlignment = Enum.TextXAlignment.Left
-CandyHeader.Text = "🌳 สถานะต้นแคนดี้"
-CandyHeader.Parent = CandyMain
+    CandyMain = SW.new("Frame", {
+        Name = "MainFrame", Size = UDim2.fromOffset(CANDY_W, 160), Position = UDim2.new(0, 20, 0, 120),
+        BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.02,
+        BorderSizePixel = 0, Active = true, Visible = false,
+    }, CandyGui)
+    SW.round(CandyMain, 16)
+    SW.new("UIGradient", {Color = ColorSequence.new(SW.BgTop, SW.Bg), Rotation = 115}, CandyMain)
+    SW.edge(CandyMain, 1.4, 0.2, 90)
 
-local CandyCloseBtn = Instance.new("TextButton")
-CandyCloseBtn.Size = UDim2.new(0, 24, 0, 24)
-CandyCloseBtn.Position = UDim2.new(1, -32, 0, 8)
-CandyCloseBtn.BackgroundColor3 = Color3.fromRGB(55, 46, 90)
-CandyCloseBtn.TextColor3 = Color3.fromRGB(235, 232, 252)
-CandyCloseBtn.Font = Enum.Font.GothamBold
-CandyCloseBtn.TextSize = 14
-CandyCloseBtn.Text = "×"
-CandyCloseBtn.AutoButtonColor = true
-CandyCloseBtn.Parent = CandyMain
-Instance.new("UICorner", CandyCloseBtn).CornerRadius = UDim.new(0, 8)
+    -- Header (จับตรงนี้เพื่อลากแผง)
+    local header = SW.new("Frame", {
+        Name = "Header", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 44), Active = true,
+    }, CandyMain)
+    SW.new("TextLabel", {
+        BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -56, 1, 0),
+        Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = SW.Text,
+        TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        Text = "🌳  สถานะต้นแคนดี้",
+    }, header)
 
-local CandyList = Instance.new("ScrollingFrame")
-CandyList.BackgroundTransparency = 1
-CandyList.BorderSizePixel = 0
-CandyList.Size = UDim2.new(1, -16, 1, -46)
-CandyList.Position = UDim2.new(0, 8, 0, 40)
-CandyList.ScrollBarThickness = 3
-CandyList.ScrollBarImageColor3 = SpectreAccent
-CandyList.CanvasSize = UDim2.new(0, 0, 0, 0)
-CandyList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-CandyList.Parent = CandyMain
-local CandyListLayout = Instance.new("UIListLayout", CandyList)
-CandyListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-CandyListLayout.Padding = UDim.new(0, 4)
+    local CandyCloseBtn = SW.new("TextButton", {
+        Size = UDim2.fromOffset(26, 26), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0),
+        BackgroundColor3 = SW.Row, TextColor3 = SW.Text, Font = Enum.Font.GothamBold,
+        TextSize = 15, Text = "×", AutoButtonColor = false,
+    }, header)
+    SW.round(CandyCloseBtn, 13)
+    CandyCloseBtn.MouseEnter:Connect(function() SW.tween(CandyCloseBtn, 0.12, {BackgroundColor3 = SW.Danger}) end)
+    CandyCloseBtn.MouseLeave:Connect(function() SW.tween(CandyCloseBtn, 0.12, {BackgroundColor3 = SW.Row}) end)
 
+    SW.drag(header, CandyMain)
 
+    SW.new("Frame", {
+        BackgroundColor3 = SpectreAccent, BackgroundTransparency = 0.8, BorderSizePixel = 0,
+        Position = UDim2.new(0, 12, 0, 44), Size = UDim2.new(1, -24, 0, 1),
+    }, CandyMain)
 
-local function clearCandyList()
-    for _, c in ipairs(CandyList:GetChildren()) do
-        if not c:IsA("UIListLayout") then c:Destroy() end
+    -- หัวคอลัมน์ (น้ำ / อาหาร / โต) สีตรงกับแท่งด้านล่าง
+    local legend = SW.new("Frame", {
+        BackgroundTransparency = 1, Position = UDim2.fromOffset(10, 49), Size = UDim2.new(1, -24, 0, 16),
+    }, CandyMain)
+    for _, s in ipairs(CANDY_STATS) do
+        SW.new("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.new(s.x, 0, 0, 0), Size = UDim2.new(CANDY_BAR_W, 0, 1, 0),
+            Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = s.color, Text = s.label,
+        }, legend)
     end
-end
 
-local function addCandyHeaderRow(text, order)
-    local lbl = Instance.new("TextLabel")
-    lbl.BackgroundTransparency = 1
-    lbl.Size = UDim2.new(1, 0, 0, 18)
-    lbl.Font = Enum.Font.GothamBold
-    lbl.TextSize = 13
-    lbl.TextColor3 = SpectreAccent
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Text = text
-    lbl.LayoutOrder = order
-    lbl.Parent = CandyList
-end
+    local CandyList = SW.new("ScrollingFrame", {
+        BackgroundTransparency = 1, BorderSizePixel = 0,
+        Position = UDim2.fromOffset(10, CANDY_LIST_Y), Size = UDim2.new(1, -16, 1, -(CANDY_LIST_Y + 10)),
+        ScrollBarThickness = 3, ScrollBarImageColor3 = SpectreAccent, ScrollBarImageTransparency = 0.3,
+        CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        ScrollingDirection = Enum.ScrollingDirection.Y,
+    }, CandyMain)
+    local layout = SW.new("UIListLayout", {
+        SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4),
+    }, CandyList)
 
-local function addCandyTreeRow(name, w, f, g, order)
-    local row = Instance.new("Frame")
-    row.BackgroundTransparency = 1
-    row.Size = UDim2.new(1, 0, 0, 18)
-    row.LayoutOrder = order
-    row.Parent = CandyList
+    local empty = SW.new("TextLabel", {
+        BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 40), LayoutOrder = 0, Visible = false,
+        Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = SW.Sub, Text = "ไม่พบต้นแคนดี้",
+    }, CandyList)
 
-    local nameLbl = Instance.new("TextLabel")
-    nameLbl.BackgroundTransparency = 1
-    nameLbl.Size = UDim2.new(0.36, 0, 1, 0)
-    nameLbl.Font = Enum.Font.Code
-    nameLbl.TextSize = 13
-    nameLbl.TextColor3 = Color3.fromRGB(235, 232, 252)
-    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-    nameLbl.Text = name
-    nameLbl.Parent = row
-
-    local function stat(icon, val, posX)
-        local l = Instance.new("TextLabel")
-        l.BackgroundTransparency = 1
-        l.Size = UDim2.new(0.21, 0, 1, 0)
-        l.Position = UDim2.new(posX, 0, 0, 0)
-        l.Font = Enum.Font.Code
-        l.TextSize = 13
-        l.TextColor3 = Color3.fromRGB(210, 205, 230)
-        l.TextXAlignment = Enum.TextXAlignment.Left
-        l.Text = icon .. " " .. m_floor(val) .. "%"
-        l.Parent = row
+    -- ให้แผงสูงพอดีกับจำนวนแถว (มีเพดาน แล้วเลื่อนเอา)
+    local lastFitH
+    local function fit()
+        local h = m_clamp(CANDY_LIST_Y + layout.AbsoluteContentSize.Y + 12, CANDY_MIN_H, CANDY_MAX_H)
+        if h == lastFitH then return end   -- SMOOTH: ความสูงเท่าเดิมไม่ต้องสร้าง tween ใหม่ (เดิมยิงทุก 4 วิ + ทุกครั้งที่ content เปลี่ยน)
+        lastFitH = h
+        SW.tween(CandyMain, 0.2, {Size = UDim2.fromOffset(CANDY_W, h)})
     end
-    stat("💧", w, 0.36)
-    stat("🍬", f, 0.62)
-    stat("📈", g, 0.84)
-end
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fit)
 
-local function refreshTreeStatus()
-    pcall(function()
-        if not allTrees then return end
-        local lines={}
-        clearCandyList()
-        local order = 0
-        for _,folder in pairs(allTrees:GetChildren()) do
-            local uid=tonumber(folder.Name:match("PlantedTrees_(%d+)"))
-            local dname=uid and ((Players:GetPlayerByUserId(uid) or {}).Name or tostring(uid)) or folder.Name
-            local header=folder.Name==folderName and ("👤 ของฉัน ("..dname..")") or ("👥 "..dname)
-            local treeLines={}
-            local treeRows={}
-            for _,tree in pairs(folder:GetChildren()) do
-                local stats=tree:FindFirstChild("Stats")
-                if stats then
-                    local w=stats:FindFirstChild("Water"); local f=stats:FindFirstChild("Food"); local g=stats:FindFirstChild("Growth")
-                    local pad=string.rep(" ",m_max(0,10-#tree.Name))
-                    t_insert(treeLines, string.format(
-                        '<font face="Code">  %s%s | 💧%3d%%  🍬%3d%%  📈%3d%%</font>',
-                        tree.Name, pad,
-                        w and m_floor(w.Value) or 0,
-                        f and m_floor(f.Value) or 0,
-                        g and m_floor(g.Value) or 0
-                    ))
-                    t_insert(treeRows, {tree.Name, w and w.Value or 0, f and f.Value or 0, g and g.Value or 0})
-                end
+    -- เก็บแถวไว้ใช้ซ้ำ (ไม่ทำลาย/สร้างใหม่ทุก 4 วิ) → ไม่กะพริบ ตำแหน่งเลื่อนไม่เด้งกลับ แท่งไหลอย่างนุ่ม
+    local items = {}   -- Instance -> {row=Frame, name=TextLabel, bars={...}}
+
+    local function ensureHeader(inst, text, order, isMine)
+        local e = items[inst]
+        if not e then
+            local row = SW.new("Frame", {BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 24)}, CandyList)
+            local lbl = SW.new("TextLabel", {
+                BackgroundTransparency = 1, Position = UDim2.fromOffset(2, 0), Size = UDim2.new(1, -4, 1, 0),
+                Font = Enum.Font.GothamBold, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+            }, row)
+            e = {row = row, name = lbl}
+            items[inst] = e
+        end
+        -- SMOOTH: เขียน property เฉพาะที่เปลี่ยนจริง (เดิมเขียนทุกแถวทุก 4 วิ → GUI ต้องประมวลผลใหม่ทั้งที่ค่าเท่าเดิม)
+        if e.order ~= order then e.order = order; e.row.LayoutOrder = order end
+        if e.text ~= text then e.text = text; e.name.Text = text end
+        if e.mine ~= isMine then e.mine = isMine; e.name.TextColor3 = isMine and SpectreAccent or SW.Sub end
+    end
+
+    local function ensureRow(inst, name, w, f, g, order)
+        local e = items[inst]
+        if not e then
+            local row = SW.new("Frame", {
+                BackgroundColor3 = SW.Row, BackgroundTransparency = 0.4, BorderSizePixel = 0,
+                Size = UDim2.new(1, -8, 0, 28),
+            }, CandyList)
+            SW.round(row, 8)
+            local lbl = SW.new("TextLabel", {
+                BackgroundTransparency = 1, Position = UDim2.fromOffset(10, 0), Size = UDim2.new(0.34, -10, 1, 0),
+                Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = SW.Text,
+                TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+            }, row)
+            local bars = {}
+            for i, s in ipairs(CANDY_STATS) do
+                local track = SW.new("Frame", {
+                    BackgroundColor3 = SW.Track, BorderSizePixel = 0, ClipsDescendants = true,
+                    Position = UDim2.new(s.x, 0, 0.5, -9), Size = UDim2.new(CANDY_BAR_W, 0, 0, 18),
+                }, row)
+                SW.round(track, 9)
+                local fill = SW.new("Frame", {
+                    BackgroundColor3 = s.color, BackgroundTransparency = 0.25, BorderSizePixel = 0,
+                    Size = UDim2.new(0, 0, 1, 0),
+                }, track)
+                SW.round(fill, 9)
+                local txt = SW.new("TextLabel", {
+                    BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), ZIndex = 2,
+                    Font = Enum.Font.GothamBold, TextSize = 10, TextColor3 = Color3.new(1, 1, 1),
+                    TextStrokeTransparency = 0.6, Text = "0%",
+                }, track)
+                bars[i] = {fill = fill, txt = txt, color = s.color}
             end
-            if #treeLines>0 then
-                t_insert(lines, header)
-                for _,l in ipairs(treeLines) do t_insert(lines,l) end
-                order = order + 1
-                addCandyHeaderRow(header, order)
-                for _,r in ipairs(treeRows) do
-                    order = order + 1
-                    addCandyTreeRow(r[1], r[2], r[3], r[4], order)
-                end
+            e = {row = row, name = lbl, bars = bars}
+            items[inst] = e
+        end
+        -- SMOOTH: เขียน/tween เฉพาะค่าที่เปลี่ยนจริง (เดิมสร้าง tween 3 อัน/ต้น ทุก 4 วิ แม้ค่าเท่าเดิม)
+        if e.order ~= order then e.order = order; e.row.LayoutOrder = order end
+        if e.text ~= name then e.text = name; e.name.Text = name end
+        for i, b in ipairs(e.bars) do
+            local raw = (i == 1 and w) or (i == 2 and f) or g
+            local v = m_clamp(tonumber(raw) or 0, 0, 100)
+            if b.v ~= v then
+                b.v = v
+                b.txt.Text = m_floor(v) .. "%"
+                -- น้ำต่ำกว่า 20% → แท่งเป็นสีแดงให้เห็นทันที
+                b.fill.BackgroundColor3 = (i == 1 and v < 20) and SW.Danger or b.color
+                SW.tween(b.fill, 0.35, {Size = UDim2.new(v / 100, 0, 1, 0)})
             end
         end
-        if TreeStatusDescLabel and TreeStatusDescLabel.Parent then
-            TreeStatusDescLabel.Text=#lines>0 and table.concat(lines,"\n") or "-- ไม่พบต้นแคนดี้"
+    end
+
+    refreshTreeStatus = function()
+        pcall(function()
+            if not allTrees then return end
+            local lines, seen, order = {}, {}, 0
+            local wantText = TreeStatusDescLabel ~= nil and TreeStatusDescLabel.Parent ~= nil   -- SMOOTH: ไม่มี label ก็ไม่ต้องต่อ string ทุก 4 วิ
+            for _, folder in pairs(allTrees:GetChildren()) do
+                local uid = tonumber(folder.Name:match("PlantedTrees_(%d+)"))
+                local dname = uid and ((Players:GetPlayerByUserId(uid) or {}).Name or tostring(uid)) or folder.Name
+                local isMine = folder.Name == folderName
+                local header = isMine and ("👤 ของฉัน (" .. dname .. ")") or ("👥 " .. dname)
+                local treeLines, treeData = {}, {}
+                for _, tree in pairs(folder:GetChildren()) do
+                    local stats = tree:FindFirstChild("Stats")
+                    if stats then
+                        local w = stats:FindFirstChild("Water"); local f = stats:FindFirstChild("Food"); local g = stats:FindFirstChild("Growth")
+                        local wv, fv, gv = w and w.Value or 0, f and f.Value or 0, g and g.Value or 0
+                        if wantText then
+                            local pad = string.rep(" ", m_max(0, 10 - #tree.Name))
+                            t_insert(treeLines, string.format(
+                                '<font face="Code">  %s%s | 💧%3d%%  🍬%3d%%  📈%3d%%</font>',
+                                tree.Name, pad, m_floor(wv), m_floor(fv), m_floor(gv)
+                            ))
+                        end
+                        t_insert(treeData, {tree, tree.Name, wv, fv, gv})
+                    end
+                end
+                if #treeData > 0 then
+                    if wantText then
+                        t_insert(lines, header)
+                        for _, l in ipairs(treeLines) do t_insert(lines, l) end
+                    end
+                    order = order + 1
+                    seen[folder] = true
+                    ensureHeader(folder, header, order, isMine)
+                    for _, d in ipairs(treeData) do
+                        order = order + 1
+                        seen[d[1]] = true
+                        ensureRow(d[1], d[2], d[3], d[4], d[5], order)
+                    end
+                end
+            end
+            for inst, e in pairs(items) do
+                if not seen[inst] then e.row:Destroy(); items[inst] = nil end
+            end
+            empty.Visible = (order == 0)
+            if wantText and TreeStatusDescLabel and TreeStatusDescLabel.Parent then
+                TreeStatusDescLabel.Text = #lines > 0 and table.concat(lines, "\n") or "-- ไม่พบต้นแคนดี้"
+            end
+            task.delay(0.05, fit)
+        end)
+    end
+
+    CandyCloseBtn.MouseButton1Click:Connect(function()
+        CandyMain.Visible = false
+        pcall(function() CandyPanelToggle:Set(false) end)
+    end)
+
+    task.spawn(function()
+        while true do
+            task.wait(4)
+            if CandyMain.Visible and not SW.isDragging then pcall(refreshTreeStatus) end
         end
     end)
 end
-
-local CandyPanelToggle
-CandyCloseBtn.MouseButton1Click:Connect(function()
-    CandyMain.Visible = false
-    pcall(function() CandyPanelToggle:Set(false) end)
-end)
-
-task.spawn(function()
-    while true do
-        task.wait(4)
-        if CandyMain.Visible then pcall(refreshTreeStatus) end
-    end
-end)
 
 CandyPanelToggle = WaterSection:Toggle({
     Title="แสดง UI สถานะต้นแคนดี้", Desc="เปิด/ปิดแผงลอยแสดงสถานะต้นไม้ (ลากย้ายตำแหน่งได้)", Value=false,
     Callback=function(state)
         CandyMain.Visible = state
-        if state then pcall(refreshTreeStatus) end
+        if state then SW.pop(CandyMain); pcall(refreshTreeStatus) end
     end,
 })
 
@@ -1671,7 +1933,7 @@ WaterSection:Button({
 })
 
 -- ── SECTION: DISCORD WEBHOOK NOTIFY ──
-local NotifySection = FarmTab:Section({Title="แจ้งเตือนน้ำเหลือน้อย", Opened=false})
+local NotifySection = FarmTab:Section({Title="แจ้งเตือนน้ำเหลือน้อย", Icon="bell", Opened=false})
 
 local growthNotifyEnabled = false
 local webhookURL, mentionUserId = "", ""
@@ -1944,40 +2206,94 @@ local function doAntiAFK()
 end
 LP.Idled:Connect(function() if AntiAFKEnabled then doAntiAFK() end end)
 
-local FullbrightEnabled = false
-local _origLighting     = {}
-local _fbProps   = {"Ambient","OutdoorAmbient","Brightness","ClockTime","FogEnd","FogStart","GlobalShadows"}
-local _fbVals    = {Color3.fromRGB(178,178,178), Color3.fromRGB(155,155,180), 1, 14, 1e6, 1e6, false}
-local _fbFxTypes = {"SunRaysEffect","DepthOfFieldEffect"}
-local _fbConn    = nil   
-local _fbGuard   = false 
+-- ── Fullbright (event-driven — ไม่มี loop, ไม่สร้าง closure ซ้ำ) ──
+--   • ฟังเฉพาะ property ที่เราแตะ แล้วเขียนกลับเฉพาะตัวที่เกมเปลี่ยนจริง
+--     (ของเดิมฟัง Lighting.Changed ทุกอย่าง → ตอนเกมมี day/night cycle จะยิงรัวแล้วรัน 7 prop + GetChildren + pcall ใหม่ทุกครั้ง)
+--   • เขียนเฉพาะตอนค่าต่างจริง (กันสู้กับเกมวนไม่จบ) และจำค่า "ล่าสุดที่เกมตั้ง" ไว้คืนตอนปิด
+--   • effect: สแกนรอบเดียวตอนเปิด + ChildAdded สำหรับตัวที่เกมสร้างทีหลัง + จำสถานะ Enabled เดิมรายตัว
+--   • แก้บั๊ก `vals and vals[i] or orig` ที่ทำให้ GlobalShadows=false ไม่เคยถูกตั้ง
+--   • ยัดทุกอย่างไว้ใน table เดียว ประหยัดโควตา local ของสคริปต์ (limit 200)
+local FB = {
+    on = false,
+    target = {
+        Ambient        = Color3.fromRGB(178,178,178),
+        OutdoorAmbient = Color3.fromRGB(155,155,180),
+        Brightness     = 1,
+        ClockTime      = 14,
+        FogEnd         = 1e6,
+        FogStart       = 1e6,
+        GlobalShadows  = false,
+    },
+    fxClasses = {SunRaysEffect = true, DepthOfFieldEffect = true}, -- เพิ่มคลาสที่อยากปิดได้ตรงนี้
+    orig    = {},  -- ค่า Lighting ล่าสุดที่เกมตั้ง (ใช้คืนตอนปิด)
+    origFx  = {},  -- [effect] = Enabled เดิม
+    conns   = {},  -- connection ของ property + ChildAdded/Removed
+    fxConns = {},  -- [effect] = connection ของ Enabled
+}
 
-local function setLighting(vals)
-    pcall(function()
-        for i,k in ipairs(_fbProps) do Lighting[k] = vals and vals[i] or _origLighting[k] end
-        for _,fx in ipairs(Lighting:GetChildren()) do
-            for _,t in ipairs(_fbFxTypes) do
-                if fx:IsA(t) then pcall(function() fx.Enabled = not vals end); break end
-            end
-        end
+-- ค่าต่างจริงไหม (ตัวเลขเผื่อ float คลาดเล็กน้อย เช่น ClockTime)
+function FB.differs(cur, want)
+    if type(cur) == "number" then return m_abs(cur - want) > 1e-3 end
+    return cur ~= want
+end
+
+function FB.force(prop)
+    local cur = Lighting[prop]
+    local want = FB.target[prop]
+    if FB.differs(cur, want) then
+        FB.orig[prop] = cur      -- จำสิ่งที่เกมเพิ่งตั้ง จะได้คืนถูกตอนปิด
+        Lighting[prop] = want
+    end
+end
+
+function FB.hookFx(fx)
+    if not FB.fxClasses[fx.ClassName] or FB.fxConns[fx] then return end
+    FB.origFx[fx] = fx.Enabled
+    fx.Enabled = false
+    FB.fxConns[fx] = fx:GetPropertyChangedSignal("Enabled"):Connect(function()
+        if fx.Enabled then FB.origFx[fx] = true; fx.Enabled = false end
     end)
 end
 
-local function setFullbright(state)
-    FullbrightEnabled = state
-    if _fbConn then _fbConn:Disconnect(); _fbConn = nil end
-    if state then
-        for _,k in ipairs(_fbProps) do _origLighting[k] = Lighting[k] end
-        setLighting(_fbVals)
-        _fbConn = Lighting.Changed:Connect(function()
-            if not FullbrightEnabled or _fbGuard then return end
-            _fbGuard = true
-            setLighting(_fbVals)
-            _fbGuard = false
-        end)
-    else
-        setLighting(nil)
+function FB.unhookFx(fx)
+    local c = FB.fxConns[fx]
+    if c then c:Disconnect(); FB.fxConns[fx] = nil; FB.origFx[fx] = nil end
+end
+
+function FB.enable()
+    pcall(function()
+        for prop, want in pairs(FB.target) do
+            FB.orig[prop] = Lighting[prop]
+            Lighting[prop] = want
+        end
+        for _, fx in ipairs(Lighting:GetChildren()) do FB.hookFx(fx) end
+    end)
+    -- ต่อ listener หลังตั้งค่าเสร็จ (ไม่ให้ตัวเองไปกระตุ้นตัวเอง)
+    for prop in pairs(FB.target) do
+        t_insert(FB.conns, Lighting:GetPropertyChangedSignal(prop):Connect(function() FB.force(prop) end))
     end
+    t_insert(FB.conns, Lighting.ChildAdded:Connect(FB.hookFx))
+    t_insert(FB.conns, Lighting.ChildRemoved:Connect(FB.unhookFx))
+end
+
+function FB.disable()
+    for _, c in ipairs(FB.conns) do c:Disconnect() end
+    table.clear(FB.conns)
+    pcall(function()
+        for prop, v in pairs(FB.orig) do Lighting[prop] = v end
+        for fx, c in pairs(FB.fxConns) do
+            c:Disconnect()
+            if fx.Parent then fx.Enabled = FB.origFx[fx] end
+        end
+    end)
+    table.clear(FB.fxConns); table.clear(FB.origFx); table.clear(FB.orig)
+end
+
+local function setFullbright(state)
+    state = state and true or false
+    if state == FB.on then return end   -- กันเรียกซ้ำ: ไม่งั้นจะเซฟค่า fullbright ทับค่าเดิม
+    FB.on = state
+    if state then FB.enable() else FB.disable() end
 end
 
 local GameplaySettings = SettingsTab:Section({Title="Gameplay", Opened=true})
@@ -1991,7 +2307,7 @@ UISettings:Keybind({Flag="UIKeybind", Title="Toggle Menu Key", Icon="keyboard", 
 local themes={}
 if WindUI.Themes then for name in pairs(WindUI.Themes) do t_insert(themes,name) end end
 if #themes==0 then themes={"Dark"} end
-UISettings:Dropdown({Flag="UITheme", Title="UI Theme", Icon="palette", Values=themes, Default="Dark",
+UISettings:Dropdown({Flag="UITheme", Title="UI Theme", Icon="palette", Values=themes, Default="SpectreTheme",
     Callback=function(t) pcall(function() WindUI:SetTheme(t) end) end})
 
 OnCFGLoaded(function(cfg)
