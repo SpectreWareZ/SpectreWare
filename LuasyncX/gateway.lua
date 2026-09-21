@@ -122,14 +122,24 @@ end
 -- twice in quick succession (autoexec + manual run, double-bound hotkey,
 -- UI button without debounce, etc). This is separate from whitelist.lua's
 -- own guard, which only catches it *after* the fetch+decrypt already ran.
+-- รอบที่ซ้ำจะ return เงียบ ๆ (ไม่ warn แล้ว เพราะ UI ของรอบแรกยังทำงานอยู่)
+-- ถ้าอยากรู้ว่าใครเรียกซ้ำ: getgenv()._SW_DEBUG = true ก่อนรัน → จะ print traceback ของตัวที่เรียกซ้ำ
 do
     local gev = getgenv()
     if gev._SW_GW_RUNNING and (os.time() - (gev._SW_GW_STIME or 0)) < 10 then
-        warn("[ SpectreWare Gateway ]: already running — skipping duplicate invocation")
+        if gev._SW_DEBUG then
+            print("[ SpectreWare Gateway ]: duplicate invocation skipped\n" .. debug.traceback())
+        end
         return
     end
     gev._SW_GW_RUNNING = true
     gev._SW_GW_STIME = os.time()
+end
+
+-- ปล่อย guard เมื่อโหลดล้มเหลว เพื่อให้กดรันใหม่ได้ทันที (ไม่ต้องรอ 10 วิ)
+-- ตอนสำเร็จไม่ปล่อย เพื่อยังกันการเรียกซ้ำช่วงท้าย ๆ ได้ตามเดิม
+local function _releaseGuard()
+    pcall(function() getgenv()._SW_GW_RUNNING = nil end)
 end
 
 
@@ -393,6 +403,7 @@ end
 if not ok or not src or #src < 32 then
     warn("[ SpectreWare Gateway ]: Failed to fetch whitelist.lua after " .. CFG.maxRetries .. " attempts.")
     LOADER.Fail("Can't reach server — try again")
+    _releaseGuard()
     return
 end
 LOADER.Set(30, "Loader ready")
@@ -403,6 +414,7 @@ src = nil
 if not fn then
     warn("[ SpectreWare Gateway ]: Compile error — " .. tostring(compErr))
     LOADER.Fail("Loader compile error")
+    _releaseGuard()
     return
 end
 
@@ -415,6 +427,7 @@ local runOk, runErr = pcall(fn)
 if not runOk then
     warn("[ SpectreWare Gateway ]: Runtime error — " .. tostring(runErr))
     LOADER.Fail("Runtime error — check console (F9)")
+    _releaseGuard()
 else
     LOADER.Close(true) -- whitelist จบโดยไม่ได้ Done/Fail (เช่น ถูก kick/duplicate) → ปิดการ์ดเงียบๆ
 end
