@@ -132,11 +132,245 @@ do
     gev._SW_GW_STIME = os.time()
 end
 
+
+-- ── Loader UI ────────────────────────────────────────────────────────────────
+-- แสดง UI โหลดทันทีที่กดรันสคริปต์ (การ์ดกลางจอ + progress bar + ข้อความสถานะ)
+-- whitelist.lua อัปเดตผ่าน getgenv()._SW_LOADER (เรียกแบบ dot ไม่ใช่ colon):
+--   .Log(text, kind)   kind = "loading" | "info" | "success" | "error" | "done"
+--   .Set(pct, text)    ดัน progress (0-99, ไม่ถอยหลัง) + เปลี่ยนข้อความ
+--   .Done(text)        เต็ม 100% สีเขียว แล้วเลือนหาย
+--   .Fail(text)        สีแดง แล้วเลือนหายใน 4 วิ
+--   .Close(onlyIfRunning)
+-- สร้าง UI ไม่ได้ (executor ไม่รองรับ) → fallback เป็น no-op ไม่กระทบการโหลด
+local LOADER = (function()
+    local NOOP = {
+        Log = function() end, Set = function() end, Done = function() end,
+        Fail = function() end, Close = function() end,
+    }
+
+    local built, api = pcall(function()
+        local TweenService = game:GetService("TweenService")
+        local RunService   = game:GetService("RunService")
+        local Players      = game:GetService("Players")
+        local cr           = cloneref or function(x) return x end
+
+        local C = {
+            bg      = Color3.fromRGB(20, 20, 27),
+            track   = Color3.fromRGB(38, 38, 50),
+            stroke  = Color3.fromRGB(60, 60, 75),
+            text    = Color3.fromRGB(215, 215, 228),
+            muted   = Color3.fromRGB(130, 130, 150),
+            accentA = Color3.fromRGB(150, 110, 255),
+            accentB = Color3.fromRGB(90, 160, 250),
+            ok      = Color3.fromRGB(80, 220, 130),
+            err     = Color3.fromRGB(235, 70, 70),
+        }
+
+        local function mk(cls, props, parent)
+            local i = Instance.new(cls)
+            for k, v in pairs(props) do pcall(function() i[k] = v end) end
+            i.Parent = parent
+            return i
+        end
+
+        local function attach(gui)
+            pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
+            local parents = {}
+            local okH, hui = pcall(function() return gethui and gethui() end)
+            if okH and typeof(hui) == "Instance" then parents[#parents + 1] = hui end
+            local okC, core = pcall(function() return cr(game:GetService("CoreGui")) end)
+            if okC and core then parents[#parents + 1] = core end
+            local lp = Players.LocalPlayer
+            local pg = lp and lp:FindFirstChildOfClass("PlayerGui")
+            if pg then parents[#parents + 1] = pg end
+            for _, par in ipairs(parents) do
+                local old = par:FindFirstChild("SW_LoaderGui")
+                if old then pcall(function() old:Destroy() end) end
+            end
+            for _, par in ipairs(parents) do
+                local ok = pcall(function() gui.Parent = par end)
+                if ok and gui.Parent == par then return true end
+            end
+            return false
+        end
+
+        -- ── build ──
+        local gui = mk("ScreenGui", {
+            Name = "SW_LoaderGui", ResetOnSpawn = false, IgnoreGuiInset = true,
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 998,
+        })
+
+        local cardClass = pcall(Instance.new, "CanvasGroup") and "CanvasGroup" or "Frame"
+        local card = mk(cardClass, {
+            Name = "Card", Size = UDim2.new(0.86, 0, 0, 116),
+            Position = UDim2.new(0.5, 0, 0.5, 14), AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundColor3 = C.bg, BorderSizePixel = 0, GroupTransparency = 1,
+        }, gui)
+        mk("UISizeConstraint", { MaxSize = Vector2.new(340, 116), MinSize = Vector2.new(220, 116) }, card)
+        mk("UICorner", { CornerRadius = UDim.new(0, 12) }, card)
+        mk("UIStroke", { Color = C.stroke, Thickness = 1, Transparency = 0.4 }, card)
+
+        local topLine = mk("Frame", {
+            Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
+        }, card)
+        mk("UIGradient", { Color = ColorSequence.new(C.accentA, C.accentB) }, topLine)
+
+        local title = mk("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 12), Size = UDim2.new(0.6, 0, 0, 20),
+            Font = Enum.Font.GothamBlack, Text = "SPECTREWARE", TextSize = 15,
+            TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left,
+        }, card)
+        mk("UIGradient", { Color = ColorSequence.new(C.accentA, C.accentB) }, title)
+
+        mk("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.new(0.5, 0, 0, 12), Size = UDim2.new(0.5, -16, 0, 20),
+            Font = Enum.Font.GothamMedium, Text = "LuaSyncX", TextSize = 11, TextColor3 = C.muted,
+            TextXAlignment = Enum.TextXAlignment.Right,
+        }, card)
+
+        local dot = mk("Frame", {
+            Position = UDim2.fromOffset(16, 47), Size = UDim2.fromOffset(8, 8),
+            BackgroundColor3 = C.accentB, BorderSizePixel = 0,
+        }, card)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, dot)
+
+        local status = mk("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(32, 41), Size = UDim2.new(1, -48, 0, 20),
+            Font = Enum.Font.GothamMedium, Text = "Starting...", TextSize = 13, TextColor3 = C.text,
+            TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        }, card)
+
+        local track = mk("Frame", {
+            Position = UDim2.fromOffset(16, 72), Size = UDim2.new(1, -32, 0, 6),
+            BackgroundColor3 = C.track, BorderSizePixel = 0,
+        }, card)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, track)
+        local fill = mk("Frame", {
+            Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
+        }, track)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, fill)
+        local fillGrad = mk("UIGradient", { Color = ColorSequence.new(C.accentA, C.accentB) }, fill)
+
+        local lp = Players.LocalPlayer
+        mk("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 88), Size = UDim2.new(0.7, -16, 0, 16),
+            Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.muted,
+            Text = lp and ("Welcome, " .. lp.DisplayName) or "Welcome",
+            TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        }, card)
+        local pct = mk("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.new(0.7, 0, 0, 88), Size = UDim2.new(0.3, -16, 0, 16),
+            Font = Enum.Font.GothamBold, Text = "0%", TextSize = 11, TextColor3 = C.text,
+            TextXAlignment = Enum.TextXAlignment.Right,
+        }, card)
+
+        if not attach(gui) then error("no valid GUI parent") end
+
+        -- ── state ──
+        local state, target, creep, shown = "running", 0, 0, 0
+        local conn, pulse
+
+        pcall(function()
+            pulse = TweenService:Create(dot,
+                TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+                { BackgroundTransparency = 0.75 })
+            pulse:Play()
+        end)
+        pcall(function()
+            TweenService:Create(card, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+                { GroupTransparency = 0, Position = UDim2.new(0.5, 0, 0.5, 0) }):Play()
+        end)
+
+        conn = RunService.Heartbeat:Connect(function(dt)
+            local goal
+            if state == "running" then
+                creep = math.min(creep + dt * 0.6, 5) -- ขยับเองนิดๆ ไม่ให้บาร์ดูค้าง
+                goal = math.min(97, target + creep)
+            elseif state == "done" then
+                goal = 100
+            else
+                goal = shown
+            end
+            shown = shown + (goal - shown) * math.min(1, dt * 7)
+            fill.Size = UDim2.new(math.clamp(shown / 100, 0, 1), 0, 1, 0)
+            pct.Text = math.floor(shown + 0.5) .. "%"
+        end)
+
+        local function setStatus(text)
+            text = (tostring(text or ""):gsub("[\r\n]+", " "))
+            if text ~= "" then status.Text = text end
+        end
+
+        local function paint(color)
+            fillGrad.Color = ColorSequence.new(color)
+            dot.BackgroundColor3 = color
+            pcall(function() if pulse then pulse:Cancel() end end)
+            dot.BackgroundTransparency = 0
+        end
+
+        local function close()
+            if state == "closed" then return end
+            state = "closed"
+            pcall(function() conn:Disconnect() end)
+            pcall(function()
+                TweenService:Create(card, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+                    { GroupTransparency = 1, Position = UDim2.new(0.5, 0, 0.5, 10) }):Play()
+            end)
+            task.delay(0.35, function() pcall(function() gui:Destroy() end) end)
+        end
+
+        local A = {}
+        function A.Set(p, text)
+            if state ~= "running" then return end
+            if type(p) == "number" then target = math.clamp(p, target, 99); creep = 0 end
+            setStatus(text)
+        end
+        function A.Log(text, kind)
+            if kind == "error" then return A.Fail(text) end
+            if kind == "done"  then return A.Done(text) end
+            if state ~= "running" then return end
+            target = target + (92 - target) * 0.18; creep = 0
+            setStatus(text)
+        end
+        function A.Done(text)
+            if state ~= "running" then return end
+            state = "done"
+            setStatus(text or "Loaded")
+            paint(C.ok)
+            task.delay(1.1, close)
+        end
+        function A.Fail(text)
+            if state ~= "running" then return end
+            state = "error"
+            setStatus(text or "Failed")
+            status.TextColor3 = C.err
+            paint(C.err)
+            task.delay(4, close)
+        end
+        function A.Close(onlyIfRunning)
+            if onlyIfRunning and state ~= "running" then return end
+            close()
+        end
+
+        task.delay(60, close) -- fail-safe: ไม่ให้ UI ค้างจอถ้าเกิดอะไรผิดปกติ
+        return A
+    end)
+
+    if not built then
+        warn("[ SpectreWare Gateway ]: Loader UI unavailable — " .. tostring(api))
+        return NOOP
+    end
+    return api
+end)()
+pcall(function() getgenv()._SW_LOADER = LOADER end)
+
 -- ── Fetch whitelist.lua ──────────────────────────────────────────────────────
 print("[ SpectreWare Gateway ]: Initializing...")
+LOADER.Set(4, "Initializing...")
 
 local ok, src
 for i = 1, CFG.maxRetries do
+    LOADER.Set(6 + i * 6, ("Connecting to server... (%d/%d)"):format(i, CFG.maxRetries))
     ok, src = safeGetTimeout(CFG.whitelistUrl, CFG.timeout)
     if ok and src and #src > 32 then break end
     warn(("[ SpectreWare Gateway ]: fetch attempt %d/%d failed"):format(i, CFG.maxRetries))
@@ -145,14 +379,17 @@ end
 
 if not ok or not src or #src < 32 then
     warn("[ SpectreWare Gateway ]: Failed to fetch whitelist.lua after " .. CFG.maxRetries .. " attempts.")
+    LOADER.Fail("Can't reach server — try again")
     return
 end
+LOADER.Set(30, "Loader ready")
 
 -- ── Compile & run ─────────────────────────────────────────────────────────────
 local fn, compErr = loadstring(src)
 src = nil
 if not fn then
     warn("[ SpectreWare Gateway ]: Compile error — " .. tostring(compErr))
+    LOADER.Fail("Loader compile error")
     return
 end
 
@@ -164,4 +401,7 @@ end
 local runOk, runErr = pcall(fn)
 if not runOk then
     warn("[ SpectreWare Gateway ]: Runtime error — " .. tostring(runErr))
+    LOADER.Fail("Runtime error — check console (F9)")
+else
+    LOADER.Close(true) -- whitelist จบโดยไม่ได้ Done/Fail (เช่น ถูก kick/duplicate) → ปิดการ์ดเงียบๆ
 end
