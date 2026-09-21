@@ -142,11 +142,20 @@ end
 --   .Fail(text)        สีแดง แล้วเลือนหายใน 4 วิ
 --   .Close(onlyIfRunning)
 -- สร้าง UI ไม่ได้ (executor ไม่รองรับ) → fallback เป็น no-op ไม่กระทบการโหลด
+-- ถ้ามี loader ของรอบก่อนยังรันอยู่ (เช่น รันซ้ำหลังผ่านช่วง guard 10 วิ) ไม่สร้างใหม่/ไม่แย่งไป
+-- รอบนี้จะใช้ NOOP แทน เพื่อไม่ให้ไปปิดหรือทับ UI ของรอบที่กำลังโหลดอยู่
+local _prevAlive = false
+pcall(function()
+    local prev = getgenv()._SW_LOADER
+    _prevAlive = type(prev) == "table" and type(prev.IsRunning) == "function" and prev.IsRunning() == true
+end)
+
 local LOADER = (function()
     local NOOP = {
         Log = function() end, Set = function() end, Done = function() end,
-        Fail = function() end, Close = function() end,
+        Fail = function() end, Close = function() end, IsRunning = function() return false end,
     }
+    if _prevAlive then return NOOP end
 
     local built, api = pcall(function()
         local TweenService = game:GetService("TweenService")
@@ -351,6 +360,7 @@ local LOADER = (function()
             if onlyIfRunning and state ~= "running" then return end
             close()
         end
+        function A.IsRunning() return state == "running" end
 
         task.delay(60, close) -- fail-safe: ไม่ให้ UI ค้างจอถ้าเกิดอะไรผิดปกติ
         return A
@@ -362,7 +372,7 @@ local LOADER = (function()
     end
     return api
 end)()
-pcall(function() getgenv()._SW_LOADER = LOADER end)
+if not _prevAlive then pcall(function() getgenv()._SW_LOADER = LOADER end) end
 
 -- ── Fetch whitelist.lua ──────────────────────────────────────────────────────
 print("[ SpectreWare Gateway ]: Initializing...")
