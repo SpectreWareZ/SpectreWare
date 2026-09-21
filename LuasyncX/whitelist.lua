@@ -79,9 +79,36 @@ local _r_byte, _r_char = string.byte, string.char
 local _r_concat   = table.concat
 local _r_floor, _r_random = math.floor, math.random
 
+-- ── Time-sliced helpers (กันจอกระตุก) ───────────────────────────────────────────
+-- งานที่วนทีละไบต์กับสคริปต์ใหญ่ ๆ (hex decode / xor / hash) ถ้าทำรวดเดียวจะกินหลายสิบ–หลายร้อย ms
+-- ในเฟรมเดียว → UI โหลด/แจ้งเตือนที่กำลังเล่นอนิเมชันอยู่พอดีจะกระตุก
+-- ทำทีละก้อน แล้วคืนเฟรม (task.wait()) เมื่อเกิน budget · ข้อความสั้น (< _SLICE_MIN) ทำรวดเดียวเหมือนเดิม
+-- (จึงไม่ yield ในจุดที่ใช้กับสายสั้น ๆ เช่น sentinel)
+local _SLICE_BUDGET = 0.006   -- วินาทีต่อเฟรมที่ยอมใช้
+local _SLICE_MIN    = 20000   -- ไบต์
+local _SLICE_BLOCK  = 4000    -- ไบต์ต่อก้อน (ต้องน้อยกว่าขีดจำกัด unpack)
+local _clock        = os.clock
+local _r_unpack     = table.unpack or unpack
+
+local function _sliceYield(t0)
+    if _clock() - t0 >= _SLICE_BUDGET then
+        task.wait()
+        return _clock()
+    end
+    return t0
+end
+
 local function _djb2(s)
-    local h = 5381
-    for i = 1, #s do h = ((h * 33) + _r_byte(s, i)) % 0x100000000 end
+    local h, n = 5381, #s
+    local big, t0, i = n >= _SLICE_MIN, _clock(), 1
+    while i <= n do
+        local j = i + _SLICE_BLOCK - 1
+        if j > n then j = n end
+        local blk = { _r_byte(s, i, j) }
+        for k = 1, #blk do h = ((h * 33) + blk[k]) % 0x100000000 end
+        i = j + 1
+        if big then t0 = _sliceYield(t0) end
+    end
     return _r_format("%08X", h)
 end
 
@@ -190,11 +217,25 @@ local _xorKey
 
 local function _xorStr(s, k)
     k = k or _xorKey or "SPW"
-    local r, kl = {}, #k
-    for i = 1, #s do
-        r[i] = _r_char(_r_bxor(_r_byte(s, i), _r_byte(k, (i - 1) % kl + 1)))
+    local kl, n = #k, #s
+    local kb = { _r_byte(k, 1, kl) }
+    local out, oc, ki = {}, 0, 1
+    local big, t0, i = n >= _SLICE_MIN, _clock(), 1
+    while i <= n do
+        local j = i + _SLICE_BLOCK - 1
+        if j > n then j = n end
+        local blk = { _r_byte(s, i, j) }
+        for x = 1, #blk do
+            blk[x] = _r_bxor(blk[x], kb[ki])
+            ki = ki + 1
+            if ki > kl then ki = 1 end
+        end
+        oc = oc + 1
+        out[oc] = _r_char(_r_unpack(blk))
+        i = j + 1
+        if big then t0 = _sliceYield(t0) end
     end
-    return _r_concat(r)
+    return _r_concat(out)
 end
 
 -- ── Sentinel helpers ───────────────────────────────────────────────────────
@@ -1179,16 +1220,57 @@ local function _parseResult(raw)
 end
 
 local function _fnv1a(s)
-    local h = 0x811C9DC5
-    for i = 1, #s do
-        h = _r_bxor(h, _r_byte(s, i))
-        h = (h * 0x01000193) % 0x100000000
+    local h, n = 0x811C9DC5, #s
+    local big, t0, i = n >= _SLICE_MIN, _clock(), 1
+    while i <= n do
+        local j = i + _SLICE_BLOCK - 1
+        if j > n then j = n end
+        local blk = { _r_byte(s, i, j) }
+        for k = 1, #blk do
+            h = _r_bxor(h, blk[k])
+            h = (h * 0x01000193) % 0x100000000
+        end
+        i = j + 1
+        if big then t0 = _sliceYield(t0) end
     end
     return _r_format("%08X", h)
 end
+
+-- hex → ไบต์: ใช้ gsub + ตารางค้นหา (วนใน C ไม่ต้องเรียก Lua ต่อไบต์) เร็วกว่าเดิมหลายเท่า
+-- ถ้าไม่ใช่ hex ล้วนความยาวคู่ ตกไปใช้ลูปเดิม (พฤติกรรมเหมือนเดิมทุกกรณี: ตัวที่แปลงไม่ได้ → \0)
+local _HEX2CHAR = {}
+do
+    local digits = "0123456789abcdefABCDEF"
+    for a = 1, #digits do
+        for b = 1, #digits do
+            local pair = digits:sub(a, a) .. digits:sub(b, b)
+            _HEX2CHAR[pair] = _r_char(tonumber(pair, 16))
+        end
+    end
+end
+
 local function _hexDecode(h)
-    local b = {}
-    for i = 1, #h, 2 do b[#b + 1] = _r_char(tonumber(h:sub(i, i + 1), 16) or 0) end
+    local n = #h
+    local big, t0 = n >= _SLICE_MIN * 2, _clock()
+    if n % 2 == 0 and not h:find("[^%x]") then
+        if not big then return (h:gsub("%x%x", _HEX2CHAR)) end
+        local out, oc, i, CH = {}, 0, 1, 32768 -- CH ต้องเป็นเลขคู่
+        while i <= n do
+            local j = i + CH - 1
+            if j > n then j = n end
+            oc = oc + 1
+            out[oc] = (h:sub(i, j):gsub("%x%x", _HEX2CHAR))
+            i = j + 1
+            t0 = _sliceYield(t0)
+        end
+        return _r_concat(out)
+    end
+    local b, bc = {}, 0
+    for i = 1, n, 2 do
+        bc = bc + 1
+        b[bc] = _r_char(tonumber(h:sub(i, i + 1), 16) or 0)
+        if big and bc % 2000 == 0 then t0 = _sliceYield(t0) end
+    end
     return _r_concat(b)
 end
 
