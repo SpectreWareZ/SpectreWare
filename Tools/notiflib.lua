@@ -42,10 +42,10 @@ local BG_TRANSPARENCY  = 0.06
 local SHADOW_TRANSPARENCY = 0.55
 
 local THEMES = {
-    Success = { accent = Color3.fromRGB(80, 220, 130), text = Color3.fromRGB(80, 220, 130),  icon = Color3.fromRGB(80, 220, 130),  glyph = "✓" },
-    Info    = { accent = Color3.fromRGB(90, 160, 250), text = Color3.fromRGB(228, 228, 238), icon = Color3.fromRGB(210, 210, 225), glyph = "i" },
-    Warning = { accent = Color3.fromRGB(250, 190, 60), text = Color3.fromRGB(250, 190, 60),  icon = Color3.fromRGB(250, 190, 60),  glyph = "!" },
-    Error   = { accent = Color3.fromRGB(235, 70, 70),  text = Color3.fromRGB(235, 70, 70),   icon = Color3.fromRGB(235, 70, 70),   glyph = "×" },
+    Success = { accent = Color3.fromRGB(80, 220, 130), text = Color3.fromRGB(80, 220, 130),  icon = Color3.fromRGB(80, 220, 130),  symbol = "check" },
+    Info    = { accent = Color3.fromRGB(90, 160, 250), text = Color3.fromRGB(228, 228, 238), icon = Color3.fromRGB(210, 210, 225), symbol = "i" },
+    Warning = { accent = Color3.fromRGB(250, 190, 60), text = Color3.fromRGB(250, 190, 60),  icon = Color3.fromRGB(250, 190, 60),  symbol = "bang" },
+    Error   = { accent = Color3.fromRGB(235, 70, 70),  text = Color3.fromRGB(235, 70, 70),   icon = Color3.fromRGB(235, 70, 70),   symbol = "x" },
 }
 
 -- ── Tween presets ─────────────────────────────────────────────────────────────
@@ -84,6 +84,251 @@ end
 local function frameWait()
     local dt = RunService.Heartbeat:Wait()
     return type(dt) == "number" and dt or 0.03
+end
+
+-- ── Icons (วาดจาก Frame ล้วน ๆ — ไม่พึ่ง asset / font emoji) ───────────────────
+-- ใน Text ใส่อีโมจิเดิมได้เลย ระบบจะสลับเป็นไอคอนให้อัตโนมัติ:
+--   ⚡ bolt · ✔ ✓ ✅ check · ⏳ ⌛ hourglass · 🔑 key · ⚠ warn · 👑 crown · 🎁 gift · ❌ x
+-- ถ้าข้อความไม่มีอีโมจิเหล่านี้ จะใช้ TextLabel เดียว (RichText + ตัดบรรทัดแบบปกติ)
+local TEXT_LINE_H = math.floor(TEXT_SIZE * 1.4 + 0.5)
+local ICON_PX     = TEXT_LINE_H - 4
+local WORD_MAX_W  = CARD_MAX_WIDTH - 70
+
+local atan2 = math.atan2 or math.atan
+
+local ICON_TOKENS = {
+    { "\u{26A1}",  "bolt" },      { "\u{2714}", "check" },  { "\u{2713}", "check" },
+    { "\u{2705}",  "check" },     { "\u{23F3}", "hourglass" }, { "\u{231B}", "hourglass" },
+    { "\u{1F511}", "key" },       { "\u{26A0}", "warn" },   { "\u{1F451}", "crown" },
+    { "\u{1F381}", "gift" },      { "\u{274C}", "x" },
+}
+local VS16 = "\u{FE0F}"
+
+local ICON_COLORS = {
+    bolt      = Color3.fromRGB(255, 214, 10),
+    check     = Color3.fromRGB(80, 220, 130),
+    x         = Color3.fromRGB(235, 70, 70),
+    hourglass = Color3.fromRGB(250, 190, 60),
+    key       = Color3.fromRGB(240, 205, 110),
+    crown     = Color3.fromRGB(255, 200, 60),
+    gift      = Color3.fromRGB(240, 120, 170),
+    warn      = Color3.fromRGB(250, 190, 60),
+}
+
+-- พิกัดเป็นสัดส่วน 0..1 ของกรอบไอคอน (สี่เหลี่ยมจัตุรัส)
+local function seg(parent, x1, y1, x2, y2, th, color)
+    local dx, dy = x2 - x1, y2 - y1
+    local len = math.sqrt(dx * dx + dy * dy)
+    local f = mk("Frame", {
+        BackgroundColor3 = color, BorderSizePixel = 0,
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale((x1 + x2) / 2, (y1 + y2) / 2),
+        Size = UDim2.fromScale(len + th, th), -- +th ให้หัวมนของเส้นต่อกันสนิท
+        Rotation = math.deg(atan2(dy, dx)),
+    }, parent)
+    mk("UICorner", { CornerRadius = UDim.new(1, 0) }, f)
+    return f
+end
+
+local function poly(parent, pts, th, color, closed)
+    for i = 1, #pts - 1 do
+        seg(parent, pts[i][1], pts[i][2], pts[i + 1][1], pts[i + 1][2], th, color)
+    end
+    if closed and #pts > 2 then
+        seg(parent, pts[#pts][1], pts[#pts][2], pts[1][1], pts[1][2], th, color)
+    end
+end
+
+local function dot(parent, cx, cy, d, color)
+    local f = mk("Frame", {
+        BackgroundColor3 = color, BorderSizePixel = 0,
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(cx, cy), Size = UDim2.fromScale(d, d),
+    }, parent)
+    mk("UICorner", { CornerRadius = UDim.new(1, 0) }, f)
+    return f
+end
+
+local function ring(parent, cx, cy, d, thPx, color)
+    local f = mk("Frame", {
+        BackgroundTransparency = 1, BorderSizePixel = 0,
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(cx, cy), Size = UDim2.fromScale(d, d),
+    }, parent)
+    mk("UICorner", { CornerRadius = UDim.new(1, 0) }, f)
+    mk("UIStroke", { Color = color, Thickness = thPx }, f)
+    return f
+end
+
+local DRAW = {
+    check = function(p, c)
+        poly(p, { { 0.14, 0.54 }, { 0.40, 0.80 }, { 0.88, 0.24 } }, 0.16, c)
+    end,
+    x = function(p, c)
+        seg(p, 0.20, 0.20, 0.80, 0.80, 0.16, c)
+        seg(p, 0.80, 0.20, 0.20, 0.80, 0.16, c)
+    end,
+    i = function(p, c)
+        dot(p, 0.5, 0.16, 0.22, c)
+        seg(p, 0.5, 0.42, 0.5, 0.86, 0.22, c)
+    end,
+    bang = function(p, c)
+        seg(p, 0.5, 0.12, 0.5, 0.58, 0.22, c)
+        dot(p, 0.5, 0.86, 0.24, c)
+    end,
+    bolt = function(p, c)
+        poly(p, { { 0.58, 0.06 }, { 0.22, 0.56 }, { 0.50, 0.56 }, { 0.42, 0.94 },
+                  { 0.80, 0.42 }, { 0.52, 0.42 } }, 0.12, c, true)
+    end,
+    hourglass = function(p, c)
+        seg(p, 0.20, 0.10, 0.80, 0.10, 0.13, c)
+        seg(p, 0.20, 0.90, 0.80, 0.90, 0.13, c)
+        seg(p, 0.30, 0.10, 0.70, 0.90, 0.12, c)
+        seg(p, 0.70, 0.10, 0.30, 0.90, 0.12, c)
+    end,
+    key = function(p, c, px)
+        ring(p, 0.30, 0.70, 0.40, math.max(1, 0.12 * px), c)
+        seg(p, 0.42, 0.58, 0.90, 0.10, 0.12, c)
+        seg(p, 0.74, 0.26, 0.86, 0.38, 0.12, c)
+        seg(p, 0.62, 0.38, 0.72, 0.48, 0.12, c)
+    end,
+    crown = function(p, c)
+        poly(p, { { 0.10, 0.82 }, { 0.10, 0.30 }, { 0.32, 0.56 }, { 0.50, 0.18 },
+                  { 0.68, 0.56 }, { 0.90, 0.30 }, { 0.90, 0.82 } }, 0.12, c, true)
+    end,
+    gift = function(p, c)
+        poly(p, { { 0.14, 0.44 }, { 0.14, 0.90 }, { 0.86, 0.90 }, { 0.86, 0.44 } }, 0.11, c)
+        poly(p, { { 0.08, 0.30 }, { 0.92, 0.30 }, { 0.92, 0.44 }, { 0.08, 0.44 } }, 0.11, c, true)
+        seg(p, 0.50, 0.30, 0.50, 0.90, 0.11, c)
+        poly(p, { { 0.50, 0.30 }, { 0.30, 0.08 }, { 0.20, 0.22 }, { 0.50, 0.30 } }, 0.10, c)
+        poly(p, { { 0.50, 0.30 }, { 0.70, 0.08 }, { 0.80, 0.22 }, { 0.50, 0.30 } }, 0.10, c)
+    end,
+    warn = function(p, c)
+        poly(p, { { 0.50, 0.08 }, { 0.93, 0.88 }, { 0.07, 0.88 } }, 0.11, c, true)
+        seg(p, 0.50, 0.38, 0.50, 0.60, 0.11, c)
+        dot(p, 0.50, 0.76, 0.12, c)
+    end,
+}
+
+-- ไอคอนหลักซ้ายมือของการ์ด: สัญลักษณ์ตรงกลางวงแหวน
+local function drawSymbol(parent, name, color, px)
+    local fn = DRAW[name]
+    if not fn then return end
+    local inner = mk("Frame", {
+        BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.56, 0.56),
+    }, parent)
+    fn(inner, color, px * 0.56)
+end
+
+-- แยกข้อความเป็น {t="text"|"icon", v=...}
+local function tokenize(text)
+    local segs, pos = {}, 1
+    while pos <= #text do
+        local bs, be, bn
+        for _, pair in ipairs(ICON_TOKENS) do
+            local s, e = string.find(text, pair[1], pos, true)
+            if s and (not bs or s < bs) then bs, be, bn = s, e, pair[2] end
+        end
+        if not bs then
+            segs[#segs + 1] = { t = "text", v = text:sub(pos) }
+            break
+        end
+        if bs > pos then segs[#segs + 1] = { t = "text", v = text:sub(pos, bs - 1) } end
+        segs[#segs + 1] = { t = "icon", v = bn }
+        pos = be + 1
+        if text:sub(pos, pos + #VS16 - 1) == VS16 then pos = pos + #VS16 end
+    end
+    return segs
+end
+
+local function wordLabel(parent, word, color, order)
+    local l = mk("TextLabel", {
+        BackgroundTransparency = 1, LayoutOrder = order,
+        Size = UDim2.fromOffset(0, TEXT_LINE_H), AutomaticSize = Enum.AutomaticSize.X,
+        Font = Enum.Font.GothamBold, TextSize = TEXT_SIZE, TextColor3 = color,
+        RichText = true, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd,
+        TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
+        Text = word,
+    }, parent)
+    mk("UISizeConstraint", { MaxSize = Vector2.new(WORD_MAX_W, TEXT_LINE_H) }, l)
+    return l
+end
+
+local function iconItem(parent, name, order)
+    local wrap = mk("Frame", {
+        Name = "IconItem", BackgroundTransparency = 1, LayoutOrder = order,
+        Size = UDim2.fromOffset(TEXT_LINE_H, TEXT_LINE_H),
+    }, parent)
+    local box = mk("Frame", {
+        BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(ICON_PX, ICON_PX),
+    }, wrap)
+    local fn = DRAW[name]
+    if fn then fn(box, ICON_COLORS[name] or Color3.new(1, 1, 1), ICON_PX) end
+    return wrap
+end
+
+-- สร้างส่วนข้อความของการ์ด (คืน Instance ที่ AutomaticSize Y, กว้าง = ที่เหลือจากไอคอนซ้าย)
+local function buildContent(parent, text, theme)
+    local segs = tokenize(text)
+    local hasIcon = false
+    for _, sg in ipairs(segs) do
+        if sg.t == "icon" then hasIcon = true; break end
+    end
+
+    if not hasIcon then
+        return mk("TextLabel", {
+            Name = "Header", BackgroundTransparency = 1, LayoutOrder = 2,
+            Size = UDim2.new(1, -32, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            Font = Enum.Font.GothamBold, TextSize = TEXT_SIZE, TextColor3 = theme.text,
+            RichText = true, TextWrapped = true,
+            TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
+            Text = text,
+        }, parent)
+    end
+
+    local content = mk("Frame", {
+        Name = "Header", BackgroundTransparency = 1, LayoutOrder = 2,
+        Size = UDim2.new(1, -32, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+    }, parent)
+    mk("UIListLayout", {
+        FillDirection = Enum.FillDirection.Vertical,
+        SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2),
+    }, content)
+
+    local lineIdx, line, order = 0, nil, 0
+    local function newLine()
+        lineIdx = lineIdx + 1; order = 0
+        line = mk("Frame", {
+            Name = "Line", BackgroundTransparency = 1, LayoutOrder = lineIdx,
+            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+        }, content)
+        mk("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal, Wraps = true,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 4),
+        }, line)
+    end
+    newLine()
+
+    for _, sg in ipairs(segs) do
+        if sg.t == "icon" then
+            order = order + 1
+            iconItem(line, sg.v, order)
+        else
+            local first = true
+            for part in (sg.v .. "\n"):gmatch("(.-)\n") do
+                if not first then newLine() end
+                first = false
+                for word in part:gmatch("%S+") do
+                    order = order + 1
+                    wordLabel(line, word, theme.text, order)
+                end
+            end
+        end
+    end
+    return content
 end
 
 -- ── GUI root ──────────────────────────────────────────────────────────────────
@@ -236,19 +481,9 @@ local function run(mode, text, duration)
         }, body)
         mk("UICorner", { CornerRadius = UDim.new(1, 0) }, icon)
         mk("UIStroke", { Color = theme.icon, Thickness = 1.5, Transparency = 0.1 }, icon)
-        mk("TextLabel", {
-            BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
-            Font = Enum.Font.GothamBold, Text = theme.glyph, TextSize = 13, TextColor3 = theme.icon,
-        }, icon)
+        drawSymbol(icon, theme.symbol, theme.icon, 22)
 
-        mk("TextLabel", {
-            Name = "Header", BackgroundTransparency = 1, LayoutOrder = 2,
-            Size = UDim2.new(1, -32, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-            Font = Enum.Font.GothamBold, TextSize = TEXT_SIZE, TextColor3 = theme.text,
-            RichText = true, TextWrapped = true,
-            TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
-            Text = text,
-        }, body)
+        buildContent(body, text, theme)
 
         mk("Frame", {
             Name = "Stripe", BackgroundColor3 = theme.accent, BorderSizePixel = 0,
