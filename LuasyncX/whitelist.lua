@@ -528,7 +528,7 @@ end
 -- IMPORTANT: whenever CFG.notifLibUrl's content is intentionally changed,
 -- this constant must be recomputed and updated, or every load will be
 -- refused with a hash-mismatch warning.
-local EXPECTED_NOTIFLIB_HASH = "C11A5FC8" -- DJB2 of current Tools/notiflib.lua content (GitHub) — refreshed 2026-09-14
+local EXPECTED_NOTIFLIB_HASH = "F6B0888D" -- DJB2 of current Tools/notiflib.lua content (GitHub) — refreshed 2026-09-22
 
 task.spawn(function()
     local _nlOk, _nlSrc = safeGet(CFG.notifLibUrl)
