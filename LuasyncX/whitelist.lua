@@ -1525,7 +1525,8 @@ local _mainOk = xpcall(function()
     for i = 1, 3 do
         log(("Connecting to API... (%d/3)"):format(i), "loading")
         local _st
-        callOk, raw, _st = _awaitResult(function() return apiLookup(_getKey(), hwid, 5) end, 5)
+        -- 8 วิ (เดิม 5): เน็ตมือถือ + TLS + proxy ของ host ช้าได้เกิน 5 วิ ทำให้ timeout ทั้งที่ server ตอบปกติ
+        callOk, raw, _st = _awaitResult(function() return apiLookup(_getKey(), hwid, 8) end, 8)
         if callOk == nil then _whyFail = "timeout" elseif callOk == false then _whyFail = "no response" end
         if _st then _lastStatus = _st end
         callOk = callOk or false; raw = raw or ""
