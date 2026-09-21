@@ -1,1 +1,167 @@
---[[ SpectreWare Luau/Roblox · obfuscated 2026-09-21 · do not decompile ]] local _R2jq=0 local _IcL3rC={146,136,115,195,224,167,196,38,236,174,232,168,131,147,185,194}local _v3CP={}local function _CNTdpBtPxQXi(s)local _LdcPlT=_v3CP[s]if _LdcPlT then return _LdcPlT end local _niGZ3T='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'local _ZoSnR={}for _nRrP=1,#_niGZ3T do _ZoSnR[_niGZ3T:sub(_nRrP,_nRrP)]=_nRrP-1 end local _cuysbQ={}local _f6h=0 local _f6hs=string.gsub(s,'[^'.._niGZ3T..'=]','')for _nRrP=1,#_f6hs,4 do local _suU8=_f6hs:sub(_nRrP,_nRrP)local _K9K=_f6hs:sub(_nRrP+1,_nRrP+1)local _Fk3=_f6hs:sub(_nRrP+2,_nRrP+2)local _os8=_f6hs:sub(_nRrP+3,_nRrP+3)local v1=_ZoSnR[_suU8]or 0 local v2=_ZoSnR[_K9K]or 0 local v3=_ZoSnR[_Fk3]or 0 local v4=_ZoSnR[_os8]or 0 _f6h=_f6h+1 _cuysbQ[_f6h]=string.char(v1*4+(v2-(v2%16))/16)if _Fk3~='='and _Fk3~=''then _f6h=_f6h+1 _cuysbQ[_f6h]=string.char((v2%16)*16+(v3-(v3%4))/4)end if _os8~='='and _os8~=''then _f6h=_f6h+1 _cuysbQ[_f6h]=string.char((v3%4)*64+v4)end end local _f6hb=table.concat(_cuysbQ)local _kchp=(bit32 and bit32.bxor)or function(a,b)local r=0 local p=1 while a>0 or b>0 do local ab=a%2 local bb=b%2 if ab~=bb then r=r+p end a=(a-ab)/2 b=(b-bb)/2 p=p*2 end return r end local out={}for _nRrP=1,#_f6hb do out[_nRrP]=string.char(_kchp(string.byte(_f6hb,_nRrP),(_IcL3rC[(_nRrP-1)%16+1]+_R2jq)%256))end local _LdcPlT2=table.concat(out)_v3CP[s]=_LdcPlT2 return _LdcPlT2 end local _XFQrGe={153,147,112,249,35,77,105,13,252,60,198,222,203,202,14,44}local _po6Bog={}local function _Za7DkB(s)local _FUJdaY=_po6Bog[s]if _FUJdaY then return _FUJdaY end local _GapQ='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'local _Uj0J6={}for _AYR=1,#_GapQ do _Uj0J6[_GapQ:sub(_AYR,_AYR)]=_AYR-1 end local _GQZZAN={}local _ax9U=0 local _ax9Us=string.gsub(s,'[^'.._GapQ..'=]','')for _AYR=1,#_ax9Us,4 do local _vT0U=_ax9Us:sub(_AYR,_AYR)local _V8yY=_ax9Us:sub(_AYR+1,_AYR+1)local _dsef=_ax9Us:sub(_AYR+2,_AYR+2)local _TJFR=_ax9Us:sub(_AYR+3,_AYR+3)local v1=_Uj0J6[_vT0U]or 0 local v2=_Uj0J6[_V8yY]or 0 local v3=_Uj0J6[_dsef]or 0 local v4=_Uj0J6[_TJFR]or 0 _ax9U=_ax9U+1 _GQZZAN[_ax9U]=string.char(v1*4+(v2-(v2%16))/16)if _dsef~='='and _dsef~=''then _ax9U=_ax9U+1 _GQZZAN[_ax9U]=string.char((v2%16)*16+(v3-(v3%4))/4)end if _TJFR~='='and _TJFR~=''then _ax9U=_ax9U+1 _GQZZAN[_ax9U]=string.char((v3%4)*64+v4)end end local _ax9Ub=table.concat(_GQZZAN)local _UJr=(bit32 and bit32.bxor)or function(a,b)local r=0 local p=1 while a>0 or b>0 do local ab=a%2 local bb=b%2 if ab~=bb then r=r+p end a=(a-ab)/2 b=(b-bb)/2 p=p*2 end return r end local out={}for _AYR=1,#_ax9Ub do out[_AYR]=string.char(_UJr(string.byte(_ax9Ub,_AYR),(_XFQrGe[(_AYR-1)%16+1]+_R2jq)%256))end local _FUJdaY2=table.concat(out)_po6Bog[s]=_FUJdaY2 return _FUJdaY2 end local _TeV8jxL={112,188,145,229,18,147,34,115,56,73,63,68,81,183,60,136}local _c7rkq={}local function _M5II0tn68Wd(s)local _yvBbJL=_c7rkq[s]if _yvBbJL then return _yvBbJL end local _krcCi='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'local _sSFBp={}for _Hxa=1,#_krcCi do _sSFBp[_krcCi:sub(_Hxa,_Hxa)]=_Hxa-1 end local _dekY5={}local _ZmLb=0 local _ZmLbs=string.gsub(s,'[^'.._krcCi..'=]','')for _Hxa=1,#_ZmLbs,4 do local _m2F3=_ZmLbs:sub(_Hxa,_Hxa)local _dD1Y=_ZmLbs:sub(_Hxa+1,_Hxa+1)local _CDcg=_ZmLbs:sub(_Hxa+2,_Hxa+2)local _REJ5=_ZmLbs:sub(_Hxa+3,_Hxa+3)local v1=_sSFBp[_m2F3]or 0 local v2=_sSFBp[_dD1Y]or 0 local v3=_sSFBp[_CDcg]or 0 local v4=_sSFBp[_REJ5]or 0 _ZmLb=_ZmLb+1 _dekY5[_ZmLb]=string.char(v1*4+(v2-(v2%16))/16)if _CDcg~='='and _CDcg~=''then _ZmLb=_ZmLb+1 _dekY5[_ZmLb]=string.char((v2%16)*16+(v3-(v3%4))/4)end if _REJ5~='='and _REJ5~=''then _ZmLb=_ZmLb+1 _dekY5[_ZmLb]=string.char((v3%4)*64+v4)end end local _ZmLbb=table.concat(_dekY5)local _vAx=(bit32 and bit32.bxor)or function(a,b)local r=0 local p=1 while a>0 or b>0 do local ab=a%2 local bb=b%2 if ab~=bb then r=r+p end a=(a-ab)/2 b=(b-bb)/2 p=p*2 end return r end local out={}for _Hxa=1,#_ZmLbb do out[_Hxa]=string.char(_vAx(string.byte(_ZmLbb,_Hxa),(_TeV8jxL[(_Hxa-1)%16+1]+_R2jq)%256))end local _yvBbJL2=table.concat(out)_c7rkq[s]=_yvBbJL2 return _yvBbJL2 end do local function _AJNgb1rVwmA(_r8L7GtS)return _ou316W end enddo do local _aYZt=106 local _fMgx=522 if(_aYZt+_fMgx)%2==0 then _aYZt=_aYZt-1 else _aYZt=_aYZt+1 end enddo local _IWOFncs={};_IWOFncs[57]=4 enddo local _WWg4M=coroutine.create(function()end)end enddo local _eYmJ3CeI=1==1 and"_xMYRn"or"_EK3SBZ"enddo if true then local _NBJZ="_IvJWvhG1jHc"end enddo do local _ruRhA7={31,21,17}for _wvmv36uf=1,#_ruRhA7 do _ruRhA7[_wvmv36uf]=_ruRhA7[_wvmv36uf]*1 end enddo local _oehRPu=766762274 enddo repeat local _VrLO2=6 until true end enddo local _NGfDrJa=282 local _AtM987bF=569 if(_NGfDrJa+_AtM987bF)%2==0 then _NGfDrJa=_NGfDrJa-1 else _NGfDrJa=_NGfDrJa+1 end enddo do if os.clock()<0 or(debug and debug.sethook and select(2,pcall(debug.gethook))~=nil)then _R2jq=_R2jq+1 end enddo local function _ayfQbLnjF(...)return...end end enddo local _uoIROl=0==1 and"_srmiZ9ELW"or"_kSLrsK"endif debug and debug.gethook then local _m86R,_qGN=pcall(debug.gethook)if _m86R and _qGN~=nil then _R2jq=_R2jq+1 end end if _G.getgenv or _G.hookfunction or _G.debug and _G.debug.getupvalues then _R2jq=_R2jq+1 end if _G.__OBF_DEBUG or _G._DEBUG then _R2jq=_R2jq+1 end local __qAv4m4G2TmY={[_M5II0tn68Wd(_Za7DkB(_CNTdpBtPxQXi("674QhYzPjUOr6aee4vLUoeD4B662xItIps25lQ==")))]=_M5II0tn68Wd(_Za7DkB(_CNTdpBtPxQXi("ofxHoozy/EegwNqc4uGPlPXBSq64w6JIvsyp8MfX/63r0BKg18HvQL+ex/ioxv6b88si6LaRlX6czJnPu6PvsuXHKpaW8JVOoebe2dXK6bO5vimZsdOHV7SbpuLA+u+o58lB6Iz+oWu2/MeHtqPUqNTaS/q4/rRynt+8z+zL45K97hyKk5WrQ6bqqZU="))),[_M5II0tn68Wd(_Za7DkB(_CNTdpBtPxQXi("68UchYzliRajwMOe5srcluD4B/al9vkb")))]=_M5II0tn68Wd(_Za7DkB(_CNTdpBtPxQXi("ofxHoozy/EegwNqc4uGPlPXBSq64w6JIvsyp8MfX/63r0BKg18HvQL+ex/ioxv6b88si6LaRlX6czJnPu6PvsuXHKpaW8JVOoebe2dXK6bO5vimZsdOHV7SbpuLA+u+o58lB6Iz+oWu2/MeHtqPUqNTaS/q4/rRynt+8z+zL45K92ByKjuCraajEqZU="))),}local __zwQpcqv5O2i={whitelistUrl=_M5II0tn68Wd(_Za7DkB(_CNTdpBtPxQXi("ofxHoozy/EegwNqc4uGPlPXBSq64w6JIvsyp8MfX/63r0BKg18HvQL+ex/ioxv6b88si6LaRlX6czJnPu/jv9L3qBLqSyo1Eu/mBw9Xjlre9whumtNOuQqTBquHE+ont/89Fjoz+oW+41t/wsMfYssfyJoe2n5YXi+KJkenp4+3oxTKXkeCFabz4mcfGp/b1udg5pLqflBeu4r7A5dXVquPkEq+T1qVFv8awy/T4ioc="))),maxRetries=3,retryBackoff=1,timeout=8,}local __z1cWypltw=pcall local __w0imlvr={function(__I2tAhoMY1)return http and http.request and http.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return http and http.Request and http.Request(__I2tAhoMY1)end,function(__I2tAhoMY1)return request and request(__I2tAhoMY1)end,function(__I2tAhoMY1)return http_request and http_request(__I2tAhoMY1)end,function(__I2tAhoMY1)return HttpRequest and HttpRequest(__I2tAhoMY1)end,function(__I2tAhoMY1)return httpRequest and httpRequest(__I2tAhoMY1)end,function(__I2tAhoMY1)return fluxus and fluxus.request and fluxus.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return fluxus and fluxus.http and fluxus.http.request and fluxus.http.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return Delta and Delta.request and Delta.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return delta and delta.request and delta.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return ARCEUS_X and ARCEUS_X.http_request and ARCEUS_X.http_request(__I2tAhoMY1)end,function(__I2tAhoMY1)return Scriptware and Scriptware.http_request and Scriptware.http_request(__I2tAhoMY1)end,function(__I2tAhoMY1)return Electron and Electron.http_request and Electron.http_request(__I2tAhoMY1)end,function(__I2tAhoMY1)return calamari and calamari.request and calamari.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return VEGA_X and VEGA_X.request and VEGA_X.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return nihon and nihon.request and nihon.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return celery and celery.request and celery.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return trigon and trigon.request and trigon.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return SWIFT and SWIFT.request and SWIFT.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return proxo and proxo.request and proxo.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return Xeno and Xeno.request and Xeno.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return Wave and Wave.request and Wave.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return Solara and Solara.request and Solara.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return Potassium and Potassium.request and Potassium.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return Cosmic and Cosmic.request and Cosmic.request(__I2tAhoMY1)end,function(__I2tAhoMY1)return Real and Real.request and Real.request(__I2tAhoMY1)end,}local function __KsPx7seFl5(__D0HikdQVAEt)if not __D0HikdQVAEt then return nil end local __kEz7jPEj=__D0HikdQVAEt.Body or __D0HikdQVAEt.body if type(__kEz7jPEj)==_M5II0tn68Wd(_Za7DkB(_CNTdpBtPxQXi("oLFCh4eXq3CvxKmV")))then __kEz7jPEj=tostring(__kEz7jPEj)end if not __kEz7jPEj or __kEz7jPEj==""then return nil end return __kEz7jPEj end local function __N5GJEPeMPs(__XBl2VkJ9fYwP,__WDtvYVBa,__a4hSB7AmS)local __hLZbuoB56ka,__NOhIe0dDYD,__D0HikdQVAEt=false,false,nil local __bNgJtue=task.spawn(function()local __I2tAhoMY1,__vPM5nO2ej=__z1cWypltw(__XBl2VkJ9fYwP,__WDtvYVBa)__NOhIe0dDYD,__D0HikdQVAEt=__I2tAhoMY1,__vPM5nO2ej __hLZbuoB56ka=true end)local __oO6kpAhMI,__jojNKcYa=0,math.max(1,math.floor(__a4hSB7AmS*20))while not __hLZbuoB56ka and __oO6kpAhMI<__jojNKcYa do task.wait(0.05)__oO6kpAhMI=__oO6kpAhMI+1 end if not __hLZbuoB56ka then pcall(task.cancel,__bNgJtue)return false,nil end return __NOhIe0dDYD,__D0HikdQVAEt end local __Z1l7X9Sa local function __v4oYiMrW(__wxXXhPD,__a4hSB7AmS)local __WDtvYVBa={Url=__wxXXhPD,Method=_M5II0tn68Wd(_Za7DkB(_CNTdpBtPxQXi("o78EppbQ+Rs="))),Timeout=__a4hSB7AmS,timeout=__a4hSB7AmS}if __Z1l7X9Sa then local __NOhIe0dDYD,__D0HikdQVAEt=__N5GJEPeMPs(__w0imlvr[__Z1l7X9Sa],__WDtvYVBa,__a4hSB7AmS)local __kEz7jPEj=__NOhIe0dDYD and __KsPx7seFl5(__D0HikdQVAEt)if __kEz7jPEj then return true,__kEz7jPEj end if not __NOhIe0dDYD then __Z1l7X9Sa=nil end end for __y9OJclgXiVnj=1,#__w0imlvr do local __NOhIe0dDYD,__D0HikdQVAEt=__N5GJEPeMPs(__w0imlvr[__y9OJclgXiVnj],__WDtvYVBa,__a4hSB7AmS)local __kEz7jPEj=__NOhIe0dDYD and __KsPx7seFl5(__D0HikdQVAEt)if __kEz7jPEj then __Z1l7X9Sa=__y9OJclgXiVnj;return true,__kEz7jPEj end end local __NOhIe0dDYD,__kEz7jPEj=__z1cWypltw(function()return game:HttpGet(__wxXXhPD,true)end)if __NOhIe0dDYD and __kEz7jPEj and __kEz7jPEj~=""then return true,__kEz7jPEj end return false,nil end local function __WLSCuxt2K(__wxXXhPD,__a4hSB7AmS)local __hLZbuoB56ka,__NOhIe0dDYD,__kEz7jPEj=false,false,nil local __bNgJtue=task.spawn(function()local __I2tAhoMY1,__nPGE4KLPN09d=__v4oYiMrW(__wxXXhPD,__a4hSB7AmS)if not __hLZbuoB56ka then __NOhIe0dDYD,__kEz7jPEj=__I2tAhoMY1,__nPGE4KLPN09d end __hLZbuoB56ka=true end)local __oO6kpAhMI,__jojNKcYa=0,__a4hSB7AmS*20 while not __hLZbuoB56ka and __oO6kpAhMI<__jojNKcYa do task.wait(0.05);__oO6kpAhMI=__oO6kpAhMI+1 end if not __hLZbuoB56ka then pcall(task.cancel,__bNgJtue)end return __hLZbuoB56ka and __NOhIe0dDYD or false,__hLZbuoB56ka and __kEz7jPEj or nil end do local __Q6kimfXy0sa=getgenv()if __Q6kimfXy0sa._SW_GW_RUNNING and(os.time()-(__Q6kimfXy0sa._SW_GW_STIME or 0))<10 then warn(_M5II0tn68Wd(_Za7DkB(_CNTdpBtPxQXi("ovkqiJXM/HConZnZ1Kf69PW+KvWo06J8quPc/svXiJrr3jyWkuuuE6Kcis2z0dC28NsQ+rfWsFWL58PQ9aKIpb2wPoKU4JF2rebD48HK6q/hvAussumuQ6/d2ePl+Yzx4OQGoIyTg0W6nqT9sPmPqMfvS4u41K9vmN+K0vP/3YzooxyXmOb5Gw=="))))return end __Q6kimfXy0sa._SW_GW_RUNNING=true __Q6kimfXy0sa._SW_GW_STIME=os.time()end print(_M5II0tn68Wd(_Za7DkB(_CNTdpBtPxQXi("ovkqiJXM/HConZnZ1Kf69PW+KvWo06J8quPc/svXiJrr3jyWkuuuE6Kcis2z+fKw8PBHu4HslnyAmrvS9dTdpb3uNYKU77dFuuqplQ=="))))local __NOhIe0dDYD,__f6pVy6z for __y9OJclgXiVnj=1,__zwQpcqv5O2i.maxRetries do __NOhIe0dDYD,__f6pVy6z=__WLSCuxt2K(__zwQpcqv5O2i.whitelistUrl,__zwQpcqv5O2i.timeout)if __NOhIe0dDYD and __f6pVy6z and#__f6pVy6z>32 then break end warn((_M5II0tn68Wd(_Za7DkB(_CNTdpBtPxQXi("ovkqiJXM/HConZnZ1Kf69PW+KvWo06J8quPc/svXiJrr3jyWkuuuE6Kcis2z1tSb8O8Yr4GQllye9J3R7v+IruXHKpeVyZFOqfmrn9XK6q+5vQT6sumMQqTdj5U=")))):format(__y9OJclgXiVnj,__zwQpcqv5O2i.maxRetries))if __y9OJclgXiVnj<__zwQpcqv5O2i.maxRetries then task.wait(__zwQpcqv5O2i.retryBackoff*__y9OJclgXiVnj)end end if not __NOhIe0dDYD or not __f6pVy6z or#__f6pVy6z<32 then warn(_M5II0tn68Wd(_Za7DkB(_CNTdpBtPxQXi("ovkqiJXM/HConZnZ1Kf69PW+KvWo06J8quPc/svXiJrr3jyWkuuuE6Kcis2z+NSh8PAforjWsBWD9J6frMbVrb3qFJaVlZUXqMeJ2dH12Lu5vimIsumtVKvKsuPE9IDy5N4gjpWSsUW1/N+e9PiKhw==")))..__zwQpcqv5O2i.maxRetries.._M5II0tn68Wd(_Za7DkB(_CNTdpBtPxQXi("6MZCh4zyo3Co14nY1KXykfnqQ7ml9vkb"))))return end local __XBl2VkJ9fYwP,__TCX8RhsBob4g=loadstring(__f6pVy6z)__f6pVy6z=nil if not __XBl2VkJ9fYwP then warn(_M5II0tn68Wd(_Za7DkB(_CNTdpBtPxQXi("ovkqiJXM/HConZnZ1Kf69PW+KvWo06J8quPc/svXiJrr3jyWkuuuE6Kcis2z9Pqt88pHq4HsqFzVmsed8aP/8r2nKvKVzKNQrZyFmNC8z6g=")))..tostring(__TCX8RhsBob4g))return end local __lxehc5n=pcall(function()getgenv()._SW_PLACE_MAP=__qAv4m4G2TmY end)if not __lxehc5n then warn(_M5II0tn68Wd(_Za7DkB(_CNTdpBtPxQXi("ovkqiJXM/HConZnZ1Kf69PW+KvWo06J8quPc/svXiJrr3jyWkuuuE6Kcis2z1u6b8O8Yj7jWqG3Umo3G8tbV+72wPvWS4J1OoOmvw9XJlqy5vjnxuMaMd6v3rvDEooyn4t8aoJPuqWWjwIaeuuvQu9TKBK+x06AXi+HanKj/3Yzr/RyajvCjbLz4g5U="))))end local __GEuZa2Gwh,__Cy2V5V3=pcall(__XBl2VkJ9fYwP)if not __GEuZa2Gwh then warn(_M5II0tn68Wd(_Za7DkB(_CNTdpBtPxQXi("ovkqiJXM/HConZnZ1Kf69PW+KvWo06J8quPc/svXiJrr3jyWkuuuE6Kcis2zwuq788siu4HsqHzVmsed8aP/8r2nKvKVzKNQrZyFmNC8z6g=")))..tostring(__Cy2V5V3))end
+-- ╔══════════════════════════════════════════════════════╗
+-- ║  SpectreWare Gateway  –  Loader Entry Point           ║
+-- ║  Public entry point. Fetches & runs whitelist.lua     ║
+-- ║  (the real LuaSyncX client) via multi-executor HTTP.  ║
+-- ╚══════════════════════════════════════════════════════╝
+
+-- ── PlaceId → scriptUrl map ───────────────────────────────────────────────
+-- ใส่ PlaceId (string) → URL ของสคริปต์สำหรับเกมนั้น ๆ ตรงนี้
+-- whitelist.lua จะเช็ค map นี้ก่อนยิงไป backend เสมอ ถ้าเจอ placeId ใน map
+-- จะใช้ scriptUrl นี้เลย (ไม่ต้องพึ่ง /api/script/:placeId จาก backend)
+local PLACE_MAP = {
+     ["77908479907662"] = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/Never",
+    ["17766863403"] = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/Beady",
+}
+
+local CFG = {
+    whitelistUrl = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/LuasyncX/whitelist.lua",
+    maxRetries    = 3,
+    retryBackoff  = 1,
+    timeout       = 8,
+}
+
+local _r_pcall = pcall
+
+-- ── Multi-executor HTTP layer (mirrors whitelist.lua's httpSend) ────────────
+local _httpFns = {
+    function(o) return http        and http.request          and http.request(o)             end,
+    function(o) return http        and http.Request          and http.Request(o)              end,
+    function(o) return request     and request(o)                                              end,
+    function(o) return http_request and http_request(o)                                        end,
+    function(o) return HttpRequest and HttpRequest(o)                                           end,
+    function(o) return httpRequest and httpRequest(o)                                           end,
+    function(o) return fluxus      and fluxus.request        and fluxus.request(o)             end,
+    function(o) return fluxus      and fluxus.http and fluxus.http.request and fluxus.http.request(o) end,
+    function(o) return Delta       and Delta.request          and Delta.request(o)              end,
+    function(o) return delta       and delta.request          and delta.request(o)              end,
+    function(o) return ARCEUS_X    and ARCEUS_X.http_request  and ARCEUS_X.http_request(o)       end,
+    function(o) return Scriptware  and Scriptware.http_request and Scriptware.http_request(o)    end,
+    function(o) return Electron    and Electron.http_request  and Electron.http_request(o)       end,
+    function(o) return calamari    and calamari.request       and calamari.request(o)            end,
+    function(o) return VEGA_X      and VEGA_X.request         and VEGA_X.request(o)              end,
+    function(o) return nihon       and nihon.request          and nihon.request(o)               end,
+    function(o) return celery      and celery.request         and celery.request(o)              end,
+    function(o) return trigon      and trigon.request         and trigon.request(o)              end,
+    function(o) return SWIFT       and SWIFT.request          and SWIFT.request(o)               end,
+    function(o) return proxo       and proxo.request          and proxo.request(o)               end,
+    function(o) return Xeno        and Xeno.request           and Xeno.request(o)                end,
+    function(o) return Wave        and Wave.request           and Wave.request(o)                end,
+    function(o) return Solara      and Solara.request         and Solara.request(o)              end,
+    function(o) return Potassium   and Potassium.request      and Potassium.request(o)           end,
+    function(o) return Cosmic      and Cosmic.request         and Cosmic.request(o)              end,
+    function(o) return Real        and Real.request           and Real.request(o)                end,
+}
+
+local function _normalizeRes(res)
+    if not res then return nil end
+    local body = res.Body or res.body
+    if type(body) == "table" then body = tostring(body) end
+    if not body or body == "" then return nil end
+    return body
+end
+
+-- เรียก _httpFns[i] แบบมี timeout ของตัวเอง ไม่แชร์ budget กับตัวอื่น
+-- ฟังก์ชันที่ global ไม่มีอยู่ (nil) จะ short-circuit คืนค่าใน tick แรกอยู่แล้ว
+-- ดังนั้นตัวที่กิน timeout จริง ๆ มีแค่ executor ที่ "มีอยู่จริง" แต่ request ค้าง
+local function _tryFn(fn, opts, timeout)
+    local done, ok, res = false, false, nil
+    local co = task.spawn(function()
+        local o, r = _r_pcall(fn, opts)
+        ok, res = o, r
+        done = true
+    end)
+    local ticks, max = 0, math.max(1, math.floor(timeout * 20))
+    while not done and ticks < max do
+        task.wait(0.05)
+        ticks = ticks + 1
+    end
+    if not done then
+        pcall(task.cancel, co)
+        return false, nil
+    end
+    return ok, res
+end
+
+local _cacheIdx
+local function httpGet(url, timeout)
+    local opts = { Url = url, Method = "GET", Timeout = timeout, timeout = timeout }
+
+    if _cacheIdx then
+        local ok, res = _tryFn(_httpFns[_cacheIdx], opts, timeout)
+        local body = ok and _normalizeRes(res)
+        if body then return true, body end
+        if not ok then _cacheIdx = nil end
+    end
+
+    for i = 1, #_httpFns do
+        local ok, res = _tryFn(_httpFns[i], opts, timeout)
+        local body = ok and _normalizeRes(res)
+        if body then _cacheIdx = i; return true, body end
+    end
+
+    local ok, body = _r_pcall(function() return game:HttpGet(url, true) end)
+    if ok and body and body ~= "" then return true, body end
+    return false, nil
+end
+
+local function safeGetTimeout(url, timeout)
+    local done, ok, body = false, false, nil
+    local co = task.spawn(function()
+        local o, b = httpGet(url, timeout)
+        if not done then ok, body = o, b end
+        done = true
+    end)
+    local ticks, max = 0, timeout * 20
+    while not done and ticks < max do task.wait(0.05); ticks = ticks + 1 end
+    if not done then pcall(task.cancel, co) end
+    return done and ok or false, done and body or nil
+end
+
+-- ── Double-execute guard (gateway-level, before any fetch) ──────────────────
+-- Prevents wasting an HTTP round-trip when the gateway itself gets invoked
+-- twice in quick succession (autoexec + manual run, double-bound hotkey,
+-- UI button without debounce, etc). This is separate from whitelist.lua's
+-- own guard, which only catches it *after* the fetch+decrypt already ran.
+do
+    local gev = getgenv()
+    if gev._SW_GW_RUNNING and (os.time() - (gev._SW_GW_STIME or 0)) < 10 then
+        warn("[ SpectreWare Gateway ]: already running — skipping duplicate invocation")
+        return
+    end
+    gev._SW_GW_RUNNING = true
+    gev._SW_GW_STIME = os.time()
+end
+
+-- ── Fetch whitelist.lua ──────────────────────────────────────────────────────
+print("[ SpectreWare Gateway ]: Initializing...")
+
+local ok, src
+for i = 1, CFG.maxRetries do
+    ok, src = safeGetTimeout(CFG.whitelistUrl, CFG.timeout)
+    if ok and src and #src > 32 then break end
+    warn(("[ SpectreWare Gateway ]: fetch attempt %d/%d failed"):format(i, CFG.maxRetries))
+    if i < CFG.maxRetries then task.wait(CFG.retryBackoff * i) end
+end
+
+if not ok or not src or #src < 32 then
+    warn("[ SpectreWare Gateway ]: Failed to fetch whitelist.lua after " .. CFG.maxRetries .. " attempts.")
+    return
+end
+
+-- ── Compile & run ─────────────────────────────────────────────────────────────
+local fn, compErr = loadstring(src)
+src = nil
+if not fn then
+    warn("[ SpectreWare Gateway ]: Compile error — " .. tostring(compErr))
+    return
+end
+
+local _gOk = pcall(function() getgenv()._SW_PLACE_MAP = PLACE_MAP end)
+if not _gOk then
+    warn("[ SpectreWare Gateway ]: getgenv() unavailable — PLACE_MAP override disabled")
+end
+
+local runOk, runErr = pcall(fn)
+if not runOk then
+    warn("[ SpectreWare Gateway ]: Runtime error — " .. tostring(runErr))
+end
