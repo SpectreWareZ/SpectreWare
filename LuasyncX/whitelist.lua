@@ -411,13 +411,25 @@ local function _banner(msg)
     print(_TAG .. _stripDeco(msg))
 end
 
-local function log(msg, t)
+-- ── Loader UI bridge ─────────────────────────────────────────────────────────
+-- gateway.lua สร้าง UI โหลดไว้ที่ getgenv()._SW_LOADER ตั้งแต่ตอนรันสคริปต์
+-- log() ทุกบรรทัดจะอัปเดตข้อความ/progress ให้อัตโนมัติ (kind: loading/info/success/error/done)
+-- uiMsg = ข้อความที่จะโชว์บน UI แทน msg (ใช้กับบรรทัดที่มีข้อมูลอ่อนไหว เช่น key/HWID)
+local function _ui(fnName, ...)
+    local ok, L = _r_pcall(function() return getgenv()._SW_LOADER end)
+    if ok and _r_type(L) == "table" and _r_type(L[fnName]) == "function" then
+        _r_pcall(L[fnName], ...)
+    end
+end
+
+local function log(msg, t, uiMsg)
     local m = _stripDeco(msg)
     if t == "error" then
         warn(_TAG .. m)
     else
         print(_TAG .. m)
     end
+    _ui("Log", uiMsg or m, t)
 end
 local function try(fn, def) local ok, v = pcall(fn); return ok and v or def end
 
@@ -646,6 +658,7 @@ end
 -- ── HWID Reset UI ─────────────────────────────────────────────────────────────
 local function _showHWIDResetUI(currentHwid, kickDelay)
     kickDelay = kickDelay or 5
+    _ui("Close")
     local _ok, _err = pcall(function()
         local pgOk, pg = pcall(function() return game:GetService("CoreGui") end)
         if not pgOk or not pg then
@@ -1375,7 +1388,7 @@ local _mainOk = xpcall(function()
         local _label  = _isDev and "DEV ACCESS 👑"  or "FREE ACCESS 🎁"
         local _keyTag = _isDev and "[DEV]"           or "[FREE]"
         local _timeTag = _isDev and "∞  Developer"  or "∞  Free"
-        log(_label .. "  ·  " .. PL.Name .. "  ·  " .. _timeTag, "success")
+        log(_label .. "  ·  " .. PL.Name .. "  ·  " .. _timeTag, "success", "Access granted")
         task.wait(0.5)
         task.delay(1, function() _notifyWL(_timeTag, _isDev and "DEV 👑" or "FREE 🎁") end)
         _expiresAt_cached = -1
@@ -1396,8 +1409,8 @@ local _mainOk = xpcall(function()
         if not _r_rawequal(_native_loadstring, _r_loadstring) then integrityFail("loadstring_hooked"); return end
         task.wait(0.35)
         local _fn, _err = _native_loadstring(_src); _src = nil
-        if not _fn then log("Compile error: " .. tostring(_err), "error"); getgenv()[_GK.running] = nil; return end
-        _verified = true; task.spawn(_fn); log("Script launched 🚀", "success"); _div()
+        if not _fn then log("Compile error: " .. tostring(_err), "error", "Script compile error"); getgenv()[_GK.running] = nil; return end
+        _verified = true; task.spawn(_fn); log("Script launched 🚀", "done"); _div()
         return
     end
 
@@ -1414,13 +1427,13 @@ local _mainOk = xpcall(function()
     if not _checkRawops()  then warn("LuaSyncX: rawops hook pre-auth");  integrityFail("rawops_preauth");  return end
     _banner("⚡  LuaSyncX  v" .. CFG.loaderVersion .. "  ·  Initialising...")
     task.wait(0.5)
-    log("🔑  Key    ›  " .. maskKey(_getKey()), "loading")
+    log("🔑  Key    ›  " .. maskKey(_getKey()), "loading", "Checking key...")
     task.wait(0.4)
     hwid = getHWID()
     if hwid == "" or hwid == "UNKNOWN" then
         log("Cannot determine HWID", "error"); integrityFail("HWID unknown"); return
     end
-    log("🖥  HWID   ›  " .. tostring(hwid):sub(1, 28) .. "...", "info")
+    log("🖥  HWID   ›  " .. tostring(hwid):sub(1, 28) .. "...", "info", "Verifying device...")
     task.wait(0.4)
     print("[ LuaSyncX ]: Authenticating to Server...")
     local _authStart = os.clock()
@@ -1531,7 +1544,7 @@ local _mainOk = xpcall(function()
     local _summary = "VERIFIED  ·  " .. PL.Name
     if _discordName ~= "" then _summary = _summary .. "  ·  " .. _discordName end
     _summary = _summary .. "  ·  Expires: " .. timeLeft
-    log(_summary, "success")
+    log(_summary, "success", "Key verified")
     task.wait(0.5)
     task.delay(1, function() _notifyWL(timeLeft, "KEY") end)
     task.spawn(function() sendWebhook("login", { key = _getKey(), hwid = hwid, timeLeft = timeLeft, expiresAt = expiresAt }) end)
@@ -1612,8 +1625,8 @@ local _mainOk = xpcall(function()
     end
     task.wait(0.4)
     local fn, compErr = _native_loadstring(scriptSrc); scriptSrc = nil
-    if not fn then log("Compile error: " .. tostring(compErr), "error"); getgenv()[_GK.running] = nil; return end
-    _verified = true; task.spawn(fn); log("Script launched 🚀", "success"); _div()
+    if not fn then log("Compile error: " .. tostring(compErr), "error", "Script compile error"); getgenv()[_GK.running] = nil; return end
+    _verified = true; task.spawn(fn); log("Script launched 🚀", "done"); _div()
 
 end, function(err)
     warn("LuaSyncX: unexpected error — " .. tostring(err))
