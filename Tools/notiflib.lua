@@ -40,6 +40,9 @@ local SLIDE_OFFSET     = 56     -- px ที่เลื่อนเข้า/�
 local BG_COLOR         = Color3.fromRGB(18, 18, 24)
 local BG_TRANSPARENCY  = 0.06
 local SHADOW_TRANSPARENCY = 0.55
+local STROKE_TRANSPARENCY = 0.45
+local SYNC_DISMISS      = true   -- true = แจ้งเตือนที่โชว์ค้างพร้อมกันจะหายไปพร้อมกัน (ตามอันที่หมดเวลาทีหลังสุด)
+local HARD_GRACE       = 3      -- วินาที: เกินเวลานี้หลังหมดอายุ ตัวเก็บกวาดจะสั่งปิด/ลบให้ (กันค้าง)
 
 local THEMES = {
     Success = { accent = Color3.fromRGB(80, 220, 130), text = Color3.fromRGB(80, 220, 130),  icon = Color3.fromRGB(80, 220, 130),  symbol = "check" },
@@ -335,6 +338,7 @@ end
 local gui, container
 local activeList = {}
 local seq = 0
+local startJanitor -- ประกาศไว้ก่อน (ฟังก์ชันอยู่ด้านล่าง)
 
 local function alive()
     return gui ~= nil and gui.Parent ~= nil
@@ -398,6 +402,7 @@ local function ensureGui()
         return false
     end
     gui, container = g, c
+    startJanitor(g)
     return true
 end
 
@@ -419,13 +424,61 @@ local function enforceCap()
     end
 end
 
+-- ── กลุ่ม/เวลาเลิก/ตัวเก็บกวาด ─────────────────────────────────────────────────
+local BAR_FULL = UDim2.new(1, 0, 0, 3)
+
+local function liveStarted()
+    local list = {}
+    for _, r in ipairs(activeList) do
+        if r.started and not r.leaving then list[#list + 1] = r end
+    end
+    return list
+end
+
+-- แถบเวลาของทุกการ์ดต้องวิ่งเต็มพอดีตอนที่การ์ดนั้นจะออก (ปรับใหม่เมื่อ deadline ถูกขยายตามกลุ่ม)
+local function retimeBars()
+    for _, r in ipairs(liveStarted()) do
+        if r.bar and r.barDeadline ~= r.deadline then
+            r.barDeadline = r.deadline
+            r.hardExpire = r.deadline + HARD_GRACE
+            local remaining = math.max(0.05, r.deadline - os.clock())
+            play(r.bar, TweenInfo.new(remaining, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+                { Size = BAR_FULL })
+        end
+    end
+end
+
+-- กันค้าง: ถ้าการ์ดไหนเลยเวลาไปแล้ว (เช่น thread ของมันตายกลางทาง) สั่งปิด แล้วลบทิ้งถ้ายังไม่หาย
+startJanitor = function(g)
+    task.spawn(function()
+        while gui == g and g.Parent ~= nil do
+            task.wait(0.5)
+            local t = os.clock()
+            local copy = {}
+            for i, r in ipairs(activeList) do copy[i] = r end
+            for _, r in ipairs(copy) do
+                if r.hardExpire and t > r.hardExpire then
+                    r.closing = true
+                    if t > r.hardExpire + 2 then
+                        removeRec(r)
+                        if r.slot then pcall(function() r.slot:Destroy() end) end
+                    end
+                end
+            end
+        end
+    end)
+end
+
 -- ── One toast ─────────────────────────────────────────────────────────────────
 local function run(mode, text, duration)
     if not ensureGui() then return end
     local theme = THEMES[mode] or THEMES.Info
 
     seq = seq + 1
-    local rec = { closing = false }
+    local rec = {
+        closing = false, leaving = false, started = false,
+        hardExpire = os.clock() + duration + HARD_GRACE + 3,
+    }
     activeList[#activeList + 1] = rec
     enforceCap()
 
@@ -433,6 +486,7 @@ local function run(mode, text, duration)
         Name = "Slot", BackgroundTransparency = 1, LayoutOrder = seq,
         Size = UDim2.new(1, 0, 0, 0),
     }, container)
+    rec.slot = slot
 
     local body_ok, body_err = pcall(function()
         local holder = mk("Frame", {
@@ -458,7 +512,8 @@ local function run(mode, text, duration)
             GroupTransparency = GROUP_OK and 1 or nil,
         }, holder)
         mk("UICorner", { CornerRadius = UDim.new(0, CORNER) }, card)
-        mk("UIStroke", { Color = theme.accent, Thickness = 1, Transparency = 0.45 }, card)
+        -- หมายเหตุ: UIStroke ของ CanvasGroup เองไม่ถูกเฟดโดย GroupTransparency → ต้อง tween เอง (ไม่งั้นเหลือเส้นขอบผีค้าง)
+        local cardStroke = mk("UIStroke", { Color = theme.accent, Thickness = 1, Transparency = 1 }, card)
 
         local body = mk("Frame", {
             Name = "Body", BackgroundTransparency = 1,
@@ -506,24 +561,37 @@ local function run(mode, text, duration)
         end
         if H <= 8 then H = 56 end
 
+        -- เวลาเลิก: โหมด SYNC ทุกการ์ดที่ยังโชว์อยู่จะใช้ deadline เดียวกัน (ตัวที่หมดทีหลังสุด)
+        rec.deadline = os.clock() + duration
+        if SYNC_DISMISS then
+            local latest = rec.deadline
+            for _, r in ipairs(liveStarted()) do
+                if r.deadline and r.deadline > latest then latest = r.deadline end
+            end
+            for _, r in ipairs(liveStarted()) do r.deadline = latest end
+            rec.deadline = latest
+        end
+        rec.bar, rec.started = bar, true
+
         -- เข้า: ความสูง slot ขยาย + การ์ดเลื่อนเข้า + เฟด (ไม่มี overshoot บน layout)
         play(slot,   T_IN_SIZE,  { Size = UDim2.new(1, 0, 0, H + GAP) })
         play(holder, T_IN_SLIDE, { Position = UDim2.new(0, 0, 0, 0) })
         if GROUP_OK then play(card, T_IN_FADE, { GroupTransparency = 0 }) end
+        play(cardStroke, T_IN_FADE, { Transparency = STROKE_TRANSPARENCY })
         play(shadow, T_IN_FADE,  { ImageTransparency = SHADOW_TRANSPARENCY })
-        play(bar, TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
-            { Size = UDim2.new(1, 0, 0, 3) })
+        retimeBars()
 
         -- รอ (ตัดจบได้ทันทีถูกสั่งปิด / GUI ถูกลบ)
-        local elapsed = 0
-        while elapsed < duration and not rec.closing and slot.Parent do
-            elapsed = elapsed + frameWait()
+        while not rec.closing and slot.Parent and os.clock() < rec.deadline do
+            frameWait()
         end
+        rec.leaving = true
         if not slot.Parent then return end
 
-        -- ออก: เลื่อนไปขวา+เฟด → แล้วค่อยยุบความสูงให้อันข้างล่างไหลขึ้น
+        -- ออก: เลื่อนไปขวา+เฟด (รวมเส้นขอบ) → แล้วค่อยยุบความสูงให้อันข้างล่างไหลขึ้น
         play(holder, T_OUT_SLIDE, { Position = UDim2.new(0, SLIDE_OFFSET, 0, 0) })
         if GROUP_OK then play(card, T_OUT_FADE, { GroupTransparency = 1 }) end
+        play(cardStroke, T_OUT_FADE, { Transparency = 1 })
         play(shadow, T_OUT_FADE, { ImageTransparency = 1 })
         task.wait(OUT_SLIDE_WAIT)
         if not slot.Parent then return end
@@ -534,6 +602,7 @@ local function run(mode, text, duration)
     end)
     if not body_ok then warn("notif error: " .. tostring(body_err)) end
 
+    rec.leaving = true
     removeRec(rec)
     pcall(function() slot:Destroy() end)
 end
