@@ -1,5 +1,6 @@
 -- SpectreWare Notification Library  (rewrite — procedural, ไม่พึ่ง rbxassetid template)
 -- UI เดิมโดย IceMinister#9889 · เวอร์ชันนี้สร้างการ์ดจากโค้ดทั้งหมด
+-- เลย์เอาต์การ์ด: [ไอคอนโหมด + ชื่อโหมดตัวหนา] → [แถบเวลาเต็มความกว้าง] → [ข้อความ] (โทนเดิม เข้ากับ ui ประกาศ)
 --
 -- API (เข้ากันได้กับของเดิม):
 --   NotificationLibrary:SendNotification(Mode, Text, Duration)
@@ -35,10 +36,14 @@ local MARGIN_RIGHT     = 16     -- px
 local ANCHOR_Y         = 0.18   -- ตำแหน่งแนวตั้งของกอง (สัดส่วนความสูงจอ)
 local GAP              = 8      -- px ระหว่างการ์ด
 local TEXT_SIZE        = 15
+local TITLE_SIZE       = 17     -- ขนาดหัวข้อ (ชื่อโหมดตัวหนา แบบการ์ดประกาศ)
+local ICON_BOX         = 26     -- กรอบไอคอนหัวข้อ (px)
+local BAR_HEIGHT       = 4      -- ความสูงแถบเวลาที่วิ่งเต็มความกว้าง (px)
 local CORNER           = 10
 local SLIDE_OFFSET     = 56     -- px ที่เลื่อนเข้า/ออกจากขวา
 local BG_COLOR         = Color3.fromRGB(18, 18, 24)
 local BG_TRANSPARENCY  = 0.06
+local BODY_TEXT_COLOR  = Color3.fromRGB(180, 180, 196)  -- สีข้อความเนื้อหา (โทนเทาเดียวกันทุกโหมด)
 local SHADOW_TRANSPARENCY = 0.55
 local STROKE_TRANSPARENCY = 0.45
 local SYNC_DISMISS      = true   -- true = แจ้งเตือนที่โชว์ค้างพร้อมกันจะหายไปพร้อมกัน (ตามอันที่หมดเวลาทีหลังสุด)
@@ -92,10 +97,10 @@ end
 -- ── Icons (วาดจาก Frame ล้วน ๆ — ไม่พึ่ง asset / font emoji) ───────────────────
 -- ใน Text ใส่อีโมจิเดิมได้เลย ระบบจะสลับเป็นไอคอนให้อัตโนมัติ:
 --   ⚡ bolt · ✔ ✓ ✅ check · ⏳ ⌛ hourglass · 🔑 key · ⚠ warn · 👑 crown · 🎁 gift · ❌ x
--- ถ้าข้อความไม่มีอีโมจิเหล่านี้ จะใช้ TextLabel เดียว (RichText + ตัดบรรทัดแบบปกติ)
+-- ถ้าข้อความไม่มีอีโมจิเหล่านี้ จะใช้ TextLabel เดียว (RichText + ตัดบรรทัดแบบปกติ — รองรับไทยไม่มีเว้นวรรค)
+-- ถ้ามี: วางไอคอนนำหน้าท่อนข้อความทีละแถว (ไม่ตัดคำทีละคำอีกต่อไป กันบั๊กคำไทยยาวโดนตัดกลางคำ)
 local TEXT_LINE_H = math.floor(TEXT_SIZE * 1.4 + 0.5)
 local ICON_PX     = TEXT_LINE_H - 4
-local WORD_MAX_W  = CARD_MAX_WIDTH - 70
 
 local atan2 = math.atan2 or math.atan
 
@@ -213,15 +218,16 @@ local DRAW = {
     end,
 }
 
--- ไอคอนหลักซ้ายมือของการ์ด: สัญลักษณ์ตรงกลางวงแหวน
-local function drawSymbol(parent, name, color, px)
+-- ไอคอนหัวข้อของการ์ด: สัญลักษณ์กลางกรอบ (scale ปรับได้ — หัวข้อไม่มีวงแหวนล้อมแล้ว จึงขยายได้เต็มตา)
+local function drawSymbol(parent, name, color, px, scale)
     local fn = DRAW[name]
     if not fn then return end
+    scale = scale or 0.56
     local inner = mk("Frame", {
         BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.56, 0.56),
+        Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(scale, scale),
     }, parent)
-    fn(inner, color, px * 0.56)
+    fn(inner, color, px * scale)
 end
 
 -- แยกข้อความเป็น {t="text"|"icon", v=...}
@@ -245,19 +251,6 @@ local function tokenize(text)
     return segs
 end
 
-local function wordLabel(parent, word, color, order)
-    local l = mk("TextLabel", {
-        BackgroundTransparency = 1, LayoutOrder = order,
-        Size = UDim2.fromOffset(0, TEXT_LINE_H), AutomaticSize = Enum.AutomaticSize.X,
-        Font = Enum.Font.GothamBold, TextSize = TEXT_SIZE, TextColor3 = color,
-        RichText = true, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd,
-        TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
-        Text = word,
-    }, parent)
-    mk("UISizeConstraint", { MaxSize = Vector2.new(WORD_MAX_W, TEXT_LINE_H) }, l)
-    return l
-end
-
 local function iconItem(parent, name, order)
     local wrap = mk("Frame", {
         Name = "IconItem", BackgroundTransparency = 1, LayoutOrder = order,
@@ -272,8 +265,10 @@ local function iconItem(parent, name, order)
     return wrap
 end
 
--- สร้างส่วนข้อความของการ์ด (คืน Instance ที่ AutomaticSize Y, กว้าง = ที่เหลือจากไอคอนซ้าย)
-local function buildContent(parent, text, theme)
+-- ส่วนข้อความของการ์ด (อยู่ใต้แถบเวลาเต็มความกว้าง — คืน Instance ที่ AutomaticSize Y, กว้างเต็มการ์ด)
+-- ไม่มีอีโมจิ: TextLabel เดียวห่อบรรทัดปกติ (ปลอดภัยกับภาษาไทยที่ไม่มีเว้นวรรค)
+-- มีอีโมจิ: วางไอคอนนำหน้าแล้วท่อนข้อความที่เหลือ "ห่อบรรทัดได้เต็มที่" ในแถวเดียวกัน (ไม่ตัดคำทีละคำ)
+local function buildMessage(parent, text, theme)
     local segs = tokenize(text)
     local hasIcon = false
     for _, sg in ipairs(segs) do
@@ -282,56 +277,67 @@ local function buildContent(parent, text, theme)
 
     if not hasIcon then
         return mk("TextLabel", {
-            Name = "Header", BackgroundTransparency = 1, LayoutOrder = 2,
-            Size = UDim2.new(1, -32, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-            Font = Enum.Font.GothamBold, TextSize = TEXT_SIZE, TextColor3 = theme.text,
+            Name = "Message", BackgroundTransparency = 1, LayoutOrder = 3,
+            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            Font = Enum.Font.Gotham, TextSize = TEXT_SIZE, TextColor3 = BODY_TEXT_COLOR,
             RichText = true, TextWrapped = true,
-            TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
+            TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
             Text = text,
         }, parent)
     end
 
-    local content = mk("Frame", {
-        Name = "Header", BackgroundTransparency = 1, LayoutOrder = 2,
-        Size = UDim2.new(1, -32, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+    local wrap = mk("Frame", {
+        Name = "Message", BackgroundTransparency = 1, LayoutOrder = 3,
+        Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
     }, parent)
     mk("UIListLayout", {
         FillDirection = Enum.FillDirection.Vertical,
         SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2),
-    }, content)
+    }, wrap)
 
-    local lineIdx, line, order = 0, nil, 0
-    local function newLine()
-        lineIdx = lineIdx + 1; order = 0
-        line = mk("Frame", {
-            Name = "Line", BackgroundTransparency = 1, LayoutOrder = lineIdx,
+    local rowIdx, row, order, rowHasContent, pendingIconW = 0, nil, 0, false, 0
+    local function newRow()
+        rowIdx = rowIdx + 1; order = 0; rowHasContent = false; pendingIconW = 0
+        row = mk("Frame", {
+            Name = "Row", BackgroundTransparency = 1, LayoutOrder = rowIdx,
             Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-        }, content)
+        }, wrap)
         mk("UIListLayout", {
-            FillDirection = Enum.FillDirection.Horizontal, Wraps = true,
+            FillDirection = Enum.FillDirection.Horizontal,
             SortOrder = Enum.SortOrder.LayoutOrder,
-            VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 4),
-        }, line)
+            VerticalAlignment = Enum.VerticalAlignment.Top, Padding = UDim.new(0, 6),
+        }, row)
     end
-    newLine()
+    newRow()
 
     for _, sg in ipairs(segs) do
         if sg.t == "icon" then
+            if rowHasContent then newRow() end
             order = order + 1
-            iconItem(line, sg.v, order)
+            iconItem(row, sg.v, order)
+            pendingIconW, rowHasContent = TEXT_LINE_H + 6, true
         else
             local first = true
             for part in (sg.v .. "\n"):gmatch("(.-)\n") do
-                if not first then newLine() end
+                if not first then newRow() end
                 first = false
-                for word in part:gmatch("%S+") do
+                local t = part:gsub("^%s+", ""):gsub("%s+$", "")
+                if t ~= "" then
                     order = order + 1
-                    wordLabel(line, word, theme.text, order)
+                    mk("TextLabel", {
+                        Name = "Text", BackgroundTransparency = 1, LayoutOrder = order,
+                        Size = UDim2.new(1, -pendingIconW, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+                        Font = Enum.Font.Gotham, TextSize = TEXT_SIZE, TextColor3 = BODY_TEXT_COLOR,
+                        RichText = true, TextWrapped = true,
+                        TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
+                        Text = t,
+                    }, row)
+                    rowHasContent = true
                 end
             end
         end
     end
-    return content
+    return wrap
 end
 
 -- ── GUI root ──────────────────────────────────────────────────────────────────
@@ -425,7 +431,7 @@ local function enforceCap()
 end
 
 -- ── กลุ่ม/เวลาเลิก/ตัวเก็บกวาด ─────────────────────────────────────────────────
-local BAR_FULL = UDim2.new(1, 0, 0, 3)
+local BAR_FULL = UDim2.new(1, 0, 1, 0)  -- Fill โตเต็มความกว้าง Track (สูงคงที่ = 100% ของ Track เอง)
 
 local function liveStarted()
     local list = {}
@@ -520,35 +526,55 @@ local function run(mode, text, duration)
             Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
         }, card)
         mk("UIPadding", {
-            PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 14),
-            PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 12),
+            PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 14),
+            PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16),
         }, body)
         mk("UIListLayout", {
-            FillDirection = Enum.FillDirection.Horizontal,
-            VerticalAlignment = Enum.VerticalAlignment.Center,
+            FillDirection = Enum.FillDirection.Vertical,
             SortOrder = Enum.SortOrder.LayoutOrder,
             Padding = UDim.new(0, 10),
         }, body)
 
+        -- แถวหัวข้อ: ไอคอนโหมด (ไม่มีวงแหวนล้อมแล้ว) + ชื่อโหมดตัวหนาตัวใหญ่ ตามการ์ด ui ประกาศ
+        local header = mk("Frame", {
+            Name = "Header", BackgroundTransparency = 1, LayoutOrder = 1,
+            Size = UDim2.new(1, 0, 0, ICON_BOX),
+        }, body)
+        mk("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10),
+        }, header)
+
         local icon = mk("Frame", {
             Name = "Icon", BackgroundTransparency = 1, LayoutOrder = 1,
-            Size = UDim2.fromOffset(22, 22),
+            Size = UDim2.fromOffset(ICON_BOX, ICON_BOX),
+        }, header)
+        drawSymbol(icon, theme.symbol, theme.icon, ICON_BOX, 0.78)
+
+        mk("TextLabel", {
+            Name = "Title", BackgroundTransparency = 1, LayoutOrder = 2,
+            Size = UDim2.new(1, -(ICON_BOX + 10), 1, 0),
+            Font = Enum.Font.GothamBlack, TextSize = TITLE_SIZE, TextColor3 = theme.text,
+            RichText = false, TextXAlignment = Enum.TextXAlignment.Left,
+            TextYAlignment = Enum.TextYAlignment.Center,
+            Text = mode:upper(),
+        }, header)
+
+        -- แถบเวลาเต็มความกว้าง (แทนแถบเล็กมุมล่างขวาของเดิม) — เดินตามเวลาที่เหลือเหมือนเดิมทุกอย่าง
+        local track = mk("Frame", {
+            Name = "Track", LayoutOrder = 2, BackgroundColor3 = Color3.new(1, 1, 1),
+            BackgroundTransparency = 0.92, BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 0, BAR_HEIGHT),
         }, body)
-        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, icon)
-        mk("UIStroke", { Color = theme.icon, Thickness = 1.5, Transparency = 0.1 }, icon)
-        drawSymbol(icon, theme.symbol, theme.icon, 22)
-
-        buildContent(body, text, theme)
-
-        mk("Frame", {
-            Name = "Stripe", BackgroundColor3 = theme.accent, BorderSizePixel = 0,
-            Size = UDim2.new(0, 3, 1, 0), ZIndex = 3,
-        }, card)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, track)
         local bar = mk("Frame", {
-            Name = "Bar", BackgroundColor3 = theme.accent, BackgroundTransparency = 0.15,
-            BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 1),
-            Position = UDim2.new(1, 0, 1, 0), Size = UDim2.new(0, 0, 0, 3), ZIndex = 3,
-        }, card)
+            Name = "Fill", BackgroundColor3 = theme.accent, BackgroundTransparency = 0.1,
+            BorderSizePixel = 0, Size = UDim2.new(0, 0, 1, 0), ZIndex = 3,
+        }, track)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, bar)
+
+        buildMessage(body, text, theme)
 
         -- วัดความสูงจริง (รอให้ layout + การตัดบรรทัดนิ่งก่อน) ระหว่างนี้การ์ดยังโปร่งใส/ความสูง slot = 0
         local H, prev = 0, -1
