@@ -21,6 +21,7 @@ local CFG = {
 }
 
 local _r_pcall = pcall
+pcall(function() math.randomseed(tick() * 1000) end)
 
 -- ── Multi-executor HTTP layer (mirrors whitelist.lua's httpSend) ────────────
 local _httpFns = {
@@ -558,6 +559,18 @@ end
 local _gOk = pcall(function() getgenv()._SW_PLACE_MAP = PLACE_MAP end)
 if not _gOk then
     warn("[ SpectreWare Gateway ]: getgenv() unavailable — PLACE_MAP override disabled")
+end
+
+-- ── Gate token ────────────────────────────────────────────────────────────────
+-- whitelist.lua เช็คค่านี้เป็นบรรทัดแรกก่อนทำอะไรทั้งนั้น ถ้าไม่เจอ (หรือถูกยิงตรง
+-- ผ่าน loadstring(game:HttpGet(whitelistUrl)) โดยข้าม gateway.lua ไปเลย) จะหยุดทันที
+-- token สุ่มใหม่ทุกครั้งที่รัน + ถูก consume (set nil) ทันทีที่ whitelist.lua อ่านไป
+-- แล้ว กันไม่ให้ใครอ่านค่าจาก getgenv() มาใช้ซ้ำ/เดาแพทเทิร์นได้
+local _gateOk = pcall(function()
+    getgenv()._SW_GATE_TOKEN = ("%d-%d-%d"):format(os.time(), tick() * 1000, math.random(100000, 999999))
+end)
+if not _gateOk then
+    warn("[ SpectreWare Gateway ]: getgenv() unavailable — gate token disabled")
 end
 
 local runOk, runErr = pcall(fn)
