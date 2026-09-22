@@ -84,9 +84,9 @@ local _r_floor, _r_random = math.floor, math.random
 -- ในเฟรมเดียว → UI โหลด/แจ้งเตือนที่กำลังเล่นอนิเมชันอยู่พอดีจะกระตุก
 -- ทำทีละก้อน แล้วคืนเฟรม (task.wait()) เมื่อเกิน budget · ข้อความสั้น (< _SLICE_MIN) ทำรวดเดียวเหมือนเดิม
 -- (จึงไม่ yield ในจุดที่ใช้กับสายสั้น ๆ เช่น sentinel)
-local _SLICE_BUDGET = 0.012   -- วินาทีต่อเฟรมที่ยอมใช้ (เพิ่มจาก 0.006 → ลด yield frequency ลงครึ่งนึง)
-local _SLICE_MIN    = 32768   -- ไบต์ (เพิ่มจาก 20000 → ไม่ slice งาน < 32KB เลย)
-local _SLICE_BLOCK  = 8192    -- ไบต์ต่อก้อน (เพิ่มจาก 4000 → ทำงานมากขึ้นต่อก้อน)
+local _SLICE_BUDGET = 0.012   -- วินาทีต่อเฟรมที่ยอมใช้
+local _SLICE_MIN    = 32768   -- ไบต์ — ไม่ slice งาน < 32KB เลย
+local _SLICE_BLOCK  = 1500    -- ไบต์ต่อก้อน — ลดจาก 8192/4000 → string.byte() 1500 returns ปลอดภัยบนทุก executor (Delta รับ ~2000 max)
 local _clock        = os.clock
 local _r_unpack     = table.unpack or unpack
 
@@ -230,8 +230,15 @@ local function _xorStr(s, k)
             ki = ki + 1
             if ki > kl then ki = 1 end
         end
-        oc = oc + 1
-        out[oc] = _r_char(_r_unpack(blk))
+        -- string.char กับ unpack ก้อนใหญ่ก็ overflow ได้ — แบ่ง char ทีละ 256 แล้ว concat
+        local csz, ci = 256, 1
+        while ci <= #blk do
+            local cj = ci + csz - 1
+            if cj > #blk then cj = #blk end
+            oc = oc + 1
+            out[oc] = _r_char(_r_unpack(blk, ci, cj))
+            ci = cj + 1
+        end
         i = j + 1
         if big then t0 = _sliceYield(t0) end
     end
