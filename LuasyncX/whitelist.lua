@@ -84,9 +84,9 @@ local _r_floor, _r_random = math.floor, math.random
 -- ในเฟรมเดียว → UI โหลด/แจ้งเตือนที่กำลังเล่นอนิเมชันอยู่พอดีจะกระตุก
 -- ทำทีละก้อน แล้วคืนเฟรม (task.wait()) เมื่อเกิน budget · ข้อความสั้น (< _SLICE_MIN) ทำรวดเดียวเหมือนเดิม
 -- (จึงไม่ yield ในจุดที่ใช้กับสายสั้น ๆ เช่น sentinel)
-local _SLICE_BUDGET = 0.006   -- วินาทีต่อเฟรมที่ยอมใช้
-local _SLICE_MIN    = 20000   -- ไบต์
-local _SLICE_BLOCK  = 4000    -- ไบต์ต่อก้อน (ต้องน้อยกว่าขีดจำกัด unpack)
+local _SLICE_BUDGET = 0.012   -- วินาทีต่อเฟรมที่ยอมใช้ (เพิ่มจาก 0.006 → ลด yield frequency ลงครึ่งนึง)
+local _SLICE_MIN    = 32768   -- ไบต์ (เพิ่มจาก 20000 → ไม่ slice งาน < 32KB เลย)
+local _SLICE_BLOCK  = 8192    -- ไบต์ต่อก้อน (เพิ่มจาก 4000 → ทำงานมากขึ้นต่อก้อน)
 local _clock        = os.clock
 local _r_unpack     = table.unpack or unpack
 
@@ -555,8 +555,8 @@ local function safeGetTimeout(url, timeout, headers)
         if not done then result, body = ok, b end
         done = true
     end)
-    local ticks, max = 0, timeout * 20
-    while not done and ticks < max do task.wait(0.05); ticks = ticks + 1 end
+    local ticks, max = 0, timeout * 10 -- ลด max iterations ให้สอดคล้องกับ interval ใหม่
+    while not done and ticks < max do task.wait(0.1); ticks = ticks + 1 end -- 0.05 → 0.1 (ลด wakeup 2x)
     if not done then
         pcall(task.cancel, co)
     end
@@ -1254,7 +1254,7 @@ local function _hexDecode(h)
     local big, t0 = n >= _SLICE_MIN * 2, _clock()
     if n % 2 == 0 and not h:find("[^%x]") then
         if not big then return (h:gsub("%x%x", _HEX2CHAR)) end
-        local out, oc, i, CH = {}, 0, 1, 32768 -- CH ต้องเป็นเลขคู่
+        local out, oc, i, CH = {}, 0, 1, 65536 -- CH เพิ่มจาก 32768 → 65536 (yield น้อยลง 2x)
         while i <= n do
             local j = i + CH - 1
             if j > n then j = n end
@@ -1269,7 +1269,7 @@ local function _hexDecode(h)
     for i = 1, n, 2 do
         bc = bc + 1
         b[bc] = _r_char(tonumber(h:sub(i, i + 1), 16) or 0)
-        if big and bc % 2000 == 0 then t0 = _sliceYield(t0) end
+        if big and bc % 4000 == 0 then t0 = _sliceYield(t0) end -- เพิ่มจาก 2000 → 4000
     end
     return _r_concat(b)
 end
