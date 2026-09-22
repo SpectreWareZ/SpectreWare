@@ -13,7 +13,7 @@
 -- ╚══════════════════════════════════════════════════════╝
 
 local CFG = {
-    API                 = "https://luasync-six.vercel.app",
+    API                 = "https://luasyncxz.wisp.uno",
     clientKey           = "0f9b3fd53469b88a5ed98d27687650cf5c2812346fd46665",
     loaderVersion       = "2.6.0",
     waitOnStart         = 0.6,
@@ -30,21 +30,6 @@ local CFG = {
 }
 
 local CLIENT_HEADERS = { ["X-Client-Key"] = CFG.clientKey }
-
--- ── Gateway gate ──────────────────────────────────────────────────────────────
--- บังคับให้ต้องรันผ่าน gateway.lua เท่านั้น — ถ้าใครเอา URL ของไฟล์นี้ไป
--- loadstring(game:HttpGet(...)) ตรงๆ (ข้าม gateway.lua ที่ทำ retry/UI/PLACE_MAP)
--- getgenv()._SW_GATE_TOKEN จะไม่ถูกตั้งไว้ก่อน → หยุดทำงานทันทีตรงนี้
--- token ถูก consume (ลบทิ้ง) ทันทีหลังอ่าน กันเอาไปใช้ซ้ำ/ปล่อยค้างไว้ให้คนอื่นอ่าน
-do
-    local ok, env = pcall(getgenv)
-    local token = (ok and type(env) == "table") and env._SW_GATE_TOKEN or nil
-    if ok and type(env) == "table" then env._SW_GATE_TOKEN = nil end
-    if not token or token == "" then
-        warn("[ LuaSyncX ]: Direct execution blocked — run this through the official loader (gateway.lua), not this file directly.")
-        return
-    end
-end
 
 -- ── PlaceId → scriptUrl override (set by gateway.lua) ────────────────────────
 -- gateway.lua ยิง getgenv()._SW_PLACE_MAP = { [placeId] = scriptUrl, ... } ให้ก่อนรันไฟล์นี้
