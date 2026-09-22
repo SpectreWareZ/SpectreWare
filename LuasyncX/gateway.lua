@@ -70,9 +70,11 @@ local function _tryFn(fn, opts, timeout)
         ok, res = o, r
         done = true
     end)
-    local ticks, max = 0, math.max(1, math.floor(timeout * 20))
+    -- ถ้า fn เสร็จทันที (executor nil) done = true แล้ว → ไม่ต้อง poll เลย
+    if done then return ok, res end
+    local ticks, max = 0, math.max(1, math.floor(timeout * 10)) -- ลด max 2x (interval เพิ่ม 2x)
     while not done and ticks < max do
-        task.wait(0.05)
+        task.wait(0.1) -- 0.05 → 0.1 (poll ทุก 100ms แทน 50ms ลด wakeup overhead)
         ticks = ticks + 1
     end
     if not done then
@@ -111,8 +113,8 @@ local function safeGetTimeout(url, timeout)
         if not done then ok, body = o, b end
         done = true
     end)
-    local ticks, max = 0, timeout * 20
-    while not done and ticks < max do task.wait(0.05); ticks = ticks + 1 end
+    local ticks, max = 0, timeout * 10 -- ลด max ให้สอดคล้อง interval ใหม่
+    while not done and ticks < max do task.wait(0.1); ticks = ticks + 1 end -- 0.05 → 0.1
     if not done then pcall(task.cancel, co) end
     return done and ok or false, done and body or nil
 end
