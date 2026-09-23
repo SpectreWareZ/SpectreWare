@@ -344,6 +344,7 @@ end
 local gui, container
 local activeList = {}
 local seq = 0
+local entering = false   -- กัน entrance animation ทับกัน
 local startJanitor -- ประกาศไว้ก่อน (ฟังก์ชันอยู่ด้านล่าง)
 
 local function alive()
@@ -599,12 +600,16 @@ local function run(mode, text, duration)
         end
         rec.bar, rec.started = bar, true
 
-        -- เข้า: ความสูง slot ขยาย + การ์ดเลื่อนเข้า + เฟด (ไม่มี overshoot บน layout)
+        -- เข้า: ต่อคิวถ้ามีการ์ดใดกำลัง animate อยู่ → กันทับกัน
+        while entering do frameWait() end
+        entering = true
         play(slot,   T_IN_SIZE,  { Size = UDim2.new(1, 0, 0, H + GAP) })
         play(holder, T_IN_SLIDE, { Position = UDim2.new(0, 0, 0, 0) })
         if GROUP_OK then play(card, T_IN_FADE, { GroupTransparency = 0 }) end
         play(cardStroke, T_IN_FADE, { Transparency = STROKE_TRANSPARENCY })
         play(shadow, T_IN_FADE,  { ImageTransparency = SHADOW_TRANSPARENCY })
+        task.wait(T_IN_SIZE.Time)  -- รอ slot ขยายเต็มก่อนปล่อยให้อันถัดไปเริ่ม
+        entering = false
         retimeBars()
 
         -- รอ (ตัดจบได้ทันทีถูกสั่งปิด / GUI ถูกลบ)
@@ -626,7 +631,7 @@ local function run(mode, text, duration)
         play(slot, T_OUT_SIZE, { Size = UDim2.new(1, 0, 0, 0) })
         task.wait(OUT_SIZE_WAIT)
     end)
-    if not body_ok then warn("notif error: " .. tostring(body_err)) end
+    if not body_ok then entering = false; warn("notif error: " .. tostring(body_err)) end
 
     rec.leaving = true
     removeRec(rec)
