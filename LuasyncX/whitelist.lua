@@ -1036,6 +1036,348 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
     end
 end
 
+-- ── Maintenance UI (สคริปต์ปิดปรับปรุง — สั่งจากบอท !ปิดสคริปต์ / !เปิดสคริปต์) ──────────
+-- _Maint.show(info)   โชว์การ์ด "ปิดปรับปรุง" · info = { reason = "...", elapsed_s = 123 }
+--                      · เรียกตอน /api/lookup ตอบ code MAINTENANCE (สคริปต์ไม่ถูกโหลด)
+--                      · และตอนบอทดัน kind="maintenance" มาทาง announce poller (คนที่รันอยู่แล้ว)
+--                      การ์ดเช็ค /api/status เองทุก 15 วิ พอ !เปิดสคริปต์ จะเปลี่ยนเป็น "เปิดให้ใช้งานแล้ว" แล้วปิดตัวเอง
+-- _Maint.reopened()   ถูกเรียกตอนบอทดัน "เปิดแล้ว" มา — อัปเดตการ์ดที่ค้างอยู่ หรือแจ้งเตือนสั้น ๆ ถ้าไม่มีการ์ด
+local _Maint = {}
+do
+    local POLL_EVERY   = 15   -- วินาที (ต้องรวมกับ rateLimit 60/นาทีของ /api/status แล้วยังเหลือเยอะ)
+    local DEFAULT_TEXT = "กำลังปรับปรุงระบบ กรุณารอสักครู่แล้วลองใหม่อีกครั้ง"
+    local _curGui, _curReopen
+
+    local function _fmtElapsed(s)
+        s = math.max(0, math.floor(tonumber(s) or 0))
+        if s < 60 then return s .. " วินาที" end
+        if s < 3600 then return math.floor(s / 60) .. " นาที" end
+        local h, m = math.floor(s / 3600), math.floor((s % 3600) / 60)
+        if m == 0 then return h .. " ชม." end
+        return h .. " ชม. " .. m .. " นาที"
+    end
+
+    local function _reasonText(r)
+        r = tostring(r or "")
+        if r:gsub("%s", "") == "" then return DEFAULT_TEXT end
+        return r
+    end
+
+    local function _killOld()
+        if _curGui then pcall(function() _curGui:Destroy() end); _curGui = nil end
+        _curReopen = nil
+        -- เผื่อการ์ดค้างจากการรันครั้งก่อน (คนละ chunk/คนละ env)
+        pcall(function()
+            local cg = game:GetService("CoreGui"):FindFirstChild("SW_MaintGui")
+            if cg then cg:Destroy() end
+        end)
+        pcall(function()
+            local pg = PL:FindFirstChild("PlayerGui")
+            local o = pg and pg:FindFirstChild("SW_MaintGui")
+            if o then o:Destroy() end
+        end)
+    end
+
+    function _Maint.show(info)
+        info = _r_type(info) == "table" and info or {}
+        _ui("Close") -- ปิดการ์ดโหลดของ gateway ก่อน (เหมือน HWID UI)
+        _killOld()
+
+        local elapsedBase, t0 = tonumber(info.elapsed_s) or 0, os.clock()
+
+        local _ok, _err = pcall(function()
+            local gui = Instance.new("ScreenGui")
+            gui.Name           = "SW_MaintGui"
+            gui.ResetOnSpawn   = false
+            gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+            gui.IgnoreGuiInset = true
+            pcall(function() gui.DisplayOrder = 999 end)
+
+            local function mk(cls, props, par)
+                local i = Instance.new(cls)
+                for k, v in pairs(props) do
+                    local pOk, pErr = pcall(function() i[k] = v end)
+                    if not pOk then
+                        warn("LuaSyncX: Maintenance UI prop '" .. tostring(k) .. "' on " .. cls .. " failed — " .. tostring(pErr))
+                    end
+                end
+                i.Parent = par or gui; return i
+            end
+
+            local AMBER_A, AMBER_B = Color3.fromRGB(255, 184, 64), Color3.fromRGB(255, 120, 50)
+            local GREEN_A, GREEN_B = Color3.fromRGB(80, 220, 130), Color3.fromRGB(60, 180, 200)
+
+            mk("Frame", {
+                Size = UDim2.new(1, 0, 1, 0),
+                BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+                BackgroundTransparency = 0.5,
+                ZIndex = 10,
+            })
+
+            local card = mk("Frame", {
+                Size             = UDim2.new(0.9, 0, 0, 0),
+                AutomaticSize    = Enum.AutomaticSize.Y,
+                Position         = UDim2.new(0.5, 0, 0.5, 0),
+                AnchorPoint      = Vector2.new(0.5, 0.5),
+                BackgroundColor3 = Color3.fromRGB(20, 20, 27),
+                BorderSizePixel  = 0,
+                ZIndex           = 11,
+            }, gui)
+            mk("UISizeConstraint", { MaxSize = Vector2.new(380, 700) }, card)
+
+            -- จอเตี้ย (มือถือแนวนอน) → ย่อการ์ดให้พอดี
+            local uiScale = mk("UIScale", { Scale = 1 }, card)
+            local function _updateScale()
+                local requiredH = 430
+                local cam = workspace.CurrentCamera
+                local viewH = cam and cam.ViewportSize.Y or requiredH
+                uiScale.Scale = viewH < requiredH and math.max(0.1, viewH / requiredH) or 1
+            end
+            _updateScale()
+            pcall(function()
+                workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(_updateScale)
+            end)
+
+            mk("UICorner", { CornerRadius = UDim.new(0, 12) }, card)
+            mk("UIStroke", { Color = Color3.fromRGB(60, 60, 75), Thickness = 1, Transparency = 0.5 }, card)
+            mk("UIListLayout", {
+                Padding = UDim.new(0, 12),
+                HorizontalAlignment = Enum.HorizontalAlignment.Center,
+                SortOrder = Enum.SortOrder.LayoutOrder,
+            }, card)
+            mk("UIPadding", {
+                PaddingTop = UDim.new(0, 20), PaddingBottom = UDim.new(0, 20),
+                PaddingLeft = UDim.new(0, 20), PaddingRight = UDim.new(0, 20),
+            }, card)
+
+            -- แถบสีบนสุด
+            local bar = mk("Frame", {
+                Size = UDim2.new(1, 0, 0, 4),
+                BackgroundColor3 = AMBER_A, BorderSizePixel = 0, LayoutOrder = 1,
+            }, card)
+            local barGrad = mk("UIGradient", { Color = ColorSequence.new(AMBER_A, AMBER_B) }, bar)
+
+            -- Header: ไอคอน | ชื่อ | ปุ่มปิด
+            local headerFrame = mk("Frame", {
+                Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1, LayoutOrder = 2,
+            }, card)
+            mk("UIListLayout", {
+                FillDirection = Enum.FillDirection.Horizontal,
+                VerticalAlignment = Enum.VerticalAlignment.Center,
+                SortOrder = Enum.SortOrder.LayoutOrder,
+                Padding = UDim.new(0, 10),
+            }, headerFrame)
+
+            local icon = mk("TextLabel", {
+                Size = UDim2.new(0, 30, 0, 30),
+                BackgroundColor3 = Color3.fromRGB(48, 38, 18),
+                Text = "!", TextColor3 = AMBER_A, TextSize = 18,
+                Font = Enum.Font.GothamBold, LayoutOrder = 1,
+            }, headerFrame)
+            mk("UICorner", { CornerRadius = UDim.new(1, 0) }, icon)
+
+            local titleBox = mk("Frame", {
+                Size = UDim2.new(1, -80, 1, 0), BackgroundTransparency = 1, LayoutOrder = 2,
+            }, headerFrame)
+            mk("UIListLayout", {
+                Padding = UDim.new(0, 2), VerticalAlignment = Enum.VerticalAlignment.Center,
+                SortOrder = Enum.SortOrder.LayoutOrder,
+            }, titleBox)
+            local title = mk("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1,
+                Text = "ปิดปรับปรุงชั่วคราว", TextColor3 = Color3.fromRGB(255, 255, 255),
+                TextSize = 17, Font = Enum.Font.GothamBold,
+                TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 1,
+            }, titleBox)
+            mk("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
+                Text = "LuaSyncX v" .. CFG.loaderVersion, TextColor3 = Color3.fromRGB(140, 140, 160),
+                TextSize = 11, Font = Enum.Font.Gotham,
+                TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2,
+            }, titleBox)
+
+            local closeBtn = mk("TextButton", {
+                Size = UDim2.new(0, 28, 0, 28),
+                BackgroundColor3 = Color3.fromRGB(32, 32, 42), AutoButtonColor = false,
+                BorderSizePixel = 0, Text = "✕", TextColor3 = Color3.fromRGB(170, 170, 195),
+                TextSize = 13, Font = Enum.Font.GothamBold, LayoutOrder = 3,
+            }, headerFrame)
+            mk("UICorner", { CornerRadius = UDim.new(1, 0) }, closeBtn)
+            closeBtn.MouseEnter:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(52, 52, 66) end)
+            closeBtn.MouseLeave:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(32, 32, 42) end)
+            closeBtn.MouseButton1Click:Connect(function() pcall(function() gui:Destroy() end) end)
+
+            -- สถานะ
+            local pill = mk("Frame", {
+                Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = Color3.fromRGB(34, 28, 18),
+                BorderSizePixel = 0, LayoutOrder = 3,
+            }, card)
+            mk("UICorner", { CornerRadius = UDim.new(0, 14) }, pill)
+            local pillStroke = mk("UIStroke", {
+                Color = Color3.fromRGB(90, 70, 35), Thickness = 1, Transparency = 0.5,
+            }, pill)
+            local pillLabel = mk("TextLabel", {
+                Size = UDim2.new(1, -10, 1, 0), Position = UDim2.new(0, 5, 0, 0),
+                BackgroundTransparency = 1, Text = "●  สคริปต์ปิดให้บริการชั่วคราว",
+                TextColor3 = Color3.fromRGB(255, 200, 100), TextSize = 11,
+                Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Center,
+            }, pill)
+
+            mk("Frame", {
+                Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Color3.fromRGB(40, 40, 55),
+                BorderSizePixel = 0, LayoutOrder = 4,
+            }, card)
+
+            mk("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1,
+                Text = "รายละเอียด", TextColor3 = Color3.fromRGB(180, 180, 205),
+                TextSize = 12, Font = Enum.Font.GothamBold,
+                TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 5,
+            }, card)
+
+            -- กล่องเหตุผล (สูงตามข้อความ)
+            local reasonBox = mk("Frame", {
+                Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+                BackgroundColor3 = Color3.fromRGB(12, 12, 17), BorderSizePixel = 0, LayoutOrder = 6,
+            }, card)
+            mk("UICorner", { CornerRadius = UDim.new(0, 8) }, reasonBox)
+            mk("UIStroke", { Color = Color3.fromRGB(45, 45, 60), Thickness = 1, Transparency = 0.2 }, reasonBox)
+            mk("UIPadding", {
+                PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10),
+                PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 12),
+            }, reasonBox)
+            local reasonLabel = mk("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+                BackgroundTransparency = 1, Text = _reasonText(info.reason),
+                TextColor3 = Color3.fromRGB(215, 215, 228), TextSize = 13,
+                Font = Enum.Font.Gotham, TextWrapped = true,
+                TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
+            }, reasonBox)
+
+            local elapsedLabel = mk("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
+                Text = "ปิดมาแล้ว  " .. _fmtElapsed(elapsedBase),
+                TextColor3 = Color3.fromRGB(120, 120, 140), TextSize = 11,
+                Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Left,
+                LayoutOrder = 7,
+            }, card)
+
+            local btn = mk("TextButton", {
+                Size = UDim2.new(1, 0, 0, 42), BackgroundColor3 = Color3.fromRGB(88, 101, 242),
+                AutoButtonColor = false, BorderSizePixel = 0,
+                Text = "💬  คัดลอก Discord Link", TextColor3 = Color3.fromRGB(255, 255, 255),
+                TextSize = 14, Font = Enum.Font.GothamBold, LayoutOrder = 8,
+            }, card)
+            mk("UICorner", { CornerRadius = UDim.new(0, 8) }, btn)
+            mk("UIGradient", {
+                Rotation = 90,
+                Color = ColorSequence.new(Color3.fromRGB(98, 111, 250), Color3.fromRGB(69, 78, 205)),
+            }, btn)
+            btn.MouseEnter:Connect(function() btn.BackgroundColor3 = Color3.fromRGB(110, 120, 255) end)
+            btn.MouseLeave:Connect(function() btn.BackgroundColor3 = Color3.fromRGB(88, 101, 242) end)
+            btn.MouseButton1Click:Connect(function()
+                pcall(function() setclipboard(CFG.discordUrl) end)
+                btn.Text = "✔  คัดลอกลิงก์แล้ว!"
+                btn.BackgroundColor3 = Color3.fromRGB(55, 170, 95)
+                task.delay(2, function()
+                    if btn and btn.Parent then
+                        btn.Text = "💬  คัดลอก Discord Link"
+                        btn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+                    end
+                end)
+            end)
+
+            mk("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1,
+                Text = "หน้านี้ตรวจสอบสถานะอัตโนมัติ — เมื่อเปิดใช้งานจะแจ้งให้ทราบ",
+                TextColor3 = Color3.fromRGB(110, 110, 130), TextSize = 10,
+                Font = Enum.Font.Gotham, TextWrapped = true, LayoutOrder = 9,
+            }, card)
+
+            local parented = false
+            pcall(function() gui.Parent = game:GetService("CoreGui"); parented = true end)
+            if not parented then
+                pcall(function() gui.Parent = PL:WaitForChild("PlayerGui", 3) end)
+            end
+            _curGui = gui
+
+            -- ── เปลี่ยนการ์ดเป็นสถานะ "เปิดให้ใช้งานแล้ว" แล้วปิดตัวเอง ──────────────────
+            local reopened = false
+            local function setReopened()
+                if not (gui and gui.Parent) then return false end
+                if reopened then return true end
+                reopened = true
+                title.Text = "เปิดให้ใช้งานแล้ว"
+                icon.Text = "✔"
+                icon.TextColor3 = GREEN_A
+                icon.BackgroundColor3 = Color3.fromRGB(18, 40, 28)
+                bar.BackgroundColor3 = GREEN_A
+                barGrad.Color = ColorSequence.new(GREEN_A, GREEN_B)
+                pill.BackgroundColor3 = Color3.fromRGB(18, 34, 24)
+                pillStroke.Color = Color3.fromRGB(45, 95, 65)
+                pillLabel.Text = "✔  สคริปต์กลับมาใช้งานได้แล้ว — กรุณารันสคริปต์ใหม่อีกครั้ง"
+                pillLabel.TextColor3 = Color3.fromRGB(90, 210, 130)
+                reasonLabel.Text = "การปรับปรุงเสร็จสิ้น ขออภัยในความไม่สะดวก"
+                elapsedLabel.Visible = false
+                pcall(function()
+                    game:GetService("StarterGui"):SetCore("SendNotification", {
+                        Title = "LuaSyncX", Text = "สคริปต์เปิดใช้งานแล้ว — กรุณารันสคริปต์ใหม่", Duration = 6,
+                    })
+                end)
+                task.delay(6, function()
+                    if gui and gui.Parent then gui:Destroy() end
+                end)
+                return true
+            end
+            _curReopen = setReopened
+
+            -- อัปเดตเวลาที่ปิดมา
+            task.spawn(function()
+                while gui and gui.Parent and not reopened do
+                    elapsedLabel.Text = "ปิดมาแล้ว  " .. _fmtElapsed(elapsedBase + (os.clock() - t0))
+                    task.wait(5)
+                end
+            end)
+
+            -- เช็คสถานะกับ server เป็นระยะ (ข้อมูลไม่ลับ → ใช้ /api/status + client key)
+            task.spawn(function()
+                while gui and gui.Parent and not reopened do
+                    task.wait(POLL_EVERY)
+                    if not (gui and gui.Parent) or reopened then break end
+                    local gOk, raw = safeGetTimeout(CFG.API .. "/api/status", 6, CLIENT_HEADERS)
+                    if gOk and raw and raw ~= "" and raw:sub(1, 1) ~= "<" then
+                        local dOk, d = pcall(HS.JSONDecode, HS, raw)
+                        local m = dOk and _r_type(d) == "table" and _r_type(d.data) == "table" and d.data.maintenance
+                        if _r_type(m) == "table" then
+                            if m.on == false then setReopened(); break end
+                            if _r_type(m.reason) == "string" then reasonLabel.Text = _reasonText(m.reason) end
+                            if tonumber(m.elapsed_s) then elapsedBase, t0 = tonumber(m.elapsed_s), os.clock() end
+                        end
+                    end
+                end
+            end)
+        end)
+        if not _ok then
+            warn("LuaSyncX: Maintenance UI build failed — " .. tostring(_err))
+            -- fallback: อย่างน้อยให้เห็นข้อความแจ้งเตือน
+            if NotificationLibrary then
+                pcall(function()
+                    NotificationLibrary:SendNotification("Warning", "สคริปต์ปิดปรับปรุงชั่วคราว — " .. _reasonText(info.reason), 10)
+                end)
+            end
+        end
+    end
+
+    function _Maint.reopened()
+        local shown = _curReopen and _curReopen()
+        if not shown and NotificationLibrary then
+            pcall(function()
+                NotificationLibrary:SendNotification("Success", "สคริปต์เปิดใช้งานแล้ว", 6)
+            end)
+        end
+    end
+end
+
 local function maskKey(k)
     local s = tostring(k or "")
     if #s <= 8 then return string.rep("*", #s) end
@@ -1333,7 +1675,17 @@ local function startAnnouncePoller()
                 if not ok2 or type(d) ~= "table" then return end
                 if type(d.seq) == "number" then _lastSeq = d.seq; gotResp = true end
                 local id, m = tostring(d.id or ""), tostring(d.message or "")
-                if id ~= "" and id ~= _lastId and m ~= "" then
+                if tostring(d.kind or "") == "maintenance" then
+                    -- บอทสั่ง !ปิดสคริปต์ / !เปิดสคริปต์ ขณะที่ผู้เล่นรันสคริปต์อยู่
+                    if id ~= "" and id ~= _lastId then
+                        _lastId = id; gotMsg = true
+                        if d.on == true then
+                            _Maint.show({ reason = tostring(d.reason or ""), elapsed_s = 0 })
+                        else
+                            _Maint.reopened()
+                        end
+                    end
+                elseif id ~= "" and id ~= _lastId and m ~= "" then
                     _lastId = id; gotMsg = true; showAnnounce(m)
                     -- fire-and-forget ack: บอก server ว่า user คนนี้เห็นประกาศ id นี้แล้ว
                     task.spawn(function()
@@ -1567,6 +1919,13 @@ local _mainOk = xpcall(function()
     task.wait(0.35)
     if result.success ~= true and result.success ~= "true" then
         local _code = (type(result.data) == "table" and tostring(result.data.code or "")) or ""
+        if _code == "MAINTENANCE" then
+            -- บอทสั่ง !ปิดสคริปต์ — server ไม่ส่งสคริปต์มา แสดงการ์ดปิดปรับปรุงแทน
+            warn(_TAG .. "สคริปต์ปิดปรับปรุงชั่วคราว")
+            getgenv()[_GK.running] = nil
+            task.spawn(function() _Maint.show(result.data) end)
+            return
+        end
         log(parseApiError(result.message, _code), "error")
         if _code == "HWID_MISMATCH" then
             task.spawn(function() sendWebhook("mismatch", { key = _getKey(), hwid = hwid, timeLeft = "BLOCKED" }) end)
@@ -1826,8 +2185,10 @@ task.spawn(function()
             if ok2 and raw3 and raw3 ~= "" then
                 local ok3, cr = pcall(HS.JSONDecode, HS, raw3)
                 if ok3 and type(cr) == "table" then
-                    local expired = (cr.success ~= true and cr.success ~= "true") or
-                                    (type(cr.data) == "table" and _isExpired(cr.data))
+                    -- ระหว่าง !ปิดสคริปต์ server ตอบ success=false + code MAINTENANCE — ไม่ใช่คีย์หมดอายุ (ห้าม kick)
+                    local _maint = type(cr.data) == "table" and cr.data.code == "MAINTENANCE"
+                    local expired = not _maint and ((cr.success ~= true and cr.success ~= "true") or
+                                    (type(cr.data) == "table" and _isExpired(cr.data)))
                     if expired then
                         _sessionActive = false; log("Key expired", "error")
                         pcall(function() sendWebhook("expired", { key = _getKey(), hwid = hwid, timeLeft = "EXPIRED" }) end)
@@ -1843,7 +2204,7 @@ task.spawn(function()
                         _clearSentinel(); getgenv()[_GK.running] = nil; getgenv()[_GK.canary] = nil
                         _conn:Disconnect(); return
                     end
-                    if type(cr.data) == "table" then _expiresAt_cached = cr.data.expiresAt end
+                    if not _maint and type(cr.data) == "table" then _expiresAt_cached = cr.data.expiresAt end
                 end
             end
         end
