@@ -176,40 +176,26 @@ local LOADER = (function()
         local cr           = cloneref or function(x) return x end
 
         local C = {
-            bg      = Color3.fromRGB(14, 14, 20),
-            inset   = Color3.fromRGB(22, 22, 31),
-            track   = Color3.fromRGB(34, 34, 46),
-            stroke  = Color3.fromRGB(60, 60, 78),
-            text    = Color3.fromRGB(236, 236, 246),
-            muted   = Color3.fromRGB(126, 126, 150),
-            accentA = Color3.fromRGB(150, 110, 255),
-            accentB = Color3.fromRGB(90, 160, 250),
-            ok      = Color3.fromRGB(80, 220, 130),
-            okB     = Color3.fromRGB(60, 190, 210),
-            err     = Color3.fromRGB(240, 84, 84),
-            errB    = Color3.fromRGB(255, 140, 60),
-            warn    = Color3.fromRGB(250, 190, 60),
-            bolt    = Color3.fromRGB(255, 214, 10),
+            bg      = Color3.fromRGB(12, 12, 18),
+            inset   = Color3.fromRGB(20, 20, 30),
+            track   = Color3.fromRGB(30, 30, 42),
+            text    = Color3.fromRGB(232, 232, 242),
+            muted   = Color3.fromRGB(108, 108, 136),
+            accentA = Color3.fromRGB(140, 100, 255),
+            accentB = Color3.fromRGB(80, 150, 245),
+            ok      = Color3.fromRGB(72, 210, 120),
+            okB     = Color3.fromRGB(52, 180, 200),
+            err     = Color3.fromRGB(235, 75, 75),
+            errB    = Color3.fromRGB(245, 130, 50),
             white   = Color3.new(1, 1, 1),
         }
 
-        -- ไอคอน Lucide (asset id ชุดเดียวกับ Icons.lua) — ไม่พึ่ง emoji/font glyph
         local ICON = {
-            wifi        = "rbxassetid://10747382504",
-            shield      = "rbxassetid://10734951847",
-            download    = "rbxassetid://10723344270",
-            check       = "rbxassetid://10709790644",
-            x           = "rbxassetid://10747384394",
-            checkCircle = "rbxassetid://10709790387",
-            xCircle     = "rbxassetid://10747383819",
-            alert       = "rbxassetid://10709753149",
-            hourglass   = "rbxassetid://10723407498",
-            key         = "rbxassetid://10723416652",
-            rocket      = "rbxassetid://10734934585",
-        }
-        local ICON_COLORS = {
-            checkCircle = C.ok, xCircle = C.err, rocket = C.bolt,
-            alert = C.warn, hourglass = C.warn, key = C.accentA,
+            wifi     = "rbxassetid://10747382504",
+            shield   = "rbxassetid://10734951847",
+            download = "rbxassetid://10723344270",
+            check    = "rbxassetid://10709790644",
+            x        = "rbxassetid://10747384394",
         }
 
         local function mk(cls, props, parent)
@@ -219,29 +205,14 @@ local LOADER = (function()
             return i
         end
 
-        -- token → ชื่อไอคอน: whitelist.lua อาจส่งข้อความที่มีสัญลักษณ์หลุดมา (เช่น "✓")
-        -- ตัดออกจากข้อความแล้วโชว์เป็นไอคอน Lucide เล็ก ๆ หน้าข้อความแทน
-        local ICON_TOKENS = {
-            { "\u{2714}", "checkCircle" }, { "\u{2713}", "checkCircle" }, { "\u{2705}", "checkCircle" },
-            { "\u{2718}", "xCircle" },     { "\u{274C}", "xCircle" },
-            { "\u{26A1}", "rocket" },
-            { "\u{26A0}", "alert" },
-            { "\u{23F3}", "hourglass" },   { "\u{231B}", "hourglass" },
-            { "\u{1F511}", "key" },
-        }
-        local VS16 = "\u{FE0F}"
-
-        local function extractIcon(text)
-            local bs, be, bn
-            for _, pair in ipairs(ICON_TOKENS) do
-                local s, e = string.find(text, pair[1], 1, true)
-                if s and (not bs or s < bs) then bs, be, bn = s, e, pair[2] end
-            end
-            if not bs then return text, nil end
-            if text:sub(be + 1, be + #VS16) == VS16 then be = be + #VS16 end
-            local out = text:sub(1, bs - 1) .. text:sub(be + 1)
-            out = out:gsub("%s%s+", " "):match("^%s*(.-)%s*$")
-            return out, bn
+        local CSK, NSK = ColorSequenceKeypoint.new, NumberSequenceKeypoint.new
+        local function grad2(a, b) return ColorSequence.new(a, b) end
+        local function tw(obj, dur, props, style, dir, rep)
+            local t = TweenService:Create(obj,
+                TweenInfo.new(dur, style or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out, rep or 0),
+                props)
+            t:Play()
+            return t
         end
 
         local function attach(gui)
@@ -249,8 +220,8 @@ local LOADER = (function()
             local parents = {}
             local okH, hui = pcall(function() return gethui and gethui() end)
             if okH and typeof(hui) == "Instance" then parents[#parents + 1] = hui end
-            local okC, core = pcall(function() return cr(game:GetService("CoreGui")) end)
-            if okC and core then parents[#parents + 1] = core end
+            local okC, cg = pcall(function() return cr(game:GetService("CoreGui")) end)
+            if okC and cg then parents[#parents + 1] = cg end
             local lp = Players.LocalPlayer
             local pg = lp and lp:FindFirstChildOfClass("PlayerGui")
             if pg then parents[#parents + 1] = pg end
@@ -265,10 +236,7 @@ local LOADER = (function()
             return false
         end
 
-        local CSK, NSK = ColorSequenceKeypoint.new, NumberSequenceKeypoint.new
-        local function grad2(a, b) return ColorSequence.new(a, b) end
-
-        -- ── build ──────────────────────────────────────────────────────────────
+        -- ── Build ──────────────────────────────────────────────────────────────
         local H = 136
         local gui = mk("ScreenGui", {
             Name = "SW_LoaderGui", ResetOnSpawn = false, IgnoreGuiInset = true,
@@ -282,41 +250,22 @@ local LOADER = (function()
             BackgroundColor3 = C.bg, BorderSizePixel = 0, GroupTransparency = 1, ClipsDescendants = true,
         }, gui)
         mk("UISizeConstraint", { MaxSize = Vector2.new(360, H), MinSize = Vector2.new(250, H) }, card)
-        mk("UICorner", { CornerRadius = UDim.new(0, 16) }, card)
-        local uiScale = mk("UIScale", { Scale = 0.86 }, card)
+        mk("UICorner", { CornerRadius = UDim.new(0, 14) }, card)
+        local uiScale = mk("UIScale", { Scale = 0.92 }, card)
 
-        -- เส้นขอบเรืองแสงวิ่งรอบการ์ด (UIGradient บน UIStroke หมุนตลอด)
-        local borderStroke = mk("UIStroke", { Color = C.white, Thickness = 1.5, Transparency = 0 }, card)
-        local borderGrad = mk("UIGradient", {
-            Color = grad2(C.accentA, C.accentB),
-            Transparency = NumberSequence.new({ NSK(0, 0.72), NSK(0.12, 0), NSK(0.32, 0.72), NSK(1, 0.72) }),
-        }, borderStroke)
+        -- Static border with gradient (not animated)
+        local borderStroke = mk("UIStroke", { Color = C.white, Thickness = 1, Transparency = 0 }, card)
+        mk("UIGradient", { Color = grad2(C.accentA, C.accentB) }, borderStroke)
 
-        -- ชั้นเอฟเฟกต์ด้านหลัง: แสงฟุ้ง + อนุภาคลอยขึ้น
-        local fx = mk("Frame", {
-            BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 1, ClipsDescendants = true,
+        -- Left accent bar — deliberate design anchor
+        mk("Frame", {
+            Size = UDim2.new(0, 3, 0, 64), Position = UDim2.fromOffset(0, 24),
+            BackgroundColor3 = C.accentA, BorderSizePixel = 0, ZIndex = 3,
         }, card)
-        local glow = mk("Frame", {
-            Size = UDim2.fromOffset(220, 220), Position = UDim2.fromOffset(-60, -80),
-            BackgroundColor3 = C.accentA, BackgroundTransparency = 0.9, BorderSizePixel = 0, ZIndex = 1,
-        }, fx)
-        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, glow)
 
-        local parts = {}
-        for i = 1, 11 do
-            local sz = math.random(2, 4)
-            local f = mk("Frame", {
-                Size = UDim2.fromOffset(sz, sz), BackgroundColor3 = C.accentB,
-                BackgroundTransparency = 0.8, BorderSizePixel = 0, ZIndex = 1,
-            }, fx)
-            mk("UICorner", { CornerRadius = UDim.new(1, 0) }, f)
-            parts[i] = { f = f, x = math.random(), y = math.random(), v = 0.05 + math.random() * 0.12,
-                         w = 1 + math.random() * 2, ph = math.random() * 6.28 }
-        end
-
-        -- ── Badge: วงแหวนหมุน + ไอคอนตามขั้นตอน ──
+        -- ── Badge: spinner ring + stage icon ──
         local badge = mk("Frame", {
-            Position = UDim2.fromOffset(16, 24), Size = UDim2.fromOffset(52, 52),
+            Position = UDim2.fromOffset(18, 22), Size = UDim2.fromOffset(52, 52),
             BackgroundTransparency = 1, ZIndex = 2,
         }, card)
         local ringTrack = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 2 }, badge)
@@ -324,189 +273,150 @@ local LOADER = (function()
         mk("UIStroke", { Color = C.track, Thickness = 3 }, ringTrack)
         local ring = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 3 }, badge)
         mk("UICorner", { CornerRadius = UDim.new(1, 0) }, ring)
-        mk("UIStroke", { Color = C.white, Thickness = 3 }, ring)
+        local ringStroke = mk("UIStroke", { Color = C.white, Thickness = 3 }, ring)
         local ringGrad = mk("UIGradient", {
-            Color = grad2(C.accentA, C.accentB),
-            Transparency = NumberSequence.new({ NSK(0, 0), NSK(0.5, 0.25), NSK(0.75, 1), NSK(1, 1) }),
-        }, ring:FindFirstChildOfClass("UIStroke"))
-        local core = mk("Frame", {
+            Color       = grad2(C.accentA, C.accentB),
+            Transparency = NumberSequence.new({ NSK(0, 0), NSK(0.5, 0.2), NSK(0.75, 1), NSK(1, 1) }),
+        }, ringStroke)
+        local coreFrame = mk("Frame", {
             AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-            Size = UDim2.fromOffset(40, 40), BackgroundColor3 = C.inset, BorderSizePixel = 0, ZIndex = 3,
+            Size = UDim2.fromOffset(38, 38), BackgroundColor3 = C.inset, BorderSizePixel = 0, ZIndex = 3,
         }, badge)
-        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, core)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, coreFrame)
         local stageIcon = mk("ImageLabel", {
             AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-            Size = UDim2.fromOffset(22, 22), BackgroundTransparency = 1,
+            Size = UDim2.fromOffset(20, 20), BackgroundTransparency = 1,
             Image = ICON.wifi, ImageColor3 = C.accentB, ScaleType = Enum.ScaleType.Fit, ZIndex = 4,
-        }, core)
+        }, coreFrame)
 
-        -- ── ข้อความ ──
+        -- ── Text ──
         local title = mk("TextLabel", {
-            BackgroundTransparency = 1, Position = UDim2.fromOffset(84, 22), Size = UDim2.new(1, -170, 0, 22),
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(86, 20), Size = UDim2.new(1, -170, 0, 22),
             Font = Enum.Font.GothamBlack, Text = "SPECTREWARE", TextSize = 17, ZIndex = 2,
             TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left,
         }, card)
-        local titleGrad = mk("UIGradient", {
+        mk("UIGradient", {
             Color = ColorSequence.new({
-                CSK(0, C.accentA), CSK(0.42, C.accentA), CSK(0.5, Color3.fromRGB(255, 255, 255)),
-                CSK(0.58, C.accentB), CSK(1, C.accentB),
+                CSK(0, C.accentA), CSK(0.45, Color3.fromRGB(200, 175, 255)),
+                CSK(0.55, Color3.fromRGB(170, 210, 255)), CSK(1, C.accentB),
             }),
         }, title)
-        pcall(function() title.MaxVisibleGraphemes = 0 end)
 
         mk("TextLabel", {
-            BackgroundTransparency = 1, Position = UDim2.fromOffset(84, 43), Size = UDim2.new(1, -170, 0, 14),
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(86, 42), Size = UDim2.new(1, -170, 0, 14),
             Font = Enum.Font.GothamMedium, Text = "LuaSyncX", TextSize = 11, TextColor3 = C.muted, ZIndex = 2,
             TextXAlignment = Enum.TextXAlignment.Left,
         }, card)
 
-        local pct = mk("TextLabel", {
-            BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 20),
-            Size = UDim2.fromOffset(74, 26), Font = Enum.Font.GothamBold, Text = "0%", TextSize = 21,
+        local pctLabel = mk("TextLabel", {
+            BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0),
+            Position = UDim2.new(1, -16, 0, 18), Size = UDim2.fromOffset(70, 28),
+            Font = Enum.Font.GothamBold, Text = "0%", TextSize = 21,
             TextColor3 = C.text, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 2,
         }, card)
 
-        local statusRow = mk("Frame", {
-            BackgroundTransparency = 1, Position = UDim2.fromOffset(84, 62), Size = UDim2.new(1, -100, 0, 20), ZIndex = 2,
-        }, card)
-        local sIcon = mk("ImageLabel", {
-            BackgroundTransparency = 1, Visible = false, Position = UDim2.fromOffset(0, 3),
-            Size = UDim2.fromOffset(14, 14), ScaleType = Enum.ScaleType.Fit, ZIndex = 2,
-        }, statusRow)
-        local status = mk("TextLabel", {
-            BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Font = Enum.Font.GothamMedium,
-            Text = "Starting...", TextSize = 13, TextColor3 = C.text, ZIndex = 2,
+        local statusLabel = mk("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(86, 60),
+            Size = UDim2.new(1, -102, 0, 18), Font = Enum.Font.GothamMedium,
+            Text = "Starting...", TextSize = 12, TextColor3 = C.muted, ZIndex = 2,
             TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-        }, statusRow)
+        }, card)
 
-        -- ── Progress bar: เส้นไหลแสง + ประกายที่ปลายบาร์ ──
-        local track = mk("Frame", {
-            Position = UDim2.fromOffset(16, 96), Size = UDim2.new(1, -32, 0, 8),
+        -- ── Progress bar ──
+        local trackFrame = mk("Frame", {
+            Position = UDim2.fromOffset(16, 94), Size = UDim2.new(1, -32, 0, 6),
             BackgroundColor3 = C.track, BorderSizePixel = 0, ZIndex = 2,
         }, card)
-        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, track)
-        local fill = mk("Frame", {
-            Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
-            ClipsDescendants = true, ZIndex = 3,
-        }, track)
-        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, fill)
-        local fillGrad = mk("UIGradient", { Color = grad2(C.accentA, C.accentB) }, fill)
-        local shine = mk("Frame", {
-            Size = UDim2.new(0.4, 0, 1, 0), Position = UDim2.new(-0.4, 0, 0, 0),
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, trackFrame)
+        local fillFrame = mk("Frame", {
+            Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1),
+            BorderSizePixel = 0, ClipsDescendants = true, ZIndex = 3,
+        }, trackFrame)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, fillFrame)
+        local fillGrad = mk("UIGradient", { Color = grad2(C.accentA, C.accentB) }, fillFrame)
+
+        -- Shine sweep — TweenService loop, runs off heartbeat
+        local shineFrame = mk("Frame", {
+            Size = UDim2.new(0.32, 0, 1, 0), Position = UDim2.new(-0.32, 0, 0, 0),
             BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, ZIndex = 4,
-        }, fill)
+        }, fillFrame)
         mk("UIGradient", {
-            Transparency = NumberSequence.new({ NSK(0, 1), NSK(0.5, 0.45), NSK(1, 1) }),
-        }, shine)
-        local sparkOuter = mk("Frame", {
-            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.fromOffset(22, 22),
-            BackgroundColor3 = C.accentB, BackgroundTransparency = 0.8, BorderSizePixel = 0, ZIndex = 4,
-        }, track)
-        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, sparkOuter)
-        local sparkInner = mk("Frame", {
-            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(10, 10),
-            BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.05, BorderSizePixel = 0, ZIndex = 5,
-        }, sparkOuter)
-        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, sparkInner)
+            Transparency = NumberSequence.new({ NSK(0, 1), NSK(0.5, 0.48), NSK(1, 1) }),
+        }, shineFrame)
+
+        -- Spark dot
+        local sparkDot = mk("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 0, 0.5, 0),
+            Size = UDim2.fromOffset(10, 10), BackgroundColor3 = C.accentB,
+            BackgroundTransparency = 0.15, BorderSizePixel = 0, ZIndex = 4, Visible = false,
+        }, trackFrame)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, sparkDot)
 
         -- ── Footer ──
         local lp = Players.LocalPlayer
         mk("TextLabel", {
-            BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 112), Size = UDim2.new(0.65, -16, 0, 16),
-            Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.muted, ZIndex = 2,
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 110),
+            Size = UDim2.new(0.65, -16, 0, 16), Font = Enum.Font.Gotham, TextSize = 11,
+            TextColor3 = C.muted, ZIndex = 2,
             Text = lp and ("Welcome, " .. lp.DisplayName) or "Welcome",
             TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
         }, card)
         local timeLbl = mk("TextLabel", {
-            BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 112),
-            Size = UDim2.new(0.35, -16, 0, 16), Font = Enum.Font.GothamMedium, Text = "0:00", TextSize = 11,
+            BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0),
+            Position = UDim2.new(1, -16, 0, 110), Size = UDim2.new(0.35, -16, 0, 16),
+            Font = Enum.Font.GothamMedium, Text = "0:00", TextSize = 11,
             TextColor3 = C.muted, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 2,
         }, card)
 
         if not attach(gui) then error("no valid GUI parent") end
 
-        -- ── state & animation ─────────────────────────────────────────────────
+        -- ── TweenService loops (off heartbeat, GPU-side on Roblox) ──
+        -- Ring rotation: smooth, no heartbeat cost
+        TweenService:Create(ringGrad,
+            TweenInfo.new(1.4, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+            { Rotation = 360 }):Play()
+        -- Shine sweep: slow back-and-forth
+        TweenService:Create(shineFrame,
+            TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+            { Position = UDim2.new(1, 0, 0, 0) }):Play()
+
+        -- Card entrance: scale + fade
+        tw(uiScale, 0.35, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+        if cardClass == "CanvasGroup" then
+            tw(card, 0.22, { GroupTransparency = 0 }, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        end
+
+        -- ── State ──
         local state, target, creep, shown = "running", 0, 0, 0
         local closing, conn = false, nil
-        local t, lastSec = 0, -1
+        local lastSec = -1
         local bornC = os.clock()
-        local fade, fadeGoal = 1, 0            -- GroupTransparency
-        local sc, scv, scGoal = 0.86, 0, 1     -- สปริงขนาดการ์ด (เด้งตอนเข้า)
-        local ip, ipv = 0.4, 0                 -- สปริง "ป๊อป" ของไอคอนกลางวงแหวน
-        local shake = 0
         local curStage = "wifi"
-        local accA, accB = C.accentA, C.accentB
-        local introChars = 0
-        local bursts = {}
+        local accentA, accentB = C.accentA, C.accentB
 
-        local function spring(x, v, goal, k, d, dt)
-            v = v + (k * (goal - x) - d * v) * dt
-            return x + v * dt, v
-        end
-
-        local function tw(obj, dur, props, style, dir)
-            pcall(function()
-                TweenService:Create(obj, TweenInfo.new(dur, style or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out), props):Play()
-            end)
-        end
-
-        local function setStage(name, color)
+        local function setStage(name)
             if curStage == name then return end
             curStage = name
-            stageIcon.Image = ICON[name]
-            stageIcon.ImageColor3 = color or accB
-            ip, ipv = 0.3, 0
+            stageIcon.Image = ICON[name] or ICON.wifi
+            stageIcon.ImageColor3 = accentB
         end
 
         local function paint(a, b)
-            accA, accB = a, b
+            accentA, accentB = a, b
             fillGrad.Color = grad2(a, b)
-            borderGrad.Color = grad2(a, b)
             ringGrad.Color = grad2(a, b)
-            sparkOuter.BackgroundColor3 = b
-            glow.BackgroundColor3 = a
+            sparkDot.BackgroundColor3 = b
             stageIcon.ImageColor3 = b
-            for _, p in ipairs(parts) do p.f.BackgroundColor3 = b end
         end
 
-        local function shockwave(color)
-            local w = mk("Frame", {
-                AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(42, 50),
-                Size = UDim2.fromOffset(52, 52), BackgroundTransparency = 1, ZIndex = 5,
-            }, card)
-            mk("UICorner", { CornerRadius = UDim.new(1, 0) }, w)
-            local s = mk("UIStroke", { Color = color, Thickness = 3, Transparency = 0.1 }, w)
-            tw(w, 0.7, { Size = UDim2.fromOffset(190, 190) })
-            tw(s, 0.7, { Transparency = 1, Thickness = 0.5 })
-            task.delay(0.8, function() pcall(function() w:Destroy() end) end)
-        end
-
-        local function confetti(colors)
-            for i = 1, 20 do
-                local ang = math.random() * math.pi * 2
-                local spd = 90 + math.random() * 150
-                local sz = math.random(3, 6)
-                local f = mk("Frame", {
-                    AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(42, 50),
-                    Size = UDim2.fromOffset(sz, sz), BackgroundColor3 = colors[math.random(1, #colors)],
-                    BorderSizePixel = 0, ZIndex = 6, Rotation = math.random(0, 360),
-                }, card)
-                if i % 2 == 0 then mk("UICorner", { CornerRadius = UDim.new(1, 0) }, f) end
-                bursts[#bursts + 1] = {
-                    f = f, x = 42, y = 50, vx = math.cos(ang) * spd, vy = math.sin(ang) * spd - 70,
-                    life = 0.9 + math.random() * 0.4, age = 0, vr = math.random(-360, 360),
-                }
-            end
-        end
-
+        -- ── Heartbeat: minimal updates only ──
         conn = RunService.Heartbeat:Connect(function(dt)
             dt = math.min(dt, 0.1)
-            t = t + dt
 
-            -- progress
+            -- Progress lerp
             local goal
             if state == "running" then
-                creep = math.min(creep + dt * 0.6, 5) -- ขยับเองนิดๆ ไม่ให้บาร์ดูค้าง
+                creep = math.min(creep + dt * 0.6, 5)
                 goal = math.min(97, target + creep)
             elseif state == "done" then
                 goal = 100
@@ -515,70 +425,17 @@ local LOADER = (function()
             end
             shown = shown + (goal - shown) * math.min(1, dt * 7)
             local frac = math.clamp(shown / 100, 0, 1)
-            fill.Size = UDim2.new(frac, 0, 1, 0)
-            pct.Text = math.floor(shown + 0.5) .. "%"
-            shine.Position = UDim2.new(((t * 0.85) % 1.7) - 0.4, 0, 0, 0)
-            sparkOuter.Position = UDim2.new(frac, 0, 0.5, 0)
-            local live = state == "running" and shown > 1
-            sparkOuter.Visible = live or state == "done"
-            local pz = 22 + math.sin(t * 9) * 4
-            sparkOuter.Size = UDim2.fromOffset(pz, pz)
+            fillFrame.Size = UDim2.new(frac, 0, 1, 0)
+            pctLabel.Text = math.floor(shown + 0.5) .. "%"
+            sparkDot.Position = UDim2.new(frac, 0, 0.5, 0)
+            sparkDot.Visible = (state == "running" and shown > 1) or state == "done"
 
-            -- ขั้นตอน → ไอคอนกลางวงแหวน
+            -- Stage icon (no tween, instant swap)
             if state == "running" then
-                setStage(shown < 28 and "wifi" or (shown < 62 and "shield" or "download"), accB)
+                setStage(shown < 28 and "wifi" or shown < 62 and "shield" or "download")
             end
 
-            -- วงแหวน/ขอบ/ชื่อ
-            ringGrad.Rotation = (t * 330) % 360
-            borderGrad.Rotation = (t * 110) % 360
-            local u = (t * 0.5) % 1.9
-            titleGrad.Offset = Vector2.new(math.min(1, -1 + u * 2), 0)
-            glow.Position = UDim2.fromOffset(-60 + math.sin(t * 0.7) * 16, -80 + math.cos(t * 0.5) * 12)
-
-            -- พิมพ์ชื่อทีละตัวอักษรตอนเข้า
-            if introChars < 11 then
-                introChars = math.min(11, math.floor(math.max(0, t - 0.12) * 28))
-                pcall(function() title.MaxVisibleGraphemes = introChars >= 11 and -1 or introChars end)
-            end
-
-            -- อนุภาคลอยขึ้น
-            for _, p in ipairs(parts) do
-                p.y = p.y - p.v * dt
-                if p.y < -0.05 then p.y, p.x, p.v = 1.05, math.random(), 0.05 + math.random() * 0.12 end
-                p.f.Position = UDim2.fromScale(p.x + math.sin(t * p.w + p.ph) * 0.012, p.y)
-                p.f.BackgroundTransparency = 0.55 + 0.4 * math.abs(p.y - 0.5) * 2
-            end
-
-            -- confetti
-            for i = #bursts, 1, -1 do
-                local b = bursts[i]
-                b.age = b.age + dt
-                if b.age >= b.life then
-                    pcall(function() b.f:Destroy() end); table.remove(bursts, i)
-                else
-                    b.vy = b.vy + 320 * dt
-                    b.x = b.x + b.vx * dt; b.y = b.y + b.vy * dt
-                    b.f.Position = UDim2.fromOffset(b.x, b.y)
-                    b.f.Rotation = b.f.Rotation + b.vr * dt
-                    b.f.BackgroundTransparency = math.clamp((b.age / b.life) ^ 2, 0, 1)
-                end
-            end
-
-            -- สปริง: ขนาดการ์ด + ป๊อปไอคอน
-            sc, scv = spring(sc, scv, scGoal, 190, 15, dt)
-            ip, ipv = spring(ip, ipv, 1, 200, 12, dt)
-            uiScale.Scale = math.max(0.05, sc)
-            local isz = 22 * math.max(0.05, ip)
-            stageIcon.Size = UDim2.fromOffset(isz, isz)
-
-            -- fade + สั่น (ตอน error)
-            fade = fade + (fadeGoal - fade) * math.min(1, dt * 9)
-            if cardClass == "CanvasGroup" then card.GroupTransparency = fade end
-            shake = math.max(0, shake - dt * 1.7)
-            card.Position = UDim2.new(0.5, math.sin(t * 58) * shake * 10, 0.5, (1 - sc) * 46)
-
-            -- เวลา
+            -- Timer (only on second boundary)
             local sec = math.floor(os.clock() - bornC)
             if sec ~= lastSec then
                 lastSec = sec
@@ -587,40 +444,26 @@ local LOADER = (function()
         end)
 
         local function setStatus(text)
-            text = (tostring(text or ""):gsub("[\r\n]+", " "))
+            text = (tostring(text or ""):gsub("[\r\n]+", " ")):match("^%s*(.-)%s*$") or ""
             if text == "" then return end
-            local cleanText, iconName = extractIcon(text)
-            local newText = cleanText ~= "" and cleanText or text
-            local textX = 0
-            if iconName and ICON[iconName] then
-                sIcon.Image = ICON[iconName]
-                sIcon.ImageColor3 = ICON_COLORS[iconName] or C.text
-                textX = 20
-                if not sIcon.Visible then sIcon.Visible = true end
-            else
-                sIcon.Visible = false
-            end
-            status.Size = UDim2.new(1, -textX, 1, 0)
-            if status.Text ~= newText then
-                status.Text = newText
-                status.Position = UDim2.new(0, textX, 0, 8)
-                status.TextTransparency = 0.85
-                tw(status, 0.28, { Position = UDim2.new(0, textX, 0, 0), TextTransparency = 0 })
-                if sIcon.Visible then
-                    sIcon.ImageTransparency = 1
-                    tw(sIcon, 0.28, { ImageTransparency = 0 })
-                end
-            else
-                status.Position = UDim2.new(0, textX, 0, 0)
-            end
+            -- strip emoji tokens silently
+            text = text:gsub("[\u{2714}\u{2713}\u{2705}\u{2718}\u{274C}\u{26A1}\u{26A0}\u{23F3}\u{1F511}]", "")
+                       :gsub("\u{FE0F}", ""):match("^%s*(.-)%s*$") or text
+            if statusLabel.Text == text then return end
+            statusLabel.Text = text
+            statusLabel.TextTransparency = 0.75
+            tw(statusLabel, 0.18, { TextTransparency = 0 })
         end
 
         local function close()
             if closing then return end
             closing = true
             state = "closed"
-            scGoal, fadeGoal = 0.92, 1
-            task.delay(0.45, function()
+            tw(uiScale, 0.25, { Scale = 0.93 })
+            if cardClass == "CanvasGroup" then
+                tw(card, 0.25, { GroupTransparency = 1 })
+            end
+            task.delay(0.32, function()
                 pcall(function() conn:Disconnect() end)
                 pcall(function() gui:Destroy() end)
             end)
@@ -628,11 +471,13 @@ local LOADER = (function()
 
         local born = os.time()
         local A = {}
+
         function A.Set(p, text)
             if state ~= "running" then return end
             if type(p) == "number" then target = math.clamp(p, target, 99); creep = 0 end
             setStatus(text)
         end
+
         function A.Log(text, kind)
             if kind == "error" then return A.Fail(text) end
             if kind == "done"  then return A.Done(text) end
@@ -640,6 +485,7 @@ local LOADER = (function()
             target = target + (92 - target) * 0.18; creep = 0
             setStatus(text)
         end
+
         function A.Done(text)
             if state ~= "running" then return end
             state = "done"
@@ -647,34 +493,43 @@ local LOADER = (function()
             paint(C.ok, C.okB)
             ringGrad.Transparency = NumberSequence.new(0)
             curStage = "check"; stageIcon.Image = ICON.check; stageIcon.ImageColor3 = C.ok
-            ip, ipv = 0.2, 0
-            sc, scv = 1, 0.9 -- เด้งการ์ดเบา ๆ
-            shockwave(C.ok)
-            confetti({ C.ok, C.okB, C.white, C.accentA })
-            task.delay(1.2, close)
+            -- subtle scale bump, then settle
+            tw(uiScale, 0.12, { Scale = 1.04 }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            task.delay(0.12, function()
+                tw(uiScale, 0.18, { Scale = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            end)
+            task.delay(1.1, close)
         end
+
         function A.Fail(text)
             if state ~= "running" then return end
             state = "error"
             setStatus(text or "Failed")
-            status.TextColor3 = C.err
+            statusLabel.TextColor3 = C.err
             paint(C.err, C.errB)
             ringGrad.Transparency = NumberSequence.new(0)
             curStage = "x"; stageIcon.Image = ICON.x; stageIcon.ImageColor3 = C.err
-            ip, ipv = 0.2, 0
-            shake = 1
-            shockwave(C.err)
+            -- 3-step tween shake (no heartbeat needed)
+            tw(card, 0.055, { Position = UDim2.new(0.5, -9, 0.5, 0) }, Enum.EasingStyle.Quad)
+            task.delay(0.055, function()
+                tw(card, 0.055, { Position = UDim2.new(0.5, 9, 0.5, 0) }, Enum.EasingStyle.Quad)
+                task.delay(0.055, function()
+                    tw(card, 0.08, { Position = UDim2.new(0.5, 0, 0.5, 0) }, Enum.EasingStyle.Quad)
+                end)
+            end)
             task.delay(4, close)
         end
+
         function A.Close(onlyIfRunning)
             if onlyIfRunning and state ~= "running" then return end
             close()
         end
+
         function A.IsRunning()
             return state == "running" and gui.Parent ~= nil and (os.time() - born) < 65
         end
 
-        task.delay(60, close) -- fail-safe: ไม่ให้ UI ค้างจอถ้าเกิดอะไรผิดปกติ
+        task.delay(60, close) -- fail-safe
         return A
     end)
 
