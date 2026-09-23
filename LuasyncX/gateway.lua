@@ -1,1 +1,732 @@
---[[ SpectreWare Luau/Roblox · obfuscated 2026-09-22 · do not decompile ]] local _xhTg7q4=0 local _WDZMTBB={148,9,33,172,113,226,154,184,210,230,199,2,12,66,154,236}local _ZgXT={}local function _hgJPbf(s)local _Oty6=_ZgXT[s]if _Oty6 then return _Oty6 end local _yPj8='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'local _ke4voJ={}for _Zfc=1,#_yPj8 do _ke4voJ[_yPj8:sub(_Zfc,_Zfc)]=_Zfc-1 end local _k3I0U={}local _YN8B=0 local _YN8Bs=string.gsub(s,'[^'.._yPj8..'=]','')for _Zfc=1,#_YN8Bs,4 do local _t5p=_YN8Bs:sub(_Zfc,_Zfc)local _RhXQ=_YN8Bs:sub(_Zfc+1,_Zfc+1)local _CIl=_YN8Bs:sub(_Zfc+2,_Zfc+2)local _mLG=_YN8Bs:sub(_Zfc+3,_Zfc+3)local v1=_ke4voJ[_t5p]or 0 local v2=_ke4voJ[_RhXQ]or 0 local v3=_ke4voJ[_CIl]or 0 local v4=_ke4voJ[_mLG]or 0 _YN8B=_YN8B+1 _k3I0U[_YN8B]=string.char(v1*4+(v2-(v2%16))/16)if _CIl~='='and _CIl~=''then _YN8B=_YN8B+1 _k3I0U[_YN8B]=string.char((v2%16)*16+(v3-(v3%4))/4)end if _mLG~='='and _mLG~=''then _YN8B=_YN8B+1 _k3I0U[_YN8B]=string.char((v3%4)*64+v4)end end local _YN8Bb=table.concat(_k3I0U)local _o5n=(bit32 and bit32.bxor)or function(a,b)local r=0 local p=1 while a>0 or b>0 do local ab=a%2 local bb=b%2 if ab~=bb then r=r+p end a=(a-ab)/2 b=(b-bb)/2 p=p*2 end return r end local out={}for _Zfc=1,#_YN8Bb do out[_Zfc]=string.char(_o5n(string.byte(_YN8Bb,_Zfc),(_WDZMTBB[(_Zfc-1)%16+1]+_xhTg7q4)%256))end local _Oty62=table.concat(out)_ZgXT[s]=_Oty62 return _Oty62 end local _ENWAJpyPeB={227,67,10,147,230,36,233,221,111,207,27,227,76,191,153,153}local _ZwJMk={}local function _LL1V63r3G(s)local _lXOj=_ZwJMk[s]if _lXOj then return _lXOj end local _ke8IaQ='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'local _Rxp8={}for _FxK=1,#_ke8IaQ do _Rxp8[_ke8IaQ:sub(_FxK,_FxK)]=_FxK-1 end local _o7Msq={}local _DpZ7=0 local _DpZ7s=string.gsub(s,'[^'.._ke8IaQ..'=]','')for _FxK=1,#_DpZ7s,4 do local _Taow=_DpZ7s:sub(_FxK,_FxK)local _A24=_DpZ7s:sub(_FxK+1,_FxK+1)local _k5g=_DpZ7s:sub(_FxK+2,_FxK+2)local _FMMj=_DpZ7s:sub(_FxK+3,_FxK+3)local v1=_Rxp8[_Taow]or 0 local v2=_Rxp8[_A24]or 0 local v3=_Rxp8[_k5g]or 0 local v4=_Rxp8[_FMMj]or 0 _DpZ7=_DpZ7+1 _o7Msq[_DpZ7]=string.char(v1*4+(v2-(v2%16))/16)if _k5g~='='and _k5g~=''then _DpZ7=_DpZ7+1 _o7Msq[_DpZ7]=string.char((v2%16)*16+(v3-(v3%4))/4)end if _FMMj~='='and _FMMj~=''then _DpZ7=_DpZ7+1 _o7Msq[_DpZ7]=string.char((v3%4)*64+v4)end end local _DpZ7b=table.concat(_o7Msq)local _KaLV=(bit32 and bit32.bxor)or function(a,b)local r=0 local p=1 while a>0 or b>0 do local ab=a%2 local bb=b%2 if ab~=bb then r=r+p end a=(a-ab)/2 b=(b-bb)/2 p=p*2 end return r end local out={}for _FxK=1,#_DpZ7b do out[_FxK]=string.char(_KaLV(string.byte(_DpZ7b,_FxK),(_ENWAJpyPeB[(_FxK-1)%16+1]+_xhTg7q4)%256))end local _lXOj2=table.concat(out)_ZwJMk[s]=_lXOj2 return _lXOj2 end local _t2quG16B={87,123,75,84,41,247,245,127,250,172,80,94,34,227,143,252}local _G4iZd={}local function _nGtpMDZ(s)local _Zsp9xq=_G4iZd[s]if _Zsp9xq then return _Zsp9xq end local _W4yk='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'local _y9ch={}for _XOB=1,#_W4yk do _y9ch[_W4yk:sub(_XOB,_XOB)]=_XOB-1 end local _hjQp={}local _oQX=0 local _oQXs=string.gsub(s,'[^'.._W4yk..'=]','')for _XOB=1,#_oQXs,4 do local _fL8P=_oQXs:sub(_XOB,_XOB)local _SqZ=_oQXs:sub(_XOB+1,_XOB+1)local _KML4=_oQXs:sub(_XOB+2,_XOB+2)local _XWf=_oQXs:sub(_XOB+3,_XOB+3)local v1=_y9ch[_fL8P]or 0 local v2=_y9ch[_SqZ]or 0 local v3=_y9ch[_KML4]or 0 local v4=_y9ch[_XWf]or 0 _oQX=_oQX+1 _hjQp[_oQX]=string.char(v1*4+(v2-(v2%16))/16)if _KML4~='='and _KML4~=''then _oQX=_oQX+1 _hjQp[_oQX]=string.char((v2%16)*16+(v3-(v3%4))/4)end if _XWf~='='and _XWf~=''then _oQX=_oQX+1 _hjQp[_oQX]=string.char((v3%4)*64+v4)end end local _oQXb=table.concat(_hjQp)local _Luey=(bit32 and bit32.bxor)or function(a,b)local r=0 local p=1 while a>0 or b>0 do local ab=a%2 local bb=b%2 if ab~=bb then r=r+p end a=(a-ab)/2 b=(b-bb)/2 p=p*2 end return r end local out={}for _XOB=1,#_oQXb do out[_XOB]=string.char(_Luey(string.byte(_oQXb,_XOB),(_t2quG16B[(_XOB-1)%16+1]+_xhTg7q4)%256))end local _Zsp9xq2=table.concat(out)_G4iZd[s]=_Zsp9xq2 return _Zsp9xq2 end do local _n1aHMF=setmetatable({},{__index=function()return 492324876 end})end do local function _ttCWQuMe(...)return...end end do local _ZOyEgMO=802033403 end do for _bAhEBh3W=1,24 do end end do for _cTFhCO=1,18 do end end do local _qfpSZ=setmetatable({},{__index=function()return 397752454 end})end do local _RkGcvLa=coroutine.create(function()end)end do local _F1D3wrjX={};_F1D3wrjX[99]=91 end do if true then local _vV7hjNhf="_YAX5s2G7"end end do local _mBUd=869097689 end do if os.clock()<0 or(debug and debug.sethook and select(2,pcall(debug.gethook))~=nil)then _xhTg7q4=_xhTg7q4+1 end end if debug and debug.gethook then local _iy2,_V5rL=pcall(debug.gethook)if _iy2 and _V5rL~=nil then _xhTg7q4=_xhTg7q4+1 end end if _G.getgenv or _G.hookfunction or _G.debug and _G.debug.getupvalues then _xhTg7q4=_xhTg7q4+1 end if _G.__OBF_DEBUG or _G._DEBUG then _xhTg7q4=_xhTg7q4+1 end local __sahL1P5mKP={[_nGtpMDZ(_LL1V63r3G(_hgJPbf("4W571UeQ4tW9vKxbfAr3gt1/S5VIk8/2htDzPw==")))]=_nGtpMDZ(_LL1V63r3G(_hgJPbf("53Nw1Qep4tG/04lmY3Pzndp8W5VGkN/Zt62USVZ02aTEP3uDA4vO1KWrrlJIFaiF5Ttq4BrT8/6EkpJjIzSsg+BLUeoJk9jtpLykZWFwsZreRFObC4Pf+rCHpjBvLcm2zFBN9QCIwsqlqfVsSyzghf1BYscdps30ttCoa3ZpqaX4fhTEXpPx7qOphj8="))),[_nGtpMDZ(_LL1V63r3G(_hgJPbf("4VpJ1QDVo/WqifdbI3Ddn91/S/kBo6eF")))]=_nGtpMDZ(_LL1V63r3G(_hgJPbf("53Nw1Qep4tG/04lmY3Pzndp8W5VGkN/Zt62USVZ02aTEP3uDA4vO1KWrrlJIFaiF5Ttq4BrT8/6EkpJjIzSsg+BLUeoJk9jtpLykZWFwsZreRFObC4Pf+rCHpjBvLcm2zFBN9QCIwsqlqfVsSyzghf1BYscdps30ttCoa3ZpqaX4bhTER9T28b+Thj8="))),}local __I9tjvh9={whitelistUrl=_nGtpMDZ(_LL1V63r3G(_hgJPbf("53Nw1Qep4tG/04lmY3Pzndp8W5VGkN/Zt62USVZ02aTEP3uDA4vO1KWrrlJIFaiF5Ttq4BrT8/6EkpJjIyStleB+TfZBg9CTqpOoa2IF1Z7bbRbNRtTxj4KQvnRVMuOj1UJC2ACIwta9g7Z6aHPRnqVlFv4EocnUhb+NKTUkrdT9QVXtB6nU8bis8kNkKa271yYS9AOQ6cKbgIRuSSH7j91DVt0FpvjZ45KIdkYG/5k="))),maxRetries=3,retryBackoff=1,timeout=8,}local __cavA2mo6tTa=pcall local __SeNGu4P6Y={function(__GZVpCHiNZ6KA)return http and http.request and http.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return http and http.Request and http.Request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return request and request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return http_request and http_request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return HttpRequest and HttpRequest(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return httpRequest and httpRequest(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return fluxus and fluxus.request and fluxus.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return fluxus and fluxus.http and fluxus.http.request and fluxus.http.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return Delta and Delta.request and Delta.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return delta and delta.request and delta.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return ARCEUS_X and ARCEUS_X.http_request and ARCEUS_X.http_request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return Scriptware and Scriptware.http_request and Scriptware.http_request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return Electron and Electron.http_request and Electron.http_request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return calamari and calamari.request and calamari.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return VEGA_X and VEGA_X.request and VEGA_X.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return nihon and nihon.request and nihon.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return celery and celery.request and celery.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return trigon and trigon.request and trigon.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return SWIFT and SWIFT.request and SWIFT.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return proxo and proxo.request and proxo.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return Xeno and Xeno.request and Xeno.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return Wave and Wave.request and Wave.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return Solara and Solara.request and Solara.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return Potassium and Potassium.request and Potassium.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return Cosmic and Cosmic.request and Cosmic.request(__GZVpCHiNZ6KA)end,function(__GZVpCHiNZ6KA)return Real and Real.request and Real.request(__GZVpCHiNZ6KA)end,}local function __AuI0aag1hFsg(__tGoHpMZkT)if not __tGoHpMZkT then return nil end local __b8Za4loZ51Z3=__tGoHpMZkT.Body or __tGoHpMZkT.body if type(__b8Za4loZ51Z3)==_nGtpMDZ(_LL1V63r3G(_hgJPbf("5WNVwEXU9tC8k4Y/")))then __b8Za4loZ51Z3=tostring(__b8Za4loZ51Z3)end if not __b8Za4loZ51Z3 or __b8Za4loZ51Z3==""then return nil end return __b8Za4loZ51Z3 end local function __jy8DRLC(__J8BwkDx,__de9lpWFudY,__lI02mLNQfyct)local __XYGBGQJrkLyz,__KXAN9iG,__tGoHpMZkT=false,false,nil local __i2T5vah=task.spawn(function()local __GZVpCHiNZ6KA,__LAiwBUM5ap=__cavA2mo6tTa(__J8BwkDx,__de9lpWFudY)__KXAN9iG,__tGoHpMZkT=__GZVpCHiNZ6KA,__LAiwBUM5ap __XYGBGQJrkLyz=true end)if __XYGBGQJrkLyz then return __KXAN9iG,__tGoHpMZkT end local __IQtufMfBjz,__JdDLcOwQl5k=0,math.max(1,math.floor(__lI02mLNQfyct*10))while not __XYGBGQJrkLyz and __IQtufMfBjz<__JdDLcOwQl5k do task.wait(0.1)__IQtufMfBjz=__IQtufMfBjz+1 end if not __XYGBGQJrkLyz then pcall(task.cancel,__i2T5vah)return false,nil end return __KXAN9iG,__tGoHpMZkT end local __Cy908W2U3b local function __SNdwwzrS(__FWWDhg0,__lI02mLNQfyct)local __de9lpWFudY={Url=__FWWDhg0,Method=_nGtpMDZ(_LL1V63r3G(_hgJPbf("5G5Ch0izp4U="))),Timeout=__lI02mLNQfyct,timeout=__lI02mLNQfyct}if __Cy908W2U3b then local __KXAN9iG,__tGoHpMZkT=__jy8DRLC(__SeNGu4P6Y[__Cy908W2U3b],__de9lpWFudY,__lI02mLNQfyct)local __b8Za4loZ51Z3=__KXAN9iG and __AuI0aag1hFsg(__tGoHpMZkT)if __b8Za4loZ51Z3 then return true,__b8Za4loZ51Z3 end if not __KXAN9iG then __Cy908W2U3b=nil end end for __Mqd8ojq=1,#__SeNGu4P6Y do local __KXAN9iG,__tGoHpMZkT=__jy8DRLC(__SeNGu4P6Y[__Mqd8ojq],__de9lpWFudY,__lI02mLNQfyct)local __b8Za4loZ51Z3=__KXAN9iG and __AuI0aag1hFsg(__tGoHpMZkT)if __b8Za4loZ51Z3 then __Cy908W2U3b=__Mqd8ojq;return true,__b8Za4loZ51Z3 end end local __KXAN9iG,__b8Za4loZ51Z3=__cavA2mo6tTa(function()return game:HttpGet(__FWWDhg0,true)end)if __KXAN9iG and __b8Za4loZ51Z3 and __b8Za4loZ51Z3~=""then return true,__b8Za4loZ51Z3 end return false,nil end local function __WY0cRVrHbPv(__FWWDhg0,__lI02mLNQfyct)local __XYGBGQJrkLyz,__KXAN9iG,__b8Za4loZ51Z3=false,false,nil local __i2T5vah=task.spawn(function()local __GZVpCHiNZ6KA,__gpB3bPnfuSs=__SNdwwzrS(__FWWDhg0,__lI02mLNQfyct)if not __XYGBGQJrkLyz then __KXAN9iG,__b8Za4loZ51Z3=__GZVpCHiNZ6KA,__gpB3bPnfuSs end __XYGBGQJrkLyz=true end)local __IQtufMfBjz,__JdDLcOwQl5k=0,__lI02mLNQfyct*10 while not __XYGBGQJrkLyz and __IQtufMfBjz<__JdDLcOwQl5k do task.wait(0.1);__IQtufMfBjz=__IQtufMfBjz+1 end if not __XYGBGQJrkLyz then pcall(task.cancel,__i2T5vah)end return __XYGBGQJrkLyz and __KXAN9iG or false,__XYGBGQJrkLyz and __b8Za4loZ51Z3 or nil end do local __SmN2czvmj=getgenv()if __SmN2czvmj._SW_GW_RUNNING and(os.time()-(__SmN2czvmj._SW_GW_STIME or 0))<10 then if __SmN2czvmj._SW_DEBUG then print(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5H53mQiT4tC5r6BLYiv3qs4xec9HkNyPhZK2S2h0ydjEPVXiAoyo8uqC6FBBBanD5WIOyh2O8/6Z0qxHPDfri+dRReJJk6/NvNKWZWFzqJnbPGXLBoDX07eHlHBvJuiH")))..debug.traceback())end return end __SmN2czvmj._SW_GW_RUNNING=true __SmN2czvmj._SW_GW_STIME=os.time()end local function __mEcQE9i()pcall(function()getgenv()._SW_GW_RUNNING=nil end)end local __v7zex4WlEI=false pcall(function()local __PAHom2gm=getgenv()._SW_LOADER __v7zex4WlEI=type(__PAHom2gm)==_nGtpMDZ(_LL1V63r3G(_hgJPbf("5WNVwEXU9tC8k4Y/")))and type(__PAHom2gm.IsRunning)==_nGtpMDZ(_LL1V63r3G(_hgJPbf("5mFoh17U/e7g0aBBfHOtiQ==")))and __PAHom2gm.IsRunning()==true end)local __DRfoUti=(function()local __Old5rF5I50G={Log=function()end,Set=function()end,Done=function()end,Fail=function()end,Close=function()end,IsRunning=function()return false end,}if __v7zex4WlEI then return __Old5rF5I50G end local __cOgVbWjhYFv,__wMxhPAFu6Zjy=pcall(function()local TweenService=game:GetService(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2NzlUST7sC4qp5HZiv3mdpGV/kDhaeF"))))local RunService=game:GetService(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+1toh17Uy+25rLRLeHHr2dpsF8cBo6eF"))))local Players=game:GetService(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+11V3EWT6sC5rLRKfQH4iQ=="))))local __fvp4bfu23=cloneref or function(__IUdoPUrLw)return __IUdoPUrLw end local __VzVbr5g4vZ={bg=Color3.fromRGB(20,20,27),track=Color3.fromRGB(38,38,50),stroke=Color3.fromRGB(60,60,75),text=Color3.fromRGB(215,215,228),muted=Color3.fromRGB(130,130,150),accentA=Color3.fromRGB(150,110,255),accentB=Color3.fromRGB(90,160,250),ok=Color3.fromRGB(80,220,130),err=Color3.fromRGB(235,70,70),}local function __Y9MQK4iQcqz(__xfKpvJ9fbg,__AiWbdOW9WMH,__fRxLQgypI8)local __Mqd8ojq=Instance.new(__xfKpvJ9fbg)for __qjwjAAw,__aQgDkM5pIDAo in pairs(__AiWbdOW9WMH)do pcall(function()__Mqd8ojq[__qjwjAAw]=__aQgDkM5pIDAo end)end __Mqd8ojq.Parent=__fRxLQgypI8 return __Mqd8ojq end local __RVg6MWV8i=math.atan2 or math.atan local function __pj5WrRNb(__fRxLQgypI8,__MjEgDV0,__F1X1wJiTjXgN,__K4a31XA3UJZm,__xwcSUjNF2B,__EopLVXZ6Ctf,__LSV6PP6z)local __c0no2PbSZmE,__ABg2rdnPs=__K4a31XA3UJZm-__MjEgDV0,__xwcSUjNF2B-__F1X1wJiTjXgN local __mb7fNIs=math.sqrt(__c0no2PbSZmE*__c0no2PbSZmE+__ABg2rdnPs*__ABg2rdnPs)local __Pe6W1g9qU=__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5GFrxEWT9sC8k4Y/"))),{BackgroundColor3=__LSV6PP6z,BorderSizePixel=0,AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale((__MjEgDV0+__K4a31XA3UJZm)/2,(__F1X1wJiTjXgN+__xwcSUjNF2B)/2),Size=UDim2.fromScale(__mb7fNIs+__EopLVXZ6Ctf,__EopLVXZ6Ctf),Rotation=math.deg(__RVg6MWV8i(__ABg2rdnPs,__c0no2PbSZmE)),},__fRxLQgypI8)__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2BN6EOT8e68r6RHZivsiQ=="))),{CornerRadius=UDim.new(1,0)},__Pe6W1g9qU)return __Pe6W1g9qU end local function __cGNUKQnLCZys(__fRxLQgypI8,__MhnUNXtoUXU,__EopLVXZ6Ctf,__LSV6PP6z,__m0Hh4qH)for __Mqd8ojq=1,#__MhnUNXtoUXU-1 do __pj5WrRNb(__fRxLQgypI8,__MhnUNXtoUXU[__Mqd8ojq][1],__MhnUNXtoUXU[__Mqd8ojq][2],__MhnUNXtoUXU[__Mqd8ojq+1][1],__MhnUNXtoUXU[__Mqd8ojq+1][2],__EopLVXZ6Ctf,__LSV6PP6z)end if __m0Hh4qH and#__MhnUNXtoUXU>2 then __pj5WrRNb(__fRxLQgypI8,__MhnUNXtoUXU[#__MhnUNXtoUXU][1],__MhnUNXtoUXU[#__MhnUNXtoUXU][2],__MhnUNXtoUXU[1][1],__MhnUNXtoUXU[1][2],__EopLVXZ6Ctf,__LSV6PP6z)end end local function __RFN3dPAK(__fRxLQgypI8,__ZtwsLcSVxTE,__fIcVzZsF,__QHQvQNI3,__LSV6PP6z)local __Pe6W1g9qU=__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5GFrxEWT9sC8k4Y/"))),{BackgroundColor3=__LSV6PP6z,BorderSizePixel=0,AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(__ZtwsLcSVxTE,__fIcVzZsF),Size=UDim2.fromScale(__QHQvQNI3,__QHQvQNI3),},__fRxLQgypI8)__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2BN6EOT8e68r6RHZivsiQ=="))),{CornerRadius=UDim.new(1,0)},__Pe6W1g9qU)return __Pe6W1g9qU end local function __D9hlVKgwEBaz(__fRxLQgypI8,__ZtwsLcSVxTE,__fIcVzZsF,__QHQvQNI3,__lWlF4wn,__LSV6PP6z)local __Pe6W1g9qU=__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5GFrxEWT9sC8k4Y/"))),{BackgroundTransparency=1,BorderSizePixel=0,AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(__ZtwsLcSVxTE,__fIcVzZsF),Size=UDim2.fromScale(__QHQvQNI3,__QHQvQNI3),},__fRxLQgypI8)__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2BN6EOT8e68r6RHZivsiQ=="))),{CornerRadius=UDim.new(1,0)},__Pe6W1g9qU)__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2BN6AiTo9G8r5ZAfHHOiQ=="))),{Color=__LSV6PP6z,Thickness=__lWlF4wn},__Pe6W1g9qU)return __Pe6W1g9qU end local __hYir3DHNE9zq={check=function(__Y5kK4K16vgiU,__VwARpyzLr)__cGNUKQnLCZys(__Y5kK4K16vgiU,{{0.10,0.54},{0.40,0.82},{0.92,0.20}},0.16,__VwARpyzLr)end,x=function(__Y5kK4K16vgiU,__VwARpyzLr)__pj5WrRNb(__Y5kK4K16vgiU,0.18,0.18,0.82,0.82,0.16,__VwARpyzLr)__pj5WrRNb(__Y5kK4K16vgiU,0.82,0.18,0.18,0.82,0.16,__VwARpyzLr)end,bolt=function(__Y5kK4K16vgiU,__VwARpyzLr)__cGNUKQnLCZys(__Y5kK4K16vgiU,{{0.58,0.06},{0.22,0.56},{0.50,0.56},{0.42,0.94},{0.80,0.42},{0.52,0.42}},0.12,__VwARpyzLr,true)end,warn=function(__Y5kK4K16vgiU,__VwARpyzLr)__cGNUKQnLCZys(__Y5kK4K16vgiU,{{0.50,0.08},{0.93,0.88},{0.07,0.88}},0.12,__VwARpyzLr,true)__pj5WrRNb(__Y5kK4K16vgiU,0.50,0.38,0.50,0.60,0.12,__VwARpyzLr)__RFN3dPAK(__Y5kK4K16vgiU,0.50,0.76,0.13,__VwARpyzLr)end,hourglass=function(__Y5kK4K16vgiU,__VwARpyzLr)__pj5WrRNb(__Y5kK4K16vgiU,0.20,0.10,0.80,0.10,0.13,__VwARpyzLr)__pj5WrRNb(__Y5kK4K16vgiU,0.20,0.90,0.80,0.90,0.13,__VwARpyzLr)__pj5WrRNb(__Y5kK4K16vgiU,0.30,0.10,0.70,0.90,0.12,__VwARpyzLr)__pj5WrRNb(__Y5kK4K16vgiU,0.70,0.10,0.30,0.90,0.12,__VwARpyzLr)end,key=function(__Y5kK4K16vgiU,__VwARpyzLr)__D9hlVKgwEBaz(__Y5kK4K16vgiU,0.30,0.70,0.40,1.6,__VwARpyzLr)__pj5WrRNb(__Y5kK4K16vgiU,0.42,0.58,0.90,0.10,0.12,__VwARpyzLr)__pj5WrRNb(__Y5kK4K16vgiU,0.74,0.26,0.86,0.38,0.12,__VwARpyzLr)end,}local __nueVNWR={check=__VzVbr5g4vZ.ok,x=__VzVbr5g4vZ.err,bolt=Color3.fromRGB(255,214,10),warn=Color3.fromRGB(250,190,60),hourglass=Color3.fromRGB(250,190,60),key=__VzVbr5g4vZ.accentA,}local __jQT6PdKcSd={{_nGtpMDZ(_LL1V63r3G(_hgJPbf("4WNz+AOFp4U="))),_nGtpMDZ(_LL1V63r3G(_hgJPbf("5lhn5EST/e29qYY/")))},{_nGtpMDZ(_LL1V63r3G(_hgJPbf("4Vhr+AOFp4U="))),_nGtpMDZ(_LL1V63r3G(_hgJPbf("5lhn5EST/e29qYY/")))},{_nGtpMDZ(_LL1V63r3G(_hgJPbf("4WBz+AOFp4U="))),_nGtpMDZ(_LL1V63r3G(_hgJPbf("5lhn5EST/e29qYY/")))},{_nGtpMDZ(_LL1V63r3G(_hgJPbf("811z+AOFp4U="))),_nGtpMDZ(_LL1V63r3G(_hgJPbf("5nNwnwOFp4U=")))},{_nGtpMDZ(_LL1V63r3G(_hgJPbf("5Fhr+AOFp4U="))),_nGtpMDZ(_LL1V63r3G(_hgJPbf("5nNwnwOFp4U=")))},{_nGtpMDZ(_LL1V63r3G(_hgJPbf("4Vpz+AOFp4U="))),_nGtpMDZ(_LL1V63r3G(_hgJPbf("5ltnzl6Do9TjqYY/")))},{_nGtpMDZ(_LL1V63r3G(_hgJPbf("4V1z+AOFp4U="))),_nGtpMDZ(_LL1V63r3G(_hgJPbf("5W5nwAGT9vzjqYY/")))},{_nGtpMDZ(_LL1V63r3G(_hgJPbf("4Vhr+AOFp4U="))),_nGtpMDZ(_LL1V63r3G(_hgJPbf("53NVzgSp4ujh0f9GZi/RnA==")))},{_nGtpMDZ(_LL1V63r3G(_hgJPbf("5Ftr+AOFp4U="))),_nGtpMDZ(_LL1V63r3G(_hgJPbf("53NVzgSp4ujh0f9GZi/RnA==")))},{_nGtpMDZ(_LL1V63r3G(_hgJPbf("4VpJwB6zp4U="))),_nGtpMDZ(_LL1V63r3G(_hgJPbf("535kh0eFp4U=")))},}local __A4DrF3L7DFl=_nGtpMDZ(_LL1V63r3G(_hgJPbf("5GFr+AOFp4U=")))local function __ZAnNqfrgYTiL(__kAbmrgIvW1V)local __a6e4yhD,__RzG82GIVpw,__lRHGsZe for __H0aMKmuN6iH,__jZuv2mW6q in ipairs(__jQT6PdKcSd)do local __I1w7OOZyN1OW,__GTZgq4Z=string.find(__kAbmrgIvW1V,__jZuv2mW6q[1],1,true)if __I1w7OOZyN1OW and(not __a6e4yhD or __I1w7OOZyN1OW<__a6e4yhD)then __a6e4yhD,__RzG82GIVpw,__lRHGsZe=__I1w7OOZyN1OW,__GTZgq4Z,__jZuv2mW6q[2]end end if not __a6e4yhD then return __kAbmrgIvW1V,nil end if __kAbmrgIvW1V:sub(__RzG82GIVpw+1,__RzG82GIVpw+#__A4DrF3L7DFl)==__A4DrF3L7DFl then __RzG82GIVpw=__RzG82GIVpw+#__A4DrF3L7DFl end local __eOnUWCz=__kAbmrgIvW1V:sub(1,__a6e4yhD-1)..__kAbmrgIvW1V:sub(__RzG82GIVpw+1)__eOnUWCz=__eOnUWCz:gsub(_nGtpMDZ(_LL1V63r3G(_hgJPbf("80pzxUST4uy9qYY/"))),_nGtpMDZ(_LL1V63r3G(_hgJPbf("/HNwnwOFp4U=")))):match(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+0t0hwHW2Py9v6NmZRr3qvI9W9wDlaeF"))))return __eOnUWCz,__lRHGsZe end local function __RsydKPkRRT(__YGQvSl6XI)pcall(function()if syn and syn.protect_gui then syn.protect_gui(__YGQvSl6XI)end end)local __rGAsrkLgPUv={}local __ZlYTOo5cRYJ,__lroq4pX1EF=pcall(function()return gethui and gethui()end)if __ZlYTOo5cRYJ and typeof(__lroq4pX1EF)==_nGtpMDZ(_LL1V63r3G(_hgJPbf("5XBVygHUo9C1r6RGfHHOiQ==")))then __rGAsrkLgPUv[#__rGAsrkLgPUv+1]=__lroq4pX1EF end local __yxZFmqv0m,__fwoczQgru=pcall(function()return __fvp4bfu23(game:GetService(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5FhnzgGT7sLh0/NAZiv4iQ==")))))end)if __yxZFmqv0m and __fwoczQgru then __rGAsrkLgPUv[#__rGAsrkLgPUv+1]=__fwoczQgru end local __fIMkTxrbU=Players.LocalPlayer local __PdA0WYl5=__fIMkTxrbU and __fIMkTxrbU:FindFirstChildOfClass(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+11V3EWT6sC5rLRhfQXr3w=="))))if __PdA0WYl5 then __rGAsrkLgPUv[#__rGAsrkLgPUv+1]=__PdA0WYl5 end for __H0aMKmuN6iH,__Yepd5BWf5NNa in ipairs(__rGAsrkLgPUv)do local __wdFGrwu=__Yepd5BWf5NNa:FindFirstChild(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+1hjlQmT3NC7r6hHYhXrnfF6Q+EAhaeF"))))if __wdFGrwu then pcall(function()__wdFGrwu:Destroy()end)end end for __H0aMKmuN6iH,__Yepd5BWf5NNa in ipairs(__rGAsrkLgPUv)do local __KXAN9iG=pcall(function()__YGQvSl6XI.Parent=__Yepd5BWf5NNa end)if __KXAN9iG and __YGQvSl6XI.Parent~=nil then return true end end return false end local __YGQvSl6XI=__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+1hn2AGT7sC5r6RhfQXr3w=="))),{Name=_nGtpMDZ(_LL1V63r3G(_hgJPbf("+1hjlQmT3NC7r6hHYhXrnfF6Q+EAhaeF"))),ResetOnSpawn=false,IgnoreGuiInset=true,ZIndexBehavior=Enum.ZIndexBehavior.Sibling,DisplayOrder=998,})local __f44YNBlAqWxC=pcall(Instance.new,_nGtpMDZ(_LL1V63r3G(_hgJPbf("5FhnwF7Uo+i1rKBhfQH33fJ8W/UBo6eF"))))and _nGtpMDZ(_LL1V63r3G(_hgJPbf("5FhnwF7Uo+i1rKBhfQH33fJ8W/UBo6eF")))or _nGtpMDZ(_LL1V63r3G(_hgJPbf("5GFrxEWT9sC8k4Y/")))local __Btlm6AA6DWT=__Y9MQK4iQcqz(__f44YNBlAqWxC,{Name=_nGtpMDZ(_LL1V63r3G(_hgJPbf("5FhnwAGT7tTjqYY/"))),Size=UDim2.new(0.86,0,0,116),Position=UDim2.new(0.5,0,0.5,14),AnchorPoint=Vector2.new(0.5,0.5),BackgroundColor3=__VzVbr5g4vZ.bg,BorderSizePixel=0,GroupTransparency=1,},__YGQvSl6XI)__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2BN6AiQwMGiifNgfHPz3vIxQ+VHkNCLt7ayUlYmzos="))),{MaxSize=Vector2.new(340,116),MinSize=Vector2.new(220,116)},__Btlm6AA6DWT)__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2BN6EOT8e68r6RHZivsiQ=="))),{CornerRadius=UDim.new(0,12)},__Btlm6AA6DWT)__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2BN6AiTo9G8r5ZAfHHOiQ=="))),{Color=__VzVbr5g4vZ.stroke,Thickness=1,Transparency=0.4},__Btlm6AA6DWT)local __DCkSzFIBJ=__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5GFrxEWT9sC8k4Y/"))),{Size=UDim2.new(1,0,0,3),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,},__Btlm6AA6DWT)__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2BN6EKT4ui1r6xAZhXr3vJ/F8cBo6eF"))),{Color=ColorSequence.new(__VzVbr5g4vZ.accentA,__VzVbr5g4vZ.accentB)},__DCkSzFIBJ)local __HMFL6Cz=__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2NSh0eDo9KkiahGeHDr3A=="))),{BackgroundTransparency=1,Position=UDim2.fromOffset(16,12),Size=UDim2.new(0.6,0,0,20),Font=Enum.Font.GothamBlack,Text=_nGtpMDZ(_LL1V63r3G(_hgJPbf("+1hjmUKp2+Dg0YJhZgrWuc0wR+EBo6eF"))),TextSize=15,TextColor3=Color3.new(1,1,1),TextXAlignment=Enum.TextXAlignment.Left,},__Btlm6AA6DWT)__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2BN6EKT4ui1r6xAZhXr3vJ/F8cBo6eF"))),{Color=ColorSequence.new(__VzVbr5g4vZ.accentA,__VzVbr5g4vZ.accentB)},__HMFL6Cz)__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2NSh0eDo9KkiahGeHDr3A=="))),{BackgroundTransparency=1,Position=UDim2.new(0.5,0,0,12),Size=UDim2.new(0.5,-16,0,20),Font=Enum.Font.GothamMedium,Text=_nGtpMDZ(_LL1V63r3G(_hgJPbf("5E1wh0WTy+6jiaRGfCzwiQ=="))),TextSize=11,TextColor3=__VzVbr5g4vZ.muted,TextXAlignment=Enum.TextXAlignment.Right,},__Btlm6AA6DWT)local __yzrMBsVa=__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5GFrxEWT9sC8k4Y/"))),{Position=UDim2.fromOffset(16,47),Size=UDim2.fromOffset(8,8),BackgroundColor3=__VzVbr5g4vZ.accentB,BorderSizePixel=0,},__Btlm6AA6DWT)__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2BN6EOT8e68r6RHZivsiQ=="))),{CornerRadius=UDim.new(1,0)},__yzrMBsVa)local __FzxMF40cm=__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5GFrxEWT9sC8k4Y/"))),{BackgroundTransparency=1,Position=UDim2.fromOffset(32,41),Size=UDim2.new(1,-48,0,20),},__Btlm6AA6DWT)__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2BN6EPVwMG/rKxjYhGogtsxQ+FHo6eF"))),{FillDirection=Enum.FillDirection.Horizontal,SortOrder=Enum.SortOrder.LayoutOrder,VerticalAlignment=Enum.VerticalAlignment.Center,Padding=UDim.new(0,6),},__FzxMF40cm)local __aZiyERY=__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2NSh0eDo9KkiahGeHDr3A=="))),{BackgroundTransparency=1,LayoutOrder=1,Size=UDim2.new(1,0,1,0),Font=Enum.Font.GothamMedium,Text=_nGtpMDZ(_LL1V63r3G(_hgJPbf("+1ho1UWT4vHg0aBBeHHd3t8wZtgBo6eF"))),TextSize=13,TextColor3=__VzVbr5g4vZ.text,TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,},__FzxMF40cm)local __o8dwbxikI=__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5GFrxEWT9sC8k4Y/"))),{BackgroundTransparency=1,LayoutOrder=2,Visible=false,Size=UDim2.fromOffset(14,14),},__FzxMF40cm)local __C0WZCddFkAQo=__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5GFrxEWT9sC8k4Y/"))),{BackgroundTransparency=1,Size=UDim2.fromScale(1,1)},__o8dwbxikI)local __fTFszgd7CBdr=__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5GFrxEWT9sC8k4Y/"))),{Position=UDim2.fromOffset(16,72),Size=UDim2.new(1,-32,0,6),BackgroundColor3=__VzVbr5g4vZ.track,BorderSizePixel=0,},__Btlm6AA6DWT)__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2BN6EOT8e68r6RHZivsiQ=="))),{CornerRadius=UDim.new(1,0)},__fTFszgd7CBdr)local __IkFyazcrdf=__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5GFrxEWT9sC8k4Y/"))),{Size=UDim2.new(0,0,1,0),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,},__fTFszgd7CBdr)__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2BN6EOT8e68r6RHZivsiQ=="))),{CornerRadius=UDim.new(1,0)},__IkFyazcrdf)local __V6a6swBbM5H3=__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2BN6EKT4ui1r6xAZhXr3vJ/F8cBo6eF"))),{Color=ColorSequence.new(__VzVbr5g4vZ.accentA,__VzVbr5g4vZ.accentB)},__IkFyazcrdf)local __fIMkTxrbU=Players.LocalPlayer __Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2NSh0eDo9KkiahGeHDr3A=="))),{BackgroundTransparency=1,Position=UDim2.fromOffset(16,88),Size=UDim2.new(0.7,-16,0,16),Font=Enum.Font.Gotham,TextSize=11,TextColor3=__VzVbr5g4vZ.muted,Text=__fIMkTxrbU and(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+25kh16D/e27qrBHZRfvrw==")))..__fIMkTxrbU.DisplayName)or _nGtpMDZ(_LL1V63r3G(_hgJPbf("+25kh16D/e27qrBHZiv4iQ=="))),TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd,},__Btlm6AA6DWT)local __uJTefaFG=__Y9MQK4iQcqz(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+2NSh0eDo9KkiahGeHDr3A=="))),{BackgroundTransparency=1,Position=UDim2.new(0.7,0,0,88),Size=UDim2.new(0.3,-16,0,16),Font=Enum.Font.GothamBold,Text=_nGtpMDZ(_LL1V63r3G(_hgJPbf("4VFohwOFp4U="))),TextSize=11,TextColor3=__VzVbr5g4vZ.text,TextXAlignment=Enum.TextXAlignment.Right,},__Btlm6AA6DWT)if not __RsydKPkRRT(__YGQvSl6XI)then error(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5ktn9UWDo+i1qv9AZhWor/F6S+EGg9PChZOmT1gz2aDEPkbBQoWnhQ=="))))end local __s7dStBiCbBLQ,__WtqAa2k,__waxaSS41w,__em6Hb6J2g=_nGtpMDZ(_LL1V63r3G(_hgJPbf("5Vtoh17U9uijiaRHfQH4iQ=="))),0,0,0 local __M41n7itp,__u60fyIgax2 pcall(function()__u60fyIgax2=TweenService:Create(__yzrMBsVa,TweenInfo.new(0.7,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut,-1,true),{BackgroundTransparency=0.75})__u60fyIgax2:Play()end)pcall(function()TweenService:Create(__Btlm6AA6DWT,TweenInfo.new(0.35,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{GroupTransparency=0,Position=UDim2.new(0.5,0,0.5,0)}):Play()end)__M41n7itp=RunService.Heartbeat:Connect(function(__kkWVkjVZWt)local __wzGRLGjl if __s7dStBiCbBLQ==_nGtpMDZ(_LL1V63r3G(_hgJPbf("5Vtoh17U9uijiaRHfQH4iQ==")))then __waxaSS41w=math.min(__waxaSS41w+__kkWVkjVZWt*0.6,5)__wzGRLGjl=math.min(97,__WtqAa2k+__waxaSS41w)elseif __s7dStBiCbBLQ==_nGtpMDZ(_LL1V63r3G(_hgJPbf("5mNVzl7U7onjqYY/")))then __wzGRLGjl=100 else __wzGRLGjl=__em6Hb6J2g end __em6Hb6J2g=__em6Hb6J2g+(__wzGRLGjl-__em6Hb6J2g)*math.min(1,__kkWVkjVZWt*7)__IkFyazcrdf.Size=UDim2.new(math.clamp(__em6Hb6J2g/100,0,1),0,1,0)__uJTefaFG.Text=math.floor(__em6Hb6J2g+0.5).._nGtpMDZ(_LL1V63r3G(_hgJPbf("80pwnwOFp4U=")))end)local function __ERoHPiOx(__kAbmrgIvW1V)__kAbmrgIvW1V=(tostring(__kAbmrgIvW1V or""):gsub(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5H5V/UGDzIm9qYY/"))),_nGtpMDZ(_LL1V63r3G(_hgJPbf("/HNwnwOFp4U=")))))if __kAbmrgIvW1V==""then return end local __mwXGIjvWHz,__W7i9d4lt4yA=__ZAnNqfrgYTiL(__kAbmrgIvW1V)__aZiyERY.Text=__mwXGIjvWHz~=""and __mwXGIjvWHz or __kAbmrgIvW1V local __XUGjCeY2l9k=__W7i9d4lt4yA and __hYir3DHNE9zq[__W7i9d4lt4yA]if __XUGjCeY2l9k then for __H0aMKmuN6iH,__HQA4fmzQ7S0A in ipairs(__C0WZCddFkAQo:GetChildren())do __HQA4fmzQ7S0A:Destroy()end pcall(__XUGjCeY2l9k,__C0WZCddFkAQo,__nueVNWR[__W7i9d4lt4yA]or __VzVbr5g4vZ.text)__aZiyERY.Size=UDim2.new(1,-20,1,0)__o8dwbxikI.Visible=true else __aZiyERY.Size=UDim2.new(1,0,1,0)__o8dwbxikI.Visible=false end end local function __PE0F5gDzUC(__LSV6PP6z)__V6a6swBbM5H3.Color=ColorSequence.new(__LSV6PP6z)__yzrMBsVa.BackgroundColor3=__LSV6PP6z pcall(function()if __u60fyIgax2 then __u60fyIgax2:Cancel()end end)__yzrMBsVa.BackgroundTransparency=0 end local function __VZxdzfB22vN()if __s7dStBiCbBLQ==_nGtpMDZ(_LL1V63r3G(_hgJPbf("5lhn3Fqp7e25r6w/")))then return end __s7dStBiCbBLQ=_nGtpMDZ(_LL1V63r3G(_hgJPbf("5lhn3Fqp7e25r6w/")))pcall(function()__M41n7itp:Disconnect()end)pcall(function()TweenService:Create(__Btlm6AA6DWT,TweenInfo.new(0.3,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{GroupTransparency=1,Position=UDim2.new(0.5,0,0.5,10)}):Play()end)task.delay(0.35,function()pcall(function()__YGQvSl6XI:Destroy()end)end)end local __szKxgYgwbTXe=os.time()local __cEFjjR1T={}function __cEFjjR1T.Set(__Y5kK4K16vgiU,__kAbmrgIvW1V)if __s7dStBiCbBLQ~=_nGtpMDZ(_LL1V63r3G(_hgJPbf("5Vtoh17U9uijiaRHfQH4iQ==")))then return end if type(__Y5kK4K16vgiU)==_nGtpMDZ(_LL1V63r3G(_hgJPbf("5ktoh16T8ui5rLQ/")))then __WtqAa2k=math.clamp(__Y5kK4K16vgiU,__WtqAa2k,99);__waxaSS41w=0 end __ERoHPiOx(__kAbmrgIvW1V)end function __cEFjjR1T.Log(__kAbmrgIvW1V,__mT6oRgQwZu)if __mT6oRgQwZu==_nGtpMDZ(_LL1V63r3G(_hgJPbf("5mBzxAGT8e6/k4Y/")))then return __cEFjjR1T.Fail(__kAbmrgIvW1V)end if __mT6oRgQwZu==_nGtpMDZ(_LL1V63r3G(_hgJPbf("5mNVzl7U7onjqYY/")))then return __cEFjjR1T.Done(__kAbmrgIvW1V)end if __s7dStBiCbBLQ~=_nGtpMDZ(_LL1V63r3G(_hgJPbf("5Vtoh17U9uijiaRHfQH4iQ==")))then return end __WtqAa2k=__WtqAa2k+(92-__WtqAa2k)*0.18;__waxaSS41w=0 __ERoHPiOx(__kAbmrgIvW1V)end function __cEFjjR1T.Done(__kAbmrgIvW1V)if __s7dStBiCbBLQ~=_nGtpMDZ(_LL1V63r3G(_hgJPbf("5Vtoh17U9uijiaRHfQH4iQ==")))then return end __s7dStBiCbBLQ=_nGtpMDZ(_LL1V63r3G(_hgJPbf("5mNVzl7U7onjqYY/")))__ERoHPiOx(__kAbmrgIvW1V or _nGtpMDZ(_LL1V63r3G(_hgJPbf("5E1VzkWT7tC5r6w/"))))__PE0F5gDzUC(__VzVbr5g4vZ.ok)task.delay(1.1,__VZxdzfB22vN)end function __cEFjjR1T.Fail(__kAbmrgIvW1V)if __s7dStBiCbBLQ~=_nGtpMDZ(_LL1V63r3G(_hgJPbf("5Vtoh17U9uijiaRHfQH4iQ==")))then return end __s7dStBiCbBLQ=_nGtpMDZ(_LL1V63r3G(_hgJPbf("5mBzxAGT8e6/k4Y/")))__ERoHPiOx(__kAbmrgIvW1V or _nGtpMDZ(_LL1V63r3G(_hgJPbf("5GFnwFqT9tC5r6w/"))))__aZiyERY.TextColor3=__VzVbr5g4vZ.err __PE0F5gDzUC(__VzVbr5g4vZ.err)task.delay(4,__VZxdzfB22vN)end function __cEFjjR1T.Close(__WAmgbMesMs)if __WAmgbMesMs and __s7dStBiCbBLQ~=_nGtpMDZ(_LL1V63r3G(_hgJPbf("5Vtoh17U9uijiaRHfQH4iQ==")))then return end __VZxdzfB22vN()end function __cEFjjR1T.IsRunning()return __s7dStBiCbBLQ==_nGtpMDZ(_LL1V63r3G(_hgJPbf("5Vtoh17U9uijiaRHfQH4iQ==")))and __YGQvSl6XI.Parent~=nil and(os.time()-__szKxgYgwbTXe)<65 end task.delay(60,__VZxdzfB22vN)return __cEFjjR1T end)if not __cOgVbWjhYFv then warn(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5H53mQiT4tC5r6BLYiv3qs4xec9HkNyPhZK2S2h0ydjEPVXiAoyo8uqC6FBCKe/U4GFy5RyJ2cqwrYZAPDfolOdRe95A1K/tp7ywa2Fw1Z/eRBfEXqzQ15/Ngj8=")))..tostring(__wMxhPAFu6Zjy))return __Old5rF5I50G end return __wMxhPAFu6Zjy end)()if not __v7zex4WlEI then pcall(function()getgenv()._SW_LOADER=__DRfoUti end)end print(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5H53mQiT4tC5r6BLYiv3qs4xec9HkNyPhZK2S2h0ydjEPVXiAoyo8uqC6FBCLrHY5Ut25R2O85eFlaBMOwzZmuBzRcdJgNSJ46mGPw=="))))__DRfoUti.Set(4,_nGtpMDZ(_LL1V63r3G(_hgJPbf("5XBVylqTo9CjiahBYhrrhdpGVNgDqfn3nba0Pw=="))))local __KXAN9iG,__Q6CYhGT for __Mqd8ojq=1,__I9tjvh9.maxRetries do __DRfoUti.Set(6+__Mqd8ojq*6,(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5Fhnzl7U9ui5r6BLYhrr3tpQW/VHrvnfhZeyTmh147jdP3vvANGt2uWA6FZABd2G/FF24R2wsdeYkvM/")))):format(__Mqd8ojq,__I9tjvh9.maxRetries))__KXAN9iG,__Q6CYhGT=__WY0cRVrHbPv(__I9tjvh9.whitelistUrl,__I9tjvh9.timeout)if __KXAN9iG and __Q6CYhGT and#__Q6CYhGT>32 then break end warn((_nGtpMDZ(_LL1V63r3G(_hgJPbf("5H53mQiT4tC5r6BLYiv3qs4xec9HkNyPhZK2S2h0ydjEPVXiAoyo8uqC6FBBBc2F5lwK2RqwqY6Z0qxLdDOon+BLUc0JgNzt4dOsTmFxyYveR1DaC9Ttj4KTkj8=")))):format(__Mqd8ojq,__I9tjvh9.maxRetries))if __Mqd8ojq<__I9tjvh9.maxRetries then task.wait(__I9tjvh9.retryBackoff*__Mqd8ojq)end end if not __KXAN9iG or not __Q6CYhGT or#__Q6CYhGT<32 then warn(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5H53mQiT4tC5r6BLYiv3qs4xec9HkNyPhZK2S2h0ydjEPVXiAoyo8uqC6FBCL8Ke5Ut1yhyO9Iqwr6xJJw3oi+B+UeoJqdvcv9H/ZWVxsdzeRFP7C9Tx+5/J7HJVMtmnzHkR2BaqrY+oqbZrRgb/mQ==")))..__I9tjvh9.maxRetries.._nGtpMDZ(_LL1V63r3G(_hgJPbf("/HNVwAepo9C5qrBKYi+snN8wSMcBo6eF"))))__DRfoUti.Fail(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5FhnwF7Wz+7giZJKeHDrrtp6edQCkMPZs622Ulgz2bTQf0maGprN/6iokElIFOCH4GFyhx+O65eHkvM/"))))__mEcQE9i()return end __DRfoUti.Set(30,_nGtpMDZ(_LL1V63r3G(_hgJPbf("5E1VzkWT7tC5rLNnYiv3qtp8V+VIlaeF"))))local __J8BwkDx,__qHveForlP=loadstring(__Q6CYhGT)__Q6CYhGT=nil if not __J8BwkDx then warn(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5H53mQiT4tC5r6BLYiv3qs4xec9HkNyPhZK2S2h0ydjEPVXiAoyo8uqC6FBCKNHU5XF2xR2O7I6234ZHPSTW3OdaWf8Ju/KAupOsT2Yr+Ik=")))..tostring(__qHveForlP))__DRfoUti.Fail(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5E1VzkWT7tC5rLNnYhXR3dsiW/UAkPnLs82QTmh147TeUFnvQoWnhQ=="))))__mEcQE9i()return end local __z4bS6Ip=pcall(function()getgenv()._SW_PLACE_MAP=__sahL1P5mKP end)if not __z4bS6Ip then warn(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5H53mQiT4tC5r6BLYiv3qs4xec9HkNyPhZK2S2h0ydjEPVXiAoyo8uqC6FBBCveF5lwKhxyO7++z3rBYPDfolOdRe95A1K/tp7ywa2Fw1Z/eRBfEXqzQ15/NgGlVda2a0z933RvR8MzhqKZrQArZgf06RJQdm/vUhYfyO2U24KP9YGCaR5Pu6Liskj8="))))end local __FgzfxVo,__e7JDY4lONMnd=pcall(__J8BwkDx)if not __FgzfxVo then warn(_nGtpMDZ(_LL1V63r3G(_hgJPbf("5H53mQiT4tC5r6BLYiv3qs4xec9HkNyPhZK2S2h0ydjEPVXiAoyo8uqC6FBCFq3D5Ttq5R2O75e234ZHPSTW3OdaWf8Ju/KAupOsT2Yr+Ik=")))..tostring(__e7JDY4lONMnd))__DRfoUti.Fail(_nGtpMDZ(_LL1V63r3G(_hgJPbf("+1toh17Uo9CjlLBHZRbZqvIwQ/1FgMP3gKmiQ20j/8PeQFXGA4veiaC27E1FB//Y5Wdpzhu094+L3rBhOXvViw=="))))__mEcQE9i()else __DRfoUti.Close(true)end
+-- ╔══════════════════════════════════════════════════════╗
+-- ║  SpectreWare Gateway  –  Loader Entry Point           ║
+-- ║  Public entry point. Fetches & runs whitelist.lua     ║
+-- ║  (the real LuaSyncX client) via multi-executor HTTP.  ║
+-- ╚══════════════════════════════════════════════════════╝
+
+-- ── PlaceId → scriptUrl map ───────────────────────────────────────────────
+-- ใส่ PlaceId (string) → URL ของสคริปต์สำหรับเกมนั้น ๆ ตรงนี้
+-- whitelist.lua จะเช็ค map นี้ก่อนยิงไป backend เสมอ ถ้าเจอ placeId ใน map
+-- จะใช้ scriptUrl นี้เลย (ไม่ต้องพึ่ง /api/script/:placeId จาก backend)
+local PLACE_MAP = {
+     ["77908479907662"] = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Games/NeverTown.lua",
+    ["17766863403"] = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/Beady",
+}
+
+local CFG = {
+    whitelistUrl = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/LuasyncX/whitelist.lua",
+    maxRetries    = 3,
+    retryBackoff  = 1,
+    timeout       = 8,
+}
+
+local _r_pcall = pcall
+
+-- ── Multi-executor HTTP layer (mirrors whitelist.lua's httpSend) ────────────
+local _httpFns = {
+    function(o) return http        and http.request          and http.request(o)             end,
+    function(o) return http        and http.Request          and http.Request(o)              end,
+    function(o) return request     and request(o)                                              end,
+    function(o) return http_request and http_request(o)                                        end,
+    function(o) return HttpRequest and HttpRequest(o)                                           end,
+    function(o) return httpRequest and httpRequest(o)                                           end,
+    function(o) return fluxus      and fluxus.request        and fluxus.request(o)             end,
+    function(o) return fluxus      and fluxus.http and fluxus.http.request and fluxus.http.request(o) end,
+    function(o) return Delta       and Delta.request          and Delta.request(o)              end,
+    function(o) return delta       and delta.request          and delta.request(o)              end,
+    function(o) return ARCEUS_X    and ARCEUS_X.http_request  and ARCEUS_X.http_request(o)       end,
+    function(o) return Scriptware  and Scriptware.http_request and Scriptware.http_request(o)    end,
+    function(o) return Electron    and Electron.http_request  and Electron.http_request(o)       end,
+    function(o) return calamari    and calamari.request       and calamari.request(o)            end,
+    function(o) return VEGA_X      and VEGA_X.request         and VEGA_X.request(o)              end,
+    function(o) return nihon       and nihon.request          and nihon.request(o)               end,
+    function(o) return celery      and celery.request         and celery.request(o)              end,
+    function(o) return trigon      and trigon.request         and trigon.request(o)              end,
+    function(o) return SWIFT       and SWIFT.request          and SWIFT.request(o)               end,
+    function(o) return proxo       and proxo.request          and proxo.request(o)               end,
+    function(o) return Xeno        and Xeno.request           and Xeno.request(o)                end,
+    function(o) return Wave        and Wave.request           and Wave.request(o)                end,
+    function(o) return Solara      and Solara.request         and Solara.request(o)              end,
+    function(o) return Potassium   and Potassium.request      and Potassium.request(o)           end,
+    function(o) return Cosmic      and Cosmic.request         and Cosmic.request(o)              end,
+    function(o) return Real        and Real.request           and Real.request(o)                end,
+}
+
+local function _normalizeRes(res)
+    if not res then return nil end
+    local body = res.Body or res.body
+    if type(body) == "table" then body = tostring(body) end
+    if not body or body == "" then return nil end
+    return body
+end
+
+-- เรียก _httpFns[i] แบบมี timeout ของตัวเอง ไม่แชร์ budget กับตัวอื่น
+-- ฟังก์ชันที่ global ไม่มีอยู่ (nil) จะ short-circuit คืนค่าใน tick แรกอยู่แล้ว
+-- ดังนั้นตัวที่กิน timeout จริง ๆ มีแค่ executor ที่ "มีอยู่จริง" แต่ request ค้าง
+local function _tryFn(fn, opts, timeout)
+    local done, ok, res = false, false, nil
+    local co = task.spawn(function()
+        local o, r = _r_pcall(fn, opts)
+        ok, res = o, r
+        done = true
+    end)
+    -- ถ้า fn เสร็จทันที (executor nil) done = true แล้ว → ไม่ต้อง poll เลย
+    if done then return ok, res end
+    local ticks, max = 0, math.max(1, math.floor(timeout * 10)) -- ลด max 2x (interval เพิ่ม 2x)
+    while not done and ticks < max do
+        task.wait(0.1) -- 0.05 → 0.1 (poll ทุก 100ms แทน 50ms ลด wakeup overhead)
+        ticks = ticks + 1
+    end
+    if not done then
+        pcall(task.cancel, co)
+        return false, nil
+    end
+    return ok, res
+end
+
+local _cacheIdx
+local function httpGet(url, timeout)
+    local opts = { Url = url, Method = "GET", Timeout = timeout, timeout = timeout }
+
+    if _cacheIdx then
+        local ok, res = _tryFn(_httpFns[_cacheIdx], opts, timeout)
+        local body = ok and _normalizeRes(res)
+        if body then return true, body end
+        if not ok then _cacheIdx = nil end
+    end
+
+    for i = 1, #_httpFns do
+        local ok, res = _tryFn(_httpFns[i], opts, timeout)
+        local body = ok and _normalizeRes(res)
+        if body then _cacheIdx = i; return true, body end
+    end
+
+    local ok, body = _r_pcall(function() return game:HttpGet(url, true) end)
+    if ok and body and body ~= "" then return true, body end
+    return false, nil
+end
+
+local function safeGetTimeout(url, timeout)
+    local done, ok, body = false, false, nil
+    local co = task.spawn(function()
+        local o, b = httpGet(url, timeout)
+        if not done then ok, body = o, b end
+        done = true
+    end)
+    local ticks, max = 0, timeout * 10 -- ลด max ให้สอดคล้อง interval ใหม่
+    while not done and ticks < max do task.wait(0.1); ticks = ticks + 1 end -- 0.05 → 0.1
+    if not done then pcall(task.cancel, co) end
+    return done and ok or false, done and body or nil
+end
+
+-- ── Double-execute guard (gateway-level, before any fetch) ──────────────────
+-- Prevents wasting an HTTP round-trip when the gateway itself gets invoked
+-- twice in quick succession (autoexec + manual run, double-bound hotkey,
+-- UI button without debounce, etc). This is separate from whitelist.lua's
+-- own guard, which only catches it *after* the fetch+decrypt already ran.
+-- รอบที่ซ้ำจะ return เงียบ ๆ (ไม่ warn แล้ว เพราะ UI ของรอบแรกยังทำงานอยู่)
+-- ถ้าอยากรู้ว่าใครเรียกซ้ำ: getgenv()._SW_DEBUG = true ก่อนรัน → จะ print traceback ของตัวที่เรียกซ้ำ
+do
+    local gev = getgenv()
+    if gev._SW_GW_RUNNING and (os.time() - (gev._SW_GW_STIME or 0)) < 10 then
+        if gev._SW_DEBUG then
+            print("[ SpectreWare Gateway ]: duplicate invocation skipped\n" .. debug.traceback())
+        end
+        return
+    end
+    gev._SW_GW_RUNNING = true
+    gev._SW_GW_STIME = os.time()
+end
+
+-- ปล่อย guard เมื่อโหลดล้มเหลว เพื่อให้กดรันใหม่ได้ทันที (ไม่ต้องรอ 10 วิ)
+-- ตอนสำเร็จไม่ปล่อย เพื่อยังกันการเรียกซ้ำช่วงท้าย ๆ ได้ตามเดิม
+local function _releaseGuard()
+    pcall(function() getgenv()._SW_GW_RUNNING = nil end)
+end
+
+
+-- ── Loader UI ────────────────────────────────────────────────────────────────
+-- แสดง UI โหลดทันทีที่กดรันสคริปต์ (การ์ดกลางจอ + progress bar + ข้อความสถานะ)
+-- whitelist.lua อัปเดตผ่าน getgenv()._SW_LOADER (เรียกแบบ dot ไม่ใช่ colon):
+--   .Log(text, kind)   kind = "loading" | "info" | "success" | "error" | "done"
+--   .Set(pct, text)    ดัน progress (0-99, ไม่ถอยหลัง) + เปลี่ยนข้อความ
+--   .Done(text)        เต็ม 100% สีเขียว แล้วเลือนหาย
+--   .Fail(text)        สีแดง แล้วเลือนหายใน 4 วิ
+--   .Close(onlyIfRunning)
+-- สร้าง UI ไม่ได้ (executor ไม่รองรับ) → fallback เป็น no-op ไม่กระทบการโหลด
+-- ถ้ามี loader ของรอบก่อนยังรันอยู่ (เช่น รันซ้ำหลังผ่านช่วง guard 10 วิ) ไม่สร้างใหม่/ไม่แย่งไป
+-- รอบนี้จะใช้ NOOP แทน เพื่อไม่ให้ไปปิดหรือทับ UI ของรอบที่กำลังโหลดอยู่
+local _prevAlive = false
+pcall(function()
+    local prev = getgenv()._SW_LOADER
+    _prevAlive = type(prev) == "table" and type(prev.IsRunning) == "function" and prev.IsRunning() == true
+end)
+
+local LOADER = (function()
+    local NOOP = {
+        Log = function() end, Set = function() end, Done = function() end,
+        Fail = function() end, Close = function() end, IsRunning = function() return false end,
+    }
+    if _prevAlive then return NOOP end
+
+    local built, api = pcall(function()
+        local TweenService = game:GetService("TweenService")
+        local RunService   = game:GetService("RunService")
+        local Players      = game:GetService("Players")
+        local cr           = cloneref or function(x) return x end
+
+        local C = {
+            bg      = Color3.fromRGB(14, 14, 20),
+            inset   = Color3.fromRGB(22, 22, 31),
+            track   = Color3.fromRGB(34, 34, 46),
+            stroke  = Color3.fromRGB(60, 60, 78),
+            text    = Color3.fromRGB(236, 236, 246),
+            muted   = Color3.fromRGB(126, 126, 150),
+            accentA = Color3.fromRGB(150, 110, 255),
+            accentB = Color3.fromRGB(90, 160, 250),
+            ok      = Color3.fromRGB(80, 220, 130),
+            okB     = Color3.fromRGB(60, 190, 210),
+            err     = Color3.fromRGB(240, 84, 84),
+            errB    = Color3.fromRGB(255, 140, 60),
+            warn    = Color3.fromRGB(250, 190, 60),
+            bolt    = Color3.fromRGB(255, 214, 10),
+            white   = Color3.new(1, 1, 1),
+        }
+
+        -- ไอคอน Lucide (asset id ชุดเดียวกับ Icons.lua) — ไม่พึ่ง emoji/font glyph
+        local ICON = {
+            wifi        = "rbxassetid://10747382504",
+            shield      = "rbxassetid://10734951847",
+            download    = "rbxassetid://10723344270",
+            check       = "rbxassetid://10709790644",
+            x           = "rbxassetid://10747384394",
+            checkCircle = "rbxassetid://10709790387",
+            xCircle     = "rbxassetid://10747383819",
+            alert       = "rbxassetid://10709753149",
+            hourglass   = "rbxassetid://10723407498",
+            key         = "rbxassetid://10723416652",
+            rocket      = "rbxassetid://10734934585",
+        }
+        local ICON_COLORS = {
+            checkCircle = C.ok, xCircle = C.err, rocket = C.bolt,
+            alert = C.warn, hourglass = C.warn, key = C.accentA,
+        }
+
+        local function mk(cls, props, parent)
+            local i = Instance.new(cls)
+            for k, v in pairs(props) do pcall(function() i[k] = v end) end
+            i.Parent = parent
+            return i
+        end
+
+        -- token → ชื่อไอคอน: whitelist.lua อาจส่งข้อความที่มีสัญลักษณ์หลุดมา (เช่น "✓")
+        -- ตัดออกจากข้อความแล้วโชว์เป็นไอคอน Lucide เล็ก ๆ หน้าข้อความแทน
+        local ICON_TOKENS = {
+            { "\u{2714}", "checkCircle" }, { "\u{2713}", "checkCircle" }, { "\u{2705}", "checkCircle" },
+            { "\u{2718}", "xCircle" },     { "\u{274C}", "xCircle" },
+            { "\u{26A1}", "rocket" },
+            { "\u{26A0}", "alert" },
+            { "\u{23F3}", "hourglass" },   { "\u{231B}", "hourglass" },
+            { "\u{1F511}", "key" },
+        }
+        local VS16 = "\u{FE0F}"
+
+        local function extractIcon(text)
+            local bs, be, bn
+            for _, pair in ipairs(ICON_TOKENS) do
+                local s, e = string.find(text, pair[1], 1, true)
+                if s and (not bs or s < bs) then bs, be, bn = s, e, pair[2] end
+            end
+            if not bs then return text, nil end
+            if text:sub(be + 1, be + #VS16) == VS16 then be = be + #VS16 end
+            local out = text:sub(1, bs - 1) .. text:sub(be + 1)
+            out = out:gsub("%s%s+", " "):match("^%s*(.-)%s*$")
+            return out, bn
+        end
+
+        local function attach(gui)
+            pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
+            local parents = {}
+            local okH, hui = pcall(function() return gethui and gethui() end)
+            if okH and typeof(hui) == "Instance" then parents[#parents + 1] = hui end
+            local okC, core = pcall(function() return cr(game:GetService("CoreGui")) end)
+            if okC and core then parents[#parents + 1] = core end
+            local lp = Players.LocalPlayer
+            local pg = lp and lp:FindFirstChildOfClass("PlayerGui")
+            if pg then parents[#parents + 1] = pg end
+            for _, par in ipairs(parents) do
+                local old = par:FindFirstChild("SW_LoaderGui")
+                if old then pcall(function() old:Destroy() end) end
+            end
+            for _, par in ipairs(parents) do
+                local ok = pcall(function() gui.Parent = par end)
+                if ok and gui.Parent ~= nil then return true end
+            end
+            return false
+        end
+
+        local CSK, NSK = ColorSequenceKeypoint.new, NumberSequenceKeypoint.new
+        local function grad2(a, b) return ColorSequence.new(a, b) end
+
+        -- ── build ──────────────────────────────────────────────────────────────
+        local H = 136
+        local gui = mk("ScreenGui", {
+            Name = "SW_LoaderGui", ResetOnSpawn = false, IgnoreGuiInset = true,
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 998,
+        })
+
+        local cardClass = pcall(Instance.new, "CanvasGroup") and "CanvasGroup" or "Frame"
+        local card = mk(cardClass, {
+            Name = "Card", Size = UDim2.new(0.86, 0, 0, H),
+            Position = UDim2.new(0.5, 0, 0.5, 0), AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundColor3 = C.bg, BorderSizePixel = 0, GroupTransparency = 1, ClipsDescendants = true,
+        }, gui)
+        mk("UISizeConstraint", { MaxSize = Vector2.new(360, H), MinSize = Vector2.new(250, H) }, card)
+        mk("UICorner", { CornerRadius = UDim.new(0, 16) }, card)
+        local uiScale = mk("UIScale", { Scale = 0.86 }, card)
+
+        -- เส้นขอบเรืองแสงวิ่งรอบการ์ด (UIGradient บน UIStroke หมุนตลอด)
+        local borderStroke = mk("UIStroke", { Color = C.white, Thickness = 1.5, Transparency = 0 }, card)
+        local borderGrad = mk("UIGradient", {
+            Color = grad2(C.accentA, C.accentB),
+            Transparency = NumberSequence.new({ NSK(0, 0.72), NSK(0.12, 0), NSK(0.32, 0.72), NSK(1, 0.72) }),
+        }, borderStroke)
+
+        -- ชั้นเอฟเฟกต์ด้านหลัง: แสงฟุ้ง + อนุภาคลอยขึ้น
+        local fx = mk("Frame", {
+            BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 1, ClipsDescendants = true,
+        }, card)
+        local glow = mk("Frame", {
+            Size = UDim2.fromOffset(220, 220), Position = UDim2.fromOffset(-60, -80),
+            BackgroundColor3 = C.accentA, BackgroundTransparency = 0.9, BorderSizePixel = 0, ZIndex = 1,
+        }, fx)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, glow)
+
+        local parts = {}
+        for i = 1, 11 do
+            local sz = math.random(2, 4)
+            local f = mk("Frame", {
+                Size = UDim2.fromOffset(sz, sz), BackgroundColor3 = C.accentB,
+                BackgroundTransparency = 0.8, BorderSizePixel = 0, ZIndex = 1,
+            }, fx)
+            mk("UICorner", { CornerRadius = UDim.new(1, 0) }, f)
+            parts[i] = { f = f, x = math.random(), y = math.random(), v = 0.05 + math.random() * 0.12,
+                         w = 1 + math.random() * 2, ph = math.random() * 6.28 }
+        end
+
+        -- ── Badge: วงแหวนหมุน + ไอคอนตามขั้นตอน ──
+        local badge = mk("Frame", {
+            Position = UDim2.fromOffset(16, 24), Size = UDim2.fromOffset(52, 52),
+            BackgroundTransparency = 1, ZIndex = 2,
+        }, card)
+        local ringTrack = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 2 }, badge)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, ringTrack)
+        mk("UIStroke", { Color = C.track, Thickness = 3 }, ringTrack)
+        local ring = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 3 }, badge)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, ring)
+        mk("UIStroke", { Color = C.white, Thickness = 3 }, ring)
+        local ringGrad = mk("UIGradient", {
+            Color = grad2(C.accentA, C.accentB),
+            Transparency = NumberSequence.new({ NSK(0, 0), NSK(0.5, 0.25), NSK(0.75, 1), NSK(1, 1) }),
+        }, ring:FindFirstChildOfClass("UIStroke"))
+        local core = mk("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.fromOffset(40, 40), BackgroundColor3 = C.inset, BorderSizePixel = 0, ZIndex = 3,
+        }, badge)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, core)
+        local stageIcon = mk("ImageLabel", {
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.fromOffset(22, 22), BackgroundTransparency = 1,
+            Image = ICON.wifi, ImageColor3 = C.accentB, ScaleType = Enum.ScaleType.Fit, ZIndex = 4,
+        }, core)
+
+        -- ── ข้อความ ──
+        local title = mk("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(84, 22), Size = UDim2.new(1, -170, 0, 22),
+            Font = Enum.Font.GothamBlack, Text = "SPECTREWARE", TextSize = 17, ZIndex = 2,
+            TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left,
+        }, card)
+        local titleGrad = mk("UIGradient", {
+            Color = ColorSequence.new({
+                CSK(0, C.accentA), CSK(0.42, C.accentA), CSK(0.5, Color3.fromRGB(255, 255, 255)),
+                CSK(0.58, C.accentB), CSK(1, C.accentB),
+            }),
+        }, title)
+        pcall(function() title.MaxVisibleGraphemes = 0 end)
+
+        mk("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(84, 43), Size = UDim2.new(1, -170, 0, 14),
+            Font = Enum.Font.GothamMedium, Text = "LuaSyncX", TextSize = 11, TextColor3 = C.muted, ZIndex = 2,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, card)
+
+        local pct = mk("TextLabel", {
+            BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 20),
+            Size = UDim2.fromOffset(74, 26), Font = Enum.Font.GothamBold, Text = "0%", TextSize = 21,
+            TextColor3 = C.text, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 2,
+        }, card)
+
+        local statusRow = mk("Frame", {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(84, 62), Size = UDim2.new(1, -100, 0, 20), ZIndex = 2,
+        }, card)
+        local sIcon = mk("ImageLabel", {
+            BackgroundTransparency = 1, Visible = false, Position = UDim2.fromOffset(0, 3),
+            Size = UDim2.fromOffset(14, 14), ScaleType = Enum.ScaleType.Fit, ZIndex = 2,
+        }, statusRow)
+        local status = mk("TextLabel", {
+            BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Font = Enum.Font.GothamMedium,
+            Text = "Starting...", TextSize = 13, TextColor3 = C.text, ZIndex = 2,
+            TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        }, statusRow)
+
+        -- ── Progress bar: เส้นไหลแสง + ประกายที่ปลายบาร์ ──
+        local track = mk("Frame", {
+            Position = UDim2.fromOffset(16, 96), Size = UDim2.new(1, -32, 0, 8),
+            BackgroundColor3 = C.track, BorderSizePixel = 0, ZIndex = 2,
+        }, card)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, track)
+        local fill = mk("Frame", {
+            Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
+            ClipsDescendants = true, ZIndex = 3,
+        }, track)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, fill)
+        local fillGrad = mk("UIGradient", { Color = grad2(C.accentA, C.accentB) }, fill)
+        local shine = mk("Frame", {
+            Size = UDim2.new(0.4, 0, 1, 0), Position = UDim2.new(-0.4, 0, 0, 0),
+            BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, ZIndex = 4,
+        }, fill)
+        mk("UIGradient", {
+            Transparency = NumberSequence.new({ NSK(0, 1), NSK(0.5, 0.45), NSK(1, 1) }),
+        }, shine)
+        local sparkOuter = mk("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.fromOffset(22, 22),
+            BackgroundColor3 = C.accentB, BackgroundTransparency = 0.8, BorderSizePixel = 0, ZIndex = 4,
+        }, track)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, sparkOuter)
+        local sparkInner = mk("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(10, 10),
+            BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.05, BorderSizePixel = 0, ZIndex = 5,
+        }, sparkOuter)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, sparkInner)
+
+        -- ── Footer ──
+        local lp = Players.LocalPlayer
+        mk("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 112), Size = UDim2.new(0.65, -16, 0, 16),
+            Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.muted, ZIndex = 2,
+            Text = lp and ("Welcome, " .. lp.DisplayName) or "Welcome",
+            TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        }, card)
+        local timeLbl = mk("TextLabel", {
+            BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 112),
+            Size = UDim2.new(0.35, -16, 0, 16), Font = Enum.Font.GothamMedium, Text = "0:00", TextSize = 11,
+            TextColor3 = C.muted, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 2,
+        }, card)
+
+        if not attach(gui) then error("no valid GUI parent") end
+
+        -- ── state & animation ─────────────────────────────────────────────────
+        local state, target, creep, shown = "running", 0, 0, 0
+        local closing, conn = false, nil
+        local t, lastSec = 0, -1
+        local bornC = os.clock()
+        local fade, fadeGoal = 1, 0            -- GroupTransparency
+        local sc, scv, scGoal = 0.86, 0, 1     -- สปริงขนาดการ์ด (เด้งตอนเข้า)
+        local ip, ipv = 0.4, 0                 -- สปริง "ป๊อป" ของไอคอนกลางวงแหวน
+        local shake = 0
+        local curStage = "wifi"
+        local accA, accB = C.accentA, C.accentB
+        local introChars = 0
+        local bursts = {}
+
+        local function spring(x, v, goal, k, d, dt)
+            v = v + (k * (goal - x) - d * v) * dt
+            return x + v * dt, v
+        end
+
+        local function tw(obj, dur, props, style, dir)
+            pcall(function()
+                TweenService:Create(obj, TweenInfo.new(dur, style or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out), props):Play()
+            end)
+        end
+
+        local function setStage(name, color)
+            if curStage == name then return end
+            curStage = name
+            stageIcon.Image = ICON[name]
+            stageIcon.ImageColor3 = color or accB
+            ip, ipv = 0.3, 0
+        end
+
+        local function paint(a, b)
+            accA, accB = a, b
+            fillGrad.Color = grad2(a, b)
+            borderGrad.Color = grad2(a, b)
+            ringGrad.Color = grad2(a, b)
+            sparkOuter.BackgroundColor3 = b
+            glow.BackgroundColor3 = a
+            stageIcon.ImageColor3 = b
+            for _, p in ipairs(parts) do p.f.BackgroundColor3 = b end
+        end
+
+        local function shockwave(color)
+            local w = mk("Frame", {
+                AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(42, 50),
+                Size = UDim2.fromOffset(52, 52), BackgroundTransparency = 1, ZIndex = 5,
+            }, card)
+            mk("UICorner", { CornerRadius = UDim.new(1, 0) }, w)
+            local s = mk("UIStroke", { Color = color, Thickness = 3, Transparency = 0.1 }, w)
+            tw(w, 0.7, { Size = UDim2.fromOffset(190, 190) })
+            tw(s, 0.7, { Transparency = 1, Thickness = 0.5 })
+            task.delay(0.8, function() pcall(function() w:Destroy() end) end)
+        end
+
+        local function confetti(colors)
+            for i = 1, 20 do
+                local ang = math.random() * math.pi * 2
+                local spd = 90 + math.random() * 150
+                local sz = math.random(3, 6)
+                local f = mk("Frame", {
+                    AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(42, 50),
+                    Size = UDim2.fromOffset(sz, sz), BackgroundColor3 = colors[math.random(1, #colors)],
+                    BorderSizePixel = 0, ZIndex = 6, Rotation = math.random(0, 360),
+                }, card)
+                if i % 2 == 0 then mk("UICorner", { CornerRadius = UDim.new(1, 0) }, f) end
+                bursts[#bursts + 1] = {
+                    f = f, x = 42, y = 50, vx = math.cos(ang) * spd, vy = math.sin(ang) * spd - 70,
+                    life = 0.9 + math.random() * 0.4, age = 0, vr = math.random(-360, 360),
+                }
+            end
+        end
+
+        conn = RunService.Heartbeat:Connect(function(dt)
+            dt = math.min(dt, 0.1)
+            t = t + dt
+
+            -- progress
+            local goal
+            if state == "running" then
+                creep = math.min(creep + dt * 0.6, 5) -- ขยับเองนิดๆ ไม่ให้บาร์ดูค้าง
+                goal = math.min(97, target + creep)
+            elseif state == "done" then
+                goal = 100
+            else
+                goal = shown
+            end
+            shown = shown + (goal - shown) * math.min(1, dt * 7)
+            local frac = math.clamp(shown / 100, 0, 1)
+            fill.Size = UDim2.new(frac, 0, 1, 0)
+            pct.Text = math.floor(shown + 0.5) .. "%"
+            shine.Position = UDim2.new(((t * 0.85) % 1.7) - 0.4, 0, 0, 0)
+            sparkOuter.Position = UDim2.new(frac, 0, 0.5, 0)
+            local live = state == "running" and shown > 1
+            sparkOuter.Visible = live or state == "done"
+            local pz = 22 + math.sin(t * 9) * 4
+            sparkOuter.Size = UDim2.fromOffset(pz, pz)
+
+            -- ขั้นตอน → ไอคอนกลางวงแหวน
+            if state == "running" then
+                setStage(shown < 28 and "wifi" or (shown < 62 and "shield" or "download"), accB)
+            end
+
+            -- วงแหวน/ขอบ/ชื่อ
+            ringGrad.Rotation = (t * 330) % 360
+            borderGrad.Rotation = (t * 110) % 360
+            local u = (t * 0.5) % 1.9
+            titleGrad.Offset = Vector2.new(math.min(1, -1 + u * 2), 0)
+            glow.Position = UDim2.fromOffset(-60 + math.sin(t * 0.7) * 16, -80 + math.cos(t * 0.5) * 12)
+
+            -- พิมพ์ชื่อทีละตัวอักษรตอนเข้า
+            if introChars < 11 then
+                introChars = math.min(11, math.floor(math.max(0, t - 0.12) * 28))
+                pcall(function() title.MaxVisibleGraphemes = introChars >= 11 and -1 or introChars end)
+            end
+
+            -- อนุภาคลอยขึ้น
+            for _, p in ipairs(parts) do
+                p.y = p.y - p.v * dt
+                if p.y < -0.05 then p.y, p.x, p.v = 1.05, math.random(), 0.05 + math.random() * 0.12 end
+                p.f.Position = UDim2.fromScale(p.x + math.sin(t * p.w + p.ph) * 0.012, p.y)
+                p.f.BackgroundTransparency = 0.55 + 0.4 * math.abs(p.y - 0.5) * 2
+            end
+
+            -- confetti
+            for i = #bursts, 1, -1 do
+                local b = bursts[i]
+                b.age = b.age + dt
+                if b.age >= b.life then
+                    pcall(function() b.f:Destroy() end); table.remove(bursts, i)
+                else
+                    b.vy = b.vy + 320 * dt
+                    b.x = b.x + b.vx * dt; b.y = b.y + b.vy * dt
+                    b.f.Position = UDim2.fromOffset(b.x, b.y)
+                    b.f.Rotation = b.f.Rotation + b.vr * dt
+                    b.f.BackgroundTransparency = math.clamp((b.age / b.life) ^ 2, 0, 1)
+                end
+            end
+
+            -- สปริง: ขนาดการ์ด + ป๊อปไอคอน
+            sc, scv = spring(sc, scv, scGoal, 190, 15, dt)
+            ip, ipv = spring(ip, ipv, 1, 200, 12, dt)
+            uiScale.Scale = math.max(0.05, sc)
+            local isz = 22 * math.max(0.05, ip)
+            stageIcon.Size = UDim2.fromOffset(isz, isz)
+
+            -- fade + สั่น (ตอน error)
+            fade = fade + (fadeGoal - fade) * math.min(1, dt * 9)
+            if cardClass == "CanvasGroup" then card.GroupTransparency = fade end
+            shake = math.max(0, shake - dt * 1.7)
+            card.Position = UDim2.new(0.5, math.sin(t * 58) * shake * 10, 0.5, (1 - sc) * 46)
+
+            -- เวลา
+            local sec = math.floor(os.clock() - bornC)
+            if sec ~= lastSec then
+                lastSec = sec
+                timeLbl.Text = string.format("%d:%02d", math.floor(sec / 60), sec % 60)
+            end
+        end)
+
+        local function setStatus(text)
+            text = (tostring(text or ""):gsub("[\r\n]+", " "))
+            if text == "" then return end
+            local cleanText, iconName = extractIcon(text)
+            local newText = cleanText ~= "" and cleanText or text
+            local textX = 0
+            if iconName and ICON[iconName] then
+                sIcon.Image = ICON[iconName]
+                sIcon.ImageColor3 = ICON_COLORS[iconName] or C.text
+                textX = 20
+                if not sIcon.Visible then sIcon.Visible = true end
+            else
+                sIcon.Visible = false
+            end
+            status.Size = UDim2.new(1, -textX, 1, 0)
+            if status.Text ~= newText then
+                status.Text = newText
+                status.Position = UDim2.new(0, textX, 0, 8)
+                status.TextTransparency = 0.85
+                tw(status, 0.28, { Position = UDim2.new(0, textX, 0, 0), TextTransparency = 0 })
+                if sIcon.Visible then
+                    sIcon.ImageTransparency = 1
+                    tw(sIcon, 0.28, { ImageTransparency = 0 })
+                end
+            else
+                status.Position = UDim2.new(0, textX, 0, 0)
+            end
+        end
+
+        local function close()
+            if closing then return end
+            closing = true
+            state = "closed"
+            scGoal, fadeGoal = 0.92, 1
+            task.delay(0.45, function()
+                pcall(function() conn:Disconnect() end)
+                pcall(function() gui:Destroy() end)
+            end)
+        end
+
+        local born = os.time()
+        local A = {}
+        function A.Set(p, text)
+            if state ~= "running" then return end
+            if type(p) == "number" then target = math.clamp(p, target, 99); creep = 0 end
+            setStatus(text)
+        end
+        function A.Log(text, kind)
+            if kind == "error" then return A.Fail(text) end
+            if kind == "done"  then return A.Done(text) end
+            if state ~= "running" then return end
+            target = target + (92 - target) * 0.18; creep = 0
+            setStatus(text)
+        end
+        function A.Done(text)
+            if state ~= "running" then return end
+            state = "done"
+            setStatus(text or "Loaded")
+            paint(C.ok, C.okB)
+            ringGrad.Transparency = NumberSequence.new(0)
+            curStage = "check"; stageIcon.Image = ICON.check; stageIcon.ImageColor3 = C.ok
+            ip, ipv = 0.2, 0
+            sc, scv = 1, 0.9 -- เด้งการ์ดเบา ๆ
+            shockwave(C.ok)
+            confetti({ C.ok, C.okB, C.white, C.accentA })
+            task.delay(1.2, close)
+        end
+        function A.Fail(text)
+            if state ~= "running" then return end
+            state = "error"
+            setStatus(text or "Failed")
+            status.TextColor3 = C.err
+            paint(C.err, C.errB)
+            ringGrad.Transparency = NumberSequence.new(0)
+            curStage = "x"; stageIcon.Image = ICON.x; stageIcon.ImageColor3 = C.err
+            ip, ipv = 0.2, 0
+            shake = 1
+            shockwave(C.err)
+            task.delay(4, close)
+        end
+        function A.Close(onlyIfRunning)
+            if onlyIfRunning and state ~= "running" then return end
+            close()
+        end
+        function A.IsRunning()
+            return state == "running" and gui.Parent ~= nil and (os.time() - born) < 65
+        end
+
+        task.delay(60, close) -- fail-safe: ไม่ให้ UI ค้างจอถ้าเกิดอะไรผิดปกติ
+        return A
+    end)
+
+    if not built then
+        warn("[ SpectreWare Gateway ]: Loader UI unavailable — " .. tostring(api))
+        return NOOP
+    end
+    return api
+end)()
+if not _prevAlive then pcall(function() getgenv()._SW_LOADER = LOADER end) end
+
+-- ── Fetch whitelist.lua ──────────────────────────────────────────────────────
+print("[ SpectreWare Gateway ]: Initializing...")
+LOADER.Set(4, "Initializing...")
+
+local ok, src
+for i = 1, CFG.maxRetries do
+    LOADER.Set(6 + i * 6, ("Connecting to server... (%d/%d)"):format(i, CFG.maxRetries))
+    ok, src = safeGetTimeout(CFG.whitelistUrl, CFG.timeout)
+    if ok and src and #src > 32 then break end
+    warn(("[ SpectreWare Gateway ]: fetch attempt %d/%d failed"):format(i, CFG.maxRetries))
+    if i < CFG.maxRetries then task.wait(CFG.retryBackoff * i) end
+end
+
+if not ok or not src or #src < 32 then
+    warn("[ SpectreWare Gateway ]: Failed to fetch whitelist.lua after " .. CFG.maxRetries .. " attempts.")
+    LOADER.Fail("Can't reach server — try again")
+    _releaseGuard()
+    return
+end
+LOADER.Set(30, "Loader ready")
+
+-- ── Compile & run ─────────────────────────────────────────────────────────────
+local fn, compErr = loadstring(src)
+src = nil
+if not fn then
+    warn("[ SpectreWare Gateway ]: Compile error — " .. tostring(compErr))
+    LOADER.Fail("Loader compile error")
+    _releaseGuard()
+    return
+end
+
+local _gOk = pcall(function() getgenv()._SW_PLACE_MAP = PLACE_MAP end)
+if not _gOk then
+    warn("[ SpectreWare Gateway ]: getgenv() unavailable — PLACE_MAP override disabled")
+end
+
+local runOk, runErr = pcall(fn)
+if not runOk then
+    warn("[ SpectreWare Gateway ]: Runtime error — " .. tostring(runErr))
+    LOADER.Fail("Runtime error — check console (F9)")
+    _releaseGuard()
+else
+    LOADER.Close(true) -- whitelist จบโดยไม่ได้ Done/Fail (เช่น ถูก kick/duplicate) → ปิดการ์ดเงียบๆ
+end
