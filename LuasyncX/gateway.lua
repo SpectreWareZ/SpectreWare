@@ -243,11 +243,12 @@ local LOADER = (function()
             ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 998,
         })
 
-        local cardClass = pcall(Instance.new, "CanvasGroup") and "CanvasGroup" or "Frame"
-        local card = mk(cardClass, {
+        -- ใช้ Frame ธรรมดา ไม่ใช้ CanvasGroup: บนมือถือ/บาง executor CanvasGroup เรนเดอร์ไม่ขึ้น
+        -- เห็นแต่ขอบ gradient ข้างในโปร่งใสหมด (ไม่มีพื้นหลัง ไม่มีข้อความ)
+        local card = mk("Frame", {
             Name = "Card", Size = UDim2.new(0.86, 0, 0, H),
             Position = UDim2.new(0.5, 0, 0.5, 0), AnchorPoint = Vector2.new(0.5, 0.5),
-            BackgroundColor3 = C.bg, BorderSizePixel = 0, GroupTransparency = 1, ClipsDescendants = true,
+            BackgroundColor3 = C.bg, BackgroundTransparency = 0, BorderSizePixel = 0, ClipsDescendants = true,
         }, gui)
         mk("UISizeConstraint", { MaxSize = Vector2.new(360, H), MinSize = Vector2.new(250, H) }, card)
         mk("UICorner", { CornerRadius = UDim.new(0, 14) }, card)
@@ -380,11 +381,8 @@ local LOADER = (function()
             TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
             { Position = UDim2.new(1, 0, 0, 0) }):Play()
 
-        -- Card entrance: scale + fade
+        -- Card entrance: scale
         tw(uiScale, 0.35, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-        if cardClass == "CanvasGroup" then
-            tw(card, 0.22, { GroupTransparency = 0 }, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        end
 
         -- ── State ──
         local state, target, creep, shown = "running", 0, 0, 0
@@ -464,9 +462,6 @@ local LOADER = (function()
             local STYLE = Enum.EasingStyle.Quart
             local DIR   = Enum.EasingDirection.In
             tw(uiScale, DUR, { Scale = 0.84 }, STYLE, DIR)
-            if cardClass == "CanvasGroup" then
-                tw(card, DUR, { GroupTransparency = 1 }, STYLE, DIR)
-            end
             task.delay(DUR + 0.04, function()
                 pcall(function() conn:Disconnect() end)
                 pcall(function() gui:Destroy() end)
