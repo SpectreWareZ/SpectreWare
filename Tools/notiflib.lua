@@ -601,7 +601,7 @@ local function run(mode, text, duration)
         rec.bar, rec.started = bar, true
 
         -- เข้า: ต่อคิวถ้ามีการ์ดใดกำลัง animate อยู่ → กันทับกัน
-        while entering do frameWait() end
+        while entering do task.wait(0.02) end
         entering = true
         play(slot,   T_IN_SIZE,  { Size = UDim2.new(1, 0, 0, H + GAP) })
         play(holder, T_IN_SLIDE, { Position = UDim2.new(0, 0, 0, 0) })
@@ -614,7 +614,7 @@ local function run(mode, text, duration)
 
         -- รอ (ตัดจบได้ทันทีถูกสั่งปิด / GUI ถูกลบ)
         while not rec.closing and slot.Parent and os.clock() < rec.deadline do
-            frameWait()
+            task.wait(0.05)   -- 20x/sec แทนทุก frame → ลด CPU 3× per notif
         end
         rec.leaving = true
         if not slot.Parent then return end
