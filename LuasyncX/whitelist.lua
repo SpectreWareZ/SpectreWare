@@ -674,9 +674,9 @@ end
 
 local function _notifyWL(timeLeft, tier)
     local isPerm = timeLeft == "Permanent" or timeLeft == "∞  Developer" or timeLeft == "∞  Free"
-    local msg = "⚡  LuaSyncX  ✔  " .. (tier or "") .. "  —  " ..
-                (isPerm and "🔑 Whitelist ของคุณ: ตลอดกาล ∞"
-                         or "⏳ Whitelist ของคุณเหลือ: " .. timeLeft)
+    local msg = "LuaSyncX  ·  " .. (tier or "") .. "  —  " ..
+                (isPerm and "Whitelist ของคุณ: ตลอดกาล ∞"
+                         or "Whitelist ของคุณเหลือ: " .. timeLeft)
     local waited = 0
     while not NotificationLibrary and waited < 50 do
         task.wait(0.1); waited = waited + 1
@@ -690,9 +690,9 @@ local function _notifyHWID(reason)
     reason = reason or "mismatch"
     local msg
     if reason == "drift" then
-        msg = "⚠  HWID Drift Detected\n⚡  LuaSyncX  —  HWID เปลี่ยนระหว่าง session\nติดต่อ Discord เพื่อรีเซ็ต HWID"
+        msg = "HWID Drift Detected\nLuaSyncX  —  HWID เปลี่ยนระหว่าง session\nติดต่อ Discord เพื่อรีเซ็ต HWID"
     else
-        msg = "⚠  HWID Mismatch\n⚡  LuaSyncX  —  Key นี้ผูกกับอุปกรณ์อื่น\nติดต่อ Discord เพื่อรีเซ็ต HWID"
+        msg = "HWID Mismatch\nLuaSyncX  —  Key นี้ผูกกับอุปกรณ์อื่น\nติดต่อ Discord เพื่อรีเซ็ต HWID"
     end
     local waited = 0
     while not NotificationLibrary and waited < 50 do
@@ -703,290 +703,419 @@ local function _notifyHWID(reason)
     end
 end
 
+-- ── UI toolkit (ใช้ร่วมกันทั้งการ์ด HWID Reset และการ์ดปิดปรับปรุง) ────────────────────────
+-- ไอคอนทั้งหมดเป็น Lucide (rbxassetid ชุดเดียวกับ Icons.lua) ไม่พึ่ง emoji/font glyph —
+-- โหลดเป็น ImageLabel ย้อมสีด้วย ImageColor3 · โครงการ์ด: แถบสีบน → หัวการ์ด → เนื้อหา
+local _SWUI = {}
+do
+    local TS = game:GetService("TweenService")
+
+    local P = {
+        bg      = Color3.fromRGB(17, 17, 23),
+        surface = Color3.fromRGB(28, 28, 38),
+        inset   = Color3.fromRGB(12, 12, 17),
+        stroke  = Color3.fromRGB(52, 52, 68),
+        text    = Color3.fromRGB(240, 240, 248),
+        sub     = Color3.fromRGB(160, 160, 182),
+        mute    = Color3.fromRGB(112, 112, 134),
+        amber   = Color3.fromRGB(255, 184, 64),
+        amberB  = Color3.fromRGB(255, 122, 52),
+        red     = Color3.fromRGB(240, 84, 84),
+        redB    = Color3.fromRGB(255, 140, 60),
+        green   = Color3.fromRGB(80, 220, 130),
+        greenB  = Color3.fromRGB(60, 180, 200),
+        blurple = Color3.fromRGB(88, 101, 242),
+        white   = Color3.fromRGB(255, 255, 255),
+    }
+    local I = {
+        wrench      = "rbxassetid://10747383470",
+        alert       = "rbxassetid://10709753149",
+        shieldAlert = "rbxassetid://10734951173",
+        check       = "rbxassetid://10709790644",
+        checkCircle = "rbxassetid://10709790387",
+        x           = "rbxassetid://10747384394",
+        clock       = "rbxassetid://10709805144",
+        copy        = "rbxassetid://10709812159",
+        message     = "rbxassetid://10734888000",
+        fingerprint = "rbxassetid://10723375250",
+        clipboard   = "rbxassetid://10709798792",
+        info        = "rbxassetid://10723415903",
+        refresh     = "rbxassetid://10734933222",
+    }
+    _SWUI.P, _SWUI.I = P, I
+
+    local CENTER = { Position = UDim2.new(0.5, 0, 0.5, 0), AnchorPoint = Vector2.new(0.5, 0.5) }
+    local function tint(c, a) return c:Lerp(P.bg, a) end
+
+    local function mk(cls, props, par)
+        local inst = Instance.new(cls)
+        for k, v in pairs(props) do
+            local ok, err = pcall(function() inst[k] = v end)
+            if not ok then
+                warn("LuaSyncX: UI prop '" .. tostring(k) .. "' on " .. cls .. " failed — " .. tostring(err))
+            end
+        end
+        if par then inst.Parent = par end
+        return inst
+    end
+    local function tween(obj, dur, props, style)
+        pcall(function()
+            TS:Create(obj, TweenInfo.new(dur, style or Enum.EasingStyle.Quint, Enum.EasingDirection.Out), props):Play()
+        end)
+    end
+    local function corner(par, r) return mk("UICorner", { CornerRadius = UDim.new(0, r) }, par) end
+    local function stroke(par, color, tr) return mk("UIStroke", { Color = color, Thickness = 1, Transparency = tr or 0 }, par) end
+    local function icon(par, name, size, color, extra)
+        local props = {
+            Size = UDim2.new(0, size, 0, size), BackgroundTransparency = 1,
+            Image = I[name] or "", ImageColor3 = color, ScaleType = Enum.ScaleType.Fit,
+        }
+        if extra then for k, v in pairs(extra) do props[k] = v end end
+        return mk("ImageLabel", props, par)
+    end
+    local function hrow(par, size, order, padding)
+        local row = mk("Frame", { Size = size, BackgroundTransparency = 1, LayoutOrder = order }, par)
+        mk("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Padding = UDim.new(0, padding or 6),
+        }, row)
+        return row
+    end
+
+    -- สร้างการ์ดเปล่า: ctx.content = Frame ที่ใส่คอมโพเนนต์ลงไป (เรียงตาม LayoutOrder)
+    function _SWUI.build(name, accA, accB, requiredH)
+        requiredH = requiredH or 460
+        pcall(function() local o = game:GetService("CoreGui"):FindFirstChild(name); if o then o:Destroy() end end)
+        pcall(function()
+            local pg = PL:FindFirstChild("PlayerGui")
+            local o = pg and pg:FindFirstChild(name); if o then o:Destroy() end
+        end)
+
+        local gui = mk("ScreenGui", {
+            Name = name, ResetOnSpawn = false,
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true,
+        })
+        pcall(function() gui.DisplayOrder = 999 end)
+
+        local dim = mk("Frame", {
+            Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(0, 0, 0),
+            BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 10,
+        }, gui)
+
+        -- CanvasGroup → fade ทั้งการ์ดได้ · ไม่รองรับ → Frame ธรรมดา (ไม่มี fade แต่ใช้งานได้ปกติ)
+        local isCG = pcall(function() Instance.new("CanvasGroup"):Destroy() end)
+        local card = mk(isCG and "CanvasGroup" or "Frame", {
+            Size = UDim2.new(0.9, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            Position = UDim2.new(0.5, 0, 0.5, 18), AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundColor3 = P.bg, BorderSizePixel = 0, ZIndex = 11,
+        }, gui)
+        if isCG then pcall(function() card.GroupTransparency = 1 end)
+        else pcall(function() card.ClipsDescendants = true end) end
+        mk("UISizeConstraint", { MaxSize = Vector2.new(380, math.huge) }, card)
+        corner(card, 16)
+        stroke(card, P.stroke, 0.3)
+
+        -- จอเตี้ย (มือถือแนวนอน) → ย่อการ์ดให้พอดี
+        local uiScale = mk("UIScale", { Scale = 1 }, card)
+        local function fit()
+            local cam = workspace.CurrentCamera
+            local h = cam and cam.ViewportSize.Y or requiredH
+            uiScale.Scale = h < requiredH and math.max(0.1, h / requiredH) or 1
+        end
+        fit()
+        pcall(function() workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit) end)
+
+        mk("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, card)
+
+        local bar = mk("Frame", {
+            Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = P.white, BorderSizePixel = 0, LayoutOrder = 1,
+        }, card)
+        local barGrad = mk("UIGradient", { Color = ColorSequence.new(accA, accB) }, bar)
+
+        local content = mk("Frame", {
+            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            BackgroundTransparency = 1, LayoutOrder = 2,
+        }, card)
+        mk("UIListLayout", {
+            Padding = UDim.new(0, 14), SortOrder = Enum.SortOrder.LayoutOrder,
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+        }, content)
+        mk("UIPadding", {
+            PaddingTop = UDim.new(0, 20), PaddingBottom = UDim.new(0, 20),
+            PaddingLeft = UDim.new(0, 20), PaddingRight = UDim.new(0, 20),
+        }, content)
+
+        local ctx = { gui = gui, card = card, content = content }
+        function ctx.alive() return gui.Parent ~= nil end
+        function ctx.close() pcall(function() gui:Destroy() end) end
+        function ctx.setAccent(a, b) barGrad.Color = ColorSequence.new(a, b) end
+        function ctx.show()
+            local parented = false
+            pcall(function() gui.Parent = game:GetService("CoreGui"); parented = true end)
+            if not parented then pcall(function() gui.Parent = PL:WaitForChild("PlayerGui", 3) end) end
+            tween(dim, 0.25, { BackgroundTransparency = 0.45 })
+            tween(card, 0.35, { Position = UDim2.new(0.5, 0, 0.5, 0) })
+            if isCG then tween(card, 0.3, { GroupTransparency = 0 }) end
+        end
+        return ctx
+    end
+
+    -- หัวการ์ด: ป้ายไอคอน + ชื่อ + ปุ่มปิด · h.set(icon, color, title) เปลี่ยนสถานะได้
+    function _SWUI.header(ctx, o)
+        local row = hrow(ctx.content, UDim2.new(1, 0, 0, 46), o.order or 1, 12)
+        local badge = mk("Frame", {
+            Size = UDim2.new(0, 44, 0, 44), BackgroundColor3 = tint(o.color, 0.84),
+            BorderSizePixel = 0, LayoutOrder = 1,
+        }, row)
+        corner(badge, 12)
+        local badgeStroke = stroke(badge, tint(o.color, 0.5), 0)
+        local img = icon(badge, o.icon, 24, o.color, CENTER)
+
+        local tb = mk("Frame", { Size = UDim2.new(1, -100, 1, 0), BackgroundTransparency = 1, LayoutOrder = 2 }, row)
+        mk("UIListLayout", {
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 2),
+        }, tb)
+        local title = mk("TextLabel", {
+            Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1, Text = o.title,
+            TextColor3 = P.text, TextSize = 18, Font = Enum.Font.GothamBold,
+            TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 1,
+        }, tb)
+        mk("TextLabel", {
+            Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, Text = o.sub or "",
+            TextColor3 = P.mute, TextSize = 12, Font = Enum.Font.Gotham,
+            TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2,
+        }, tb)
+
+        local cb = mk("TextButton", {
+            Size = UDim2.new(0, 28, 0, 28), BackgroundColor3 = P.surface, AutoButtonColor = false,
+            BorderSizePixel = 0, Text = "", LayoutOrder = 3,
+        }, row)
+        corner(cb, 14)
+        icon(cb, "x", 14, P.sub, CENTER)
+        cb.MouseEnter:Connect(function() tween(cb, 0.15, { BackgroundColor3 = Color3.fromRGB(48, 48, 62) }) end)
+        cb.MouseLeave:Connect(function() tween(cb, 0.15, { BackgroundColor3 = P.surface }) end)
+        cb.MouseButton1Click:Connect(function() ctx.close() end)
+
+        local h = {}
+        function h.set(iconName, color, titleText)
+            if I[iconName] then img.Image = I[iconName] end
+            img.ImageColor3 = color
+            badge.BackgroundColor3 = tint(color, 0.84)
+            badgeStroke.Color = tint(color, 0.5)
+            if titleText then title.Text = titleText end
+        end
+        return h
+    end
+
+    -- ป้ายสถานะ: จุดกะพริบ + ข้อความ
+    function _SWUI.pill(ctx, o)
+        local f = mk("Frame", {
+            Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = tint(o.color, 0.88),
+            BorderSizePixel = 0, LayoutOrder = o.order,
+        }, ctx.content)
+        corner(f, 17)
+        local st = stroke(f, tint(o.color, 0.55), 0)
+        local inner = mk("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1 }, f)
+        mk("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8),
+        }, inner)
+        local dot = mk("Frame", {
+            Size = UDim2.new(0, 8, 0, 8), BackgroundColor3 = o.color, BorderSizePixel = 0, LayoutOrder = 1,
+        }, inner)
+        corner(dot, 4)
+        local label = mk("TextLabel", {
+            Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1,
+            Text = o.text, TextColor3 = o.color:Lerp(P.white, 0.25), TextSize = 12,
+            Font = Enum.Font.GothamMedium, LayoutOrder = 2,
+        }, inner)
+        local p = { stopped = false }
+        function p.set(text, color)
+            label.Text = text
+            label.TextColor3 = color:Lerp(P.white, 0.25)
+            dot.BackgroundColor3 = color
+            f.BackgroundColor3 = tint(color, 0.88)
+            st.Color = tint(color, 0.55)
+        end
+        function p.pulse() -- เรียกหลัง ctx.show()
+            task.spawn(function()
+                local dim = true
+                while ctx.alive() and not p.stopped do
+                    tween(dot, 0.9, { BackgroundTransparency = dim and 0.7 or 0 }, Enum.EasingStyle.Sine)
+                    dim = not dim
+                    task.wait(0.9)
+                end
+                pcall(function() dot.BackgroundTransparency = 0 end)
+            end)
+        end
+        return p
+    end
+
+    function _SWUI.section(ctx, o)
+        local row = hrow(ctx.content, UDim2.new(1, 0, 0, 16), o.order, 6)
+        icon(row, o.icon, 14, P.sub, { LayoutOrder = 1 })
+        mk("TextLabel", {
+            Size = UDim2.new(1, -20, 1, 0), BackgroundTransparency = 1, Text = o.text,
+            TextColor3 = P.sub, TextSize = 12, Font = Enum.Font.GothamBold,
+            TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2,
+        }, row)
+    end
+
+    -- กล่องข้อความ (สูงตามเนื้อหา)
+    function _SWUI.textBox(ctx, o)
+        local box = mk("Frame", {
+            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            BackgroundColor3 = P.inset, BorderSizePixel = 0, LayoutOrder = o.order,
+        }, ctx.content)
+        corner(box, 10)
+        stroke(box, P.stroke, 0.4)
+        mk("UIPadding", {
+            PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 12),
+            PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14),
+        }, box)
+        local lbl = mk("TextLabel", {
+            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
+            Text = o.text, TextColor3 = o.color or P.text, TextSize = o.size or 13,
+            Font = o.font or Enum.Font.Gotham, TextWrapped = true,
+            TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
+        }, box)
+        return box, lbl
+    end
+
+    -- แถวข้อมูลเล็ก ๆ: ไอคอน + ข้อความ
+    function _SWUI.meta(ctx, o)
+        local row = hrow(ctx.content, UDim2.new(1, 0, 0, 16), o.order, 6)
+        icon(row, o.icon, 14, P.mute, { LayoutOrder = 1 })
+        local lbl = mk("TextLabel", {
+            Size = UDim2.new(1, -20, 1, 0), BackgroundTransparency = 1, Text = o.text,
+            TextColor3 = P.sub, TextSize = 12, Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2,
+        }, row)
+        return row, lbl
+    end
+
+    -- ปุ่มหลัก: ไอคอน + ข้อความ · b.set(icon, text, color) เปลี่ยนสถานะได้
+    function _SWUI.button(ctx, o)
+        local base = o.color
+        local btn = mk("TextButton", {
+            Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = base, AutoButtonColor = false,
+            BorderSizePixel = 0, Text = "", LayoutOrder = o.order,
+        }, ctx.content)
+        corner(btn, 12)
+        mk("UIGradient", { Rotation = 90, Color = ColorSequence.new(P.white, Color3.fromRGB(200, 200, 212)) }, btn)
+        local inner = mk("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1 }, btn)
+        mk("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8),
+        }, inner)
+        local img = icon(inner, o.icon, 18, P.white, { LayoutOrder = 1 })
+        local label = mk("TextLabel", {
+            Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1,
+            Text = o.text, TextColor3 = P.white, TextSize = 14, Font = Enum.Font.GothamBold, LayoutOrder = 2,
+        }, inner)
+        btn.MouseEnter:Connect(function() tween(btn, 0.15, { BackgroundColor3 = base:Lerp(P.white, 0.12) }) end)
+        btn.MouseLeave:Connect(function() tween(btn, 0.15, { BackgroundColor3 = base }) end)
+        local b = { btn = btn }
+        function b.set(iconName, text, color)
+            base = color or base
+            if I[iconName] then img.Image = I[iconName] end
+            label.Text = text
+            tween(btn, 0.15, { BackgroundColor3 = base })
+        end
+        return b
+    end
+
+    -- ปุ่มคัดลอกลิงก์ Discord (เปลี่ยนเป็นติ๊กถูกสีเขียว 2 วิหลังกด)
+    function _SWUI.discordButton(ctx, order)
+        local b = _SWUI.button(ctx, { icon = "message", text = "คัดลอก Discord Link", color = P.blurple, order = order })
+        b.btn.MouseButton1Click:Connect(function()
+            pcall(function() setclipboard(CFG.discordUrl) end)
+            b.set("check", "คัดลอกลิงก์แล้ว", P.green)
+            task.delay(2, function()
+                if ctx.alive() then b.set("message", "คัดลอก Discord Link", P.blurple) end
+            end)
+        end)
+        return b
+    end
+
+    function _SWUI.divider(ctx, order)
+        mk("Frame", {
+            Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = P.stroke,
+            BackgroundTransparency = 0.5, BorderSizePixel = 0, LayoutOrder = order,
+        }, ctx.content)
+    end
+
+    function _SWUI.note(ctx, o)
+        local row = mk("Frame", {
+            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            BackgroundTransparency = 1, LayoutOrder = o.order,
+        }, ctx.content)
+        mk("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6),
+        }, row)
+        icon(row, o.icon, 12, P.mute, { LayoutOrder = 1 })
+        mk("TextLabel", {
+            Size = UDim2.new(1, -18, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
+            Text = o.text, TextColor3 = P.mute, TextSize = 11, Font = Enum.Font.Gotham, TextWrapped = true,
+            TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 2,
+        }, row)
+        return row
+    end
+end
+
 -- ── HWID Reset UI ─────────────────────────────────────────────────────────────
 local function _showHWIDResetUI(currentHwid, kickDelay)
     kickDelay = kickDelay or 5
     _ui("Close")
     local _ok, _err = pcall(function()
-        local pgOk, pg = pcall(function() return game:GetService("CoreGui") end)
-        if not pgOk or not pg then
-            pg = PL:WaitForChild("PlayerGui", 3)
-            if not pg then return end
-        end
+        local U, P = _SWUI, _SWUI.P
+        local ctx  = U.build("SW_HWIDGui", P.red, P.redB, 640)
 
-        local existing = pg:FindFirstChild("SW_HWIDGui")
-        if existing then existing:Destroy() end
-
-        local gui = Instance.new("ScreenGui")
-        gui.Name            = "SW_HWIDGui"
-        gui.ResetOnSpawn    = false
-        gui.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
-        gui.IgnoreGuiInset  = true
-        pcall(function() gui.DisplayOrder = 999 end)
-
-        local function mk(cls, props, par)
-            local i = Instance.new(cls)
-            for k, v in pairs(props) do
-                local pOk, pErr = pcall(function() i[k] = v end)
-                if not pOk then
-                    warn("LuaSyncX: HWID UI prop '" .. tostring(k) .. "' on " .. cls .. " failed — " .. tostring(pErr))
-                end
-            end
-            i.Parent = par or gui; return i
-        end
-
-        mk("Frame", {
-            Size = UDim2.new(1,0,1,0),
-            BackgroundColor3 = Color3.fromRGB(0,0,0),
-            BackgroundTransparency = 0.5,
-            ZIndex = 10,
+        local head = U.header(ctx, {
+            icon = "shieldAlert", color = P.red, title = "HWID Mismatch",
+            sub = "LuaSyncX v" .. CFG.loaderVersion, order = 1,
         })
+        local pill = U.pill(ctx, { text = "สคริปต์ถูกระงับจนกว่าจะรีเซ็ต", color = P.amber, order = 2 })
+        U.section(ctx, { icon = "fingerprint", text = "รหัสอุปกรณ์ของคุณ (HWID)", order = 3 })
+        U.textBox(ctx, {
+            text = tostring(currentHwid or "?"):sub(1, 28) .. "...",
+            font = Enum.Font.Code, size = 12, color = Color3.fromRGB(175, 175, 200), order = 4,
+        })
+        local dbtn = U.discordButton(ctx, 5)
+        U.divider(ctx, 6)
+        U.section(ctx, { icon = "clipboard", text = "วิธีรีเซ็ต HWID ผ่าน Discord", order = 7 })
 
-        -- ขยายการ์ดให้ใหญ่ขึ้นเพื่อรองรับรูปภาพที่ใหญ่ขึ้น
-        local card = mk("Frame", {
-            Size        = UDim2.new(0.9, 0, 0, 500), 
-            Position    = UDim2.new(0.5, 0, 0.5, 0),
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            BackgroundColor3 = Color3.fromRGB(20, 20, 27),
-            BorderSizePixel  = 0,
-            ZIndex = 11,
-        }, gui)
-        mk("UISizeConstraint", {
-            MaxSize = Vector2.new(380, 520),
-        }, card)
-        
-        -- ระบบย่อ-ขยายอัตโนมัติขนาดตามจอ (ถ้าจอเล็กกว่าการ์ด จะย่อลงมาพอดี)
-        local uiScale = mk("UIScale", { Scale = 1 }, card)
-        local function _updateScale()
-            local requiredH = 520
-            local viewH = workspace.CurrentCamera.ViewportSize.Y
-            if viewH < requiredH then
-                uiScale.Scale = math.max(0.1, viewH / requiredH)
-            else
-                uiScale.Scale = 1
-            end
-        end
-        _updateScale()
-        workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(_updateScale)
-
-        mk("UICorner", { CornerRadius = UDim.new(0, 12) }, card)
-        mk("UIStroke", {
-            Color = Color3.fromRGB(60, 60, 75),
-            Thickness = 1,
-            Transparency = 0.5,
-        }, card)
-
-        local layout = mk("UIListLayout", {
-            Padding = UDim.new(0, 12),
-            HorizontalAlignment = Enum.HorizontalAlignment.Center,
-            SortOrder = Enum.SortOrder.LayoutOrder,
-        }, card)
-        
-        local padding = mk("UIPadding", {
-            PaddingTop = UDim.new(0, 20),
-            PaddingBottom = UDim.new(0, 20),
-            PaddingLeft = UDim.new(0, 20),
-            PaddingRight = UDim.new(0, 20),
-        }, card)
-
-        mk("Frame", {
-            Size = UDim2.new(1, 0, 0, 4),
-            BackgroundColor3 = Color3.fromRGB(235, 70, 70),
-            BorderSizePixel = 0,
-            LayoutOrder = 1,
-        }, card)
-        mk("UIGradient", {
-            Color = ColorSequence.new(Color3.fromRGB(235, 70, 70), Color3.fromRGB(255, 140, 60)),
-        }, card:FindFirstChildWhichIsA("Frame"))
-
-        local headerFrame = mk("Frame", {
-            Size = UDim2.new(1, 0, 0, 40),
-            BackgroundTransparency = 1,
-            LayoutOrder = 2,
-        }, card)
-        mk("UIListLayout", {
-            FillDirection = Enum.FillDirection.Horizontal,
-            VerticalAlignment = Enum.VerticalAlignment.Center,
-            Padding = UDim.new(0, 10),
-        }, headerFrame)
-
-        local headerIcon = mk("TextLabel", {
-            Size = UDim2.new(0, 30, 0, 30),
-            BackgroundColor3 = Color3.fromRGB(45, 20, 25),
-            Text = "⚠",
-            TextColor3 = Color3.fromRGB(255, 100, 100),
-            TextSize = 18,
-            Font = Enum.Font.GothamBold,
-            LayoutOrder = 1,
-        }, headerFrame)
-        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, headerIcon)
-
-        local titleBox = mk("Frame", {
-            Size = UDim2.new(1, -40, 1, 0),
-            BackgroundTransparency = 1,
-            LayoutOrder = 2,
-        }, headerFrame)
-        mk("UIListLayout", {
-            Padding = UDim.new(0, 2),
-            VerticalAlignment = Enum.VerticalAlignment.Center,
-        }, titleBox)
-
-        mk("TextLabel", {
-            Size = UDim2.new(1, 0, 0, 20),
-            BackgroundTransparency = 1,
-            Text = "HWID Mismatch",
-            TextColor3 = Color3.fromRGB(255, 255, 255),
-            TextSize = 17,
-            Font = Enum.Font.GothamBold,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            LayoutOrder = 1,
-        }, titleBox)
-        mk("TextLabel", {
-            Size = UDim2.new(1, 0, 0, 14),
-            BackgroundTransparency = 1,
-            Text = "LuaSyncX v" .. CFG.loaderVersion,
-            TextColor3 = Color3.fromRGB(140, 140, 160),
-            TextSize = 11,
-            Font = Enum.Font.Gotham,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            LayoutOrder = 2,
-        }, titleBox)
-
-        mk("TextLabel", {
-            Size = UDim2.new(1, 0, 0, 14),
-            BackgroundTransparency = 1,
-            Text = "รหัสอุปกรณ์ของคุณ (HWID)",
-            TextColor3 = Color3.fromRGB(120, 120, 140),
-            TextSize = 11,
-            Font = Enum.Font.GothamMedium,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            LayoutOrder = 3,
-        }, card)
-
-        local hwidBox = mk("Frame", {
-            Size = UDim2.new(1, 0, 0, 36),
-            BackgroundColor3 = Color3.fromRGB(12, 12, 17),
-            BorderSizePixel = 0,
-            LayoutOrder = 4,
-        }, card)
-        mk("UICorner", { CornerRadius = UDim.new(0, 6) }, hwidBox)
-        mk("UIStroke", {
-            Color = Color3.fromRGB(45, 45, 60), Thickness = 1, Transparency = 0.2,
-        }, hwidBox)
-        mk("Frame", {
-            Size = UDim2.new(0, 3, 1, -12), Position = UDim2.new(0, 0, 0.5, 0),
-            AnchorPoint = Vector2.new(0, 0.5),
-            BackgroundColor3 = Color3.fromRGB(235, 70, 70), BorderSizePixel = 0,
-        }, hwidBox)
-        mk("TextLabel", {
-            Size = UDim2.new(1, -20, 1, 0),
-            Position = UDim2.new(0, 10, 0, 0),
-            BackgroundTransparency = 1,
-            Text = tostring(currentHwid or "?"):sub(1, 28) .. "...",
-            TextColor3 = Color3.fromRGB(170, 170, 195),
-            TextSize = 12,
-            Font = Enum.Font.Code,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            TextYAlignment = Enum.TextYAlignment.Center,
-        }, hwidBox)
-
-        local btn = mk("TextButton", {
-            Size = UDim2.new(1, 0, 0, 42),
-            BackgroundColor3 = Color3.fromRGB(88, 101, 242),
-            AutoButtonColor = false,
-            BorderSizePixel = 0,
-            Text = "💬  คัดลอก Discord Link",
-            TextColor3 = Color3.fromRGB(255, 255, 255),
-            TextSize = 14,
-            Font = Enum.Font.GothamBold,
-            LayoutOrder = 5,
-        }, card)
-        mk("UICorner", { CornerRadius = UDim.new(0, 8) }, btn)
-        mk("UIGradient", {
-            Rotation = 90,
-            Color = ColorSequence.new(Color3.fromRGB(98, 111, 250), Color3.fromRGB(69, 78, 205)),
-        }, btn)
-        btn.MouseEnter:Connect(function() btn.BackgroundColor3 = Color3.fromRGB(110, 120, 255) end)
-        btn.MouseLeave:Connect(function() btn.BackgroundColor3 = Color3.fromRGB(88, 101, 242) end)
-
-        local statusPill = mk("Frame", {
-            Size = UDim2.new(1, 0, 0, 28),
-            BackgroundColor3 = Color3.fromRGB(30, 25, 20),
-            BorderSizePixel = 0,
-            LayoutOrder = 6,
-        }, card)
-        mk("UICorner", { CornerRadius = UDim.new(0, 14) }, statusPill)
-        mk("UIStroke", {
-            Color = Color3.fromRGB(80, 65, 40), Thickness = 1, Transparency = 0.5,
-        }, statusPill)
-        local cdLabel = mk("TextLabel", {
-            Size = UDim2.new(1, -10, 1, 0),
-            Position = UDim2.new(0, 5, 0, 0),
-            BackgroundTransparency = 1,
-            Text = "●  สคริปต์ถูกระงับจนกว่าจะรีเซ็ต",
-            TextColor3 = Color3.fromRGB(255, 200, 100),
-            TextSize = 11,
-            Font = Enum.Font.GothamMedium,
-            TextXAlignment = Enum.TextXAlignment.Center,
-        }, statusPill)
-
-        mk("Frame", {
-            Size = UDim2.new(1, 0, 0, 1),
-            BackgroundColor3 = Color3.fromRGB(40, 40, 55),
-            BorderSizePixel = 0,
-            LayoutOrder = 7,
-        }, card)
-
-        mk("TextLabel", {
-            Size = UDim2.new(1, 0, 0, 16),
-            BackgroundTransparency = 1,
-            Text = "📋  วิธีรีเซ็ต HWID ผ่าน Discord",
-            TextColor3 = Color3.fromRGB(180, 180, 205),
-            TextSize = 12,
-            Font = Enum.Font.GothamBold,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            LayoutOrder = 8,
-        }, card)
-
-        -- ขยายขนาดรูปภาพ Guide จาก 120px เป็น 180px ให้เห็นชัดเจนขึ้น
-        local guideBox = mk("Frame", {
-            Size = UDim2.new(1, 0, 0, 180), 
-            BackgroundColor3 = Color3.fromRGB(12, 12, 17),
-            BorderSizePixel = 0,
-            LayoutOrder = 9,
-        }, card)
-        mk("UICorner", { CornerRadius = UDim.new(0, 8) }, guideBox)
-        mk("UIStroke", {
-            Color = Color3.fromRGB(45, 45, 60), Thickness = 1, Transparency = 0.2,
-        }, guideBox)
-        mk("ImageLabel", {
-            Size = UDim2.new(1, -10, 1, -10),
-            Position = UDim2.new(0, 5, 0, 5),
-            BackgroundTransparency = 1,
-            Image = "rbxassetid://137221357132370",
-            ScaleType = Enum.ScaleType.Fit,
-        }, guideBox)
-
-        local parented = false
-        pcall(function() gui.Parent = game:GetService("CoreGui"); parented = true end)
-        if not parented then
-            pcall(function() gui.Parent = PL:WaitForChild("PlayerGui", 3) end)
+        local gb = Instance.new("Frame")
+        gb.Size = UDim2.new(1, 0, 0, 180)
+        gb.BackgroundColor3 = P.inset
+        gb.BorderSizePixel = 0
+        gb.LayoutOrder = 8
+        gb.Parent = ctx.content
+        do
+            local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = gb
+            local s = Instance.new("UIStroke"); s.Color = P.stroke; s.Thickness = 1; s.Transparency = 0.4; s.Parent = gb
+            local im = Instance.new("ImageLabel")
+            im.Size = UDim2.new(1, -10, 1, -10)
+            im.Position = UDim2.new(0, 5, 0, 5)
+            im.BackgroundTransparency = 1
+            im.Image = "rbxassetid://137221357132370"
+            im.ScaleType = Enum.ScaleType.Fit
+            im.Parent = gb
         end
 
-        btn.MouseButton1Click:Connect(function()
-            pcall(function() setclipboard(CFG.discordUrl) end)
-            btn.Text = "✔  คัดลอกลิงก์แล้ว!"
-            btn.BackgroundColor3 = Color3.fromRGB(55, 170, 95)
-            task.delay(2, function()
-                if btn and btn.Parent then
-                    btn.Text = "💬  คัดลอก Discord Link"
-                    btn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
-                end
-            end)
-        end)
+        ctx.show()
+        pill.pulse()
 
         task.spawn(function()
-            while gui and gui.Parent do
+            while ctx.alive() do
                 task.wait(10)
                 local encOk, body = pcall(HS.JSONEncode, HS, {
                     key           = _getKey(),
@@ -1010,9 +1139,11 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
                             local stillMismatch = (not success and code == "HWID_MISMATCH")
                                 or (success and dHwid ~= "" and dHwid ~= currentHwid)
                             if success and not stillMismatch then
-                                cdLabel.Text = "✅  รีเซ็ต HWID สำเร็จ — กรุณารีจอย"
-                                cdLabel.TextColor3 = Color3.fromRGB(90, 210, 130)
-                                btn.Visible = false
+                                pill.stopped = true
+                                pill.set("รีเซ็ตสำเร็จ — กรุณารีจอยเซิร์ฟเวอร์", P.green)
+                                head.set("checkCircle", P.green, "รีเซ็ต HWID สำเร็จ")
+                                ctx.setAccent(P.green, P.greenB)
+                                dbtn.btn.Visible = false
                                 pcall(function()
                                     game:GetService("StarterGui"):SetCore("SendNotification", {
                                         Title = "LuaSyncX",
@@ -1021,7 +1152,7 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
                                     })
                                 end)
                                 task.wait(2)
-                                if gui and gui.Parent then gui:Destroy() end
+                                ctx.close()
                                 break
                             end
                         end
@@ -1038,15 +1169,15 @@ end
 
 -- ── Maintenance UI (สคริปต์ปิดปรับปรุง — สั่งจากบอท !ปิดสคริปต์ / !เปิดสคริปต์) ──────────
 -- _Maint.show(info)   โชว์การ์ด "ปิดปรับปรุง" · info = { reason = "...", elapsed_s = 123 }
---                      · เรียกตอน /api/lookup ตอบ code MAINTENANCE (สคริปต์ไม่ถูกโหลด)
+--                      · เรียกตอนเริ่มรัน/ตอน /api/lookup ตอบ code MAINTENANCE (สคริปต์ไม่ถูกโหลด)
 --                      · และตอนบอทดัน kind="maintenance" มาทาง announce poller (คนที่รันอยู่แล้ว)
 --                      การ์ดเช็ค /api/status เองทุก 15 วิ พอ !เปิดสคริปต์ จะเปลี่ยนเป็น "เปิดให้ใช้งานแล้ว" แล้วปิดตัวเอง
 -- _Maint.reopened()   ถูกเรียกตอนบอทดัน "เปิดแล้ว" มา — อัปเดตการ์ดที่ค้างอยู่ หรือแจ้งเตือนสั้น ๆ ถ้าไม่มีการ์ด
 local _Maint = {}
 do
-    local POLL_EVERY   = 15   -- วินาที (ต้องรวมกับ rateLimit 60/นาทีของ /api/status แล้วยังเหลือเยอะ)
+    local POLL_EVERY   = 15   -- วินาที (รวมกับ rateLimit 60/นาทีของ /api/status แล้วยังเหลือเยอะ)
     local DEFAULT_TEXT = "กำลังปรับปรุงระบบ กรุณารอสักครู่แล้วลองใหม่อีกครั้ง"
-    local _curGui, _curReopen
+    local _curReopen
 
     local function _fmtElapsed(s)
         s = math.max(0, math.floor(tonumber(s) or 0))
@@ -1063,277 +1194,61 @@ do
         return r
     end
 
-    local function _killOld()
-        if _curGui then pcall(function() _curGui:Destroy() end); _curGui = nil end
-        _curReopen = nil
-        -- เผื่อการ์ดค้างจากการรันครั้งก่อน (คนละ chunk/คนละ env)
-        pcall(function()
-            local cg = game:GetService("CoreGui"):FindFirstChild("SW_MaintGui")
-            if cg then cg:Destroy() end
-        end)
-        pcall(function()
-            local pg = PL:FindFirstChild("PlayerGui")
-            local o = pg and pg:FindFirstChild("SW_MaintGui")
-            if o then o:Destroy() end
-        end)
-    end
-
     function _Maint.show(info)
         info = _r_type(info) == "table" and info or {}
-        _ui("Close") -- ปิดการ์ดโหลดของ gateway ก่อน (เหมือน HWID UI)
-        _killOld()
+        _ui("Close") -- ปิดการ์ดโหลดของ gateway ก่อน
+        _curReopen = nil
 
         local elapsedBase, t0 = tonumber(info.elapsed_s) or 0, os.clock()
 
         local _ok, _err = pcall(function()
-            local gui = Instance.new("ScreenGui")
-            gui.Name           = "SW_MaintGui"
-            gui.ResetOnSpawn   = false
-            gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-            gui.IgnoreGuiInset = true
-            pcall(function() gui.DisplayOrder = 999 end)
+            local U, P = _SWUI, _SWUI.P
+            local ctx  = U.build("SW_MaintGui", P.amber, P.amberB, 470)
 
-            local function mk(cls, props, par)
-                local i = Instance.new(cls)
-                for k, v in pairs(props) do
-                    local pOk, pErr = pcall(function() i[k] = v end)
-                    if not pOk then
-                        warn("LuaSyncX: Maintenance UI prop '" .. tostring(k) .. "' on " .. cls .. " failed — " .. tostring(pErr))
-                    end
-                end
-                i.Parent = par or gui; return i
-            end
-
-            local AMBER_A, AMBER_B = Color3.fromRGB(255, 184, 64), Color3.fromRGB(255, 120, 50)
-            local GREEN_A, GREEN_B = Color3.fromRGB(80, 220, 130), Color3.fromRGB(60, 180, 200)
-
-            mk("Frame", {
-                Size = UDim2.new(1, 0, 1, 0),
-                BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-                BackgroundTransparency = 0.5,
-                ZIndex = 10,
+            local head = U.header(ctx, {
+                icon = "wrench", color = P.amber, title = "ปิดปรับปรุงชั่วคราว",
+                sub = "LuaSyncX v" .. CFG.loaderVersion, order = 1,
+            })
+            local pill = U.pill(ctx, { text = "สคริปต์ปิดให้บริการชั่วคราว", color = P.amber, order = 2 })
+            U.section(ctx, { icon = "info", text = "รายละเอียด", order = 3 })
+            local _, reasonLabel = U.textBox(ctx, { text = _reasonText(info.reason), order = 4 })
+            local metaRow, elapsedLabel = U.meta(ctx, {
+                icon = "clock", text = "ปิดมาแล้ว  " .. _fmtElapsed(elapsedBase), order = 5,
+            })
+            U.discordButton(ctx, 6)
+            U.note(ctx, {
+                icon = "refresh", order = 7,
+                text = "หน้านี้ตรวจสอบสถานะอัตโนมัติ — เมื่อเปิดใช้งานจะแจ้งให้ทราบ",
             })
 
-            local card = mk("Frame", {
-                Size             = UDim2.new(0.9, 0, 0, 0),
-                AutomaticSize    = Enum.AutomaticSize.Y,
-                Position         = UDim2.new(0.5, 0, 0.5, 0),
-                AnchorPoint      = Vector2.new(0.5, 0.5),
-                BackgroundColor3 = Color3.fromRGB(20, 20, 27),
-                BorderSizePixel  = 0,
-                ZIndex           = 11,
-            }, gui)
-            mk("UISizeConstraint", { MaxSize = Vector2.new(380, 700) }, card)
-
-            -- จอเตี้ย (มือถือแนวนอน) → ย่อการ์ดให้พอดี
-            local uiScale = mk("UIScale", { Scale = 1 }, card)
-            local function _updateScale()
-                local requiredH = 430
-                local cam = workspace.CurrentCamera
-                local viewH = cam and cam.ViewportSize.Y or requiredH
-                uiScale.Scale = viewH < requiredH and math.max(0.1, viewH / requiredH) or 1
-            end
-            _updateScale()
-            pcall(function()
-                workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(_updateScale)
-            end)
-
-            mk("UICorner", { CornerRadius = UDim.new(0, 12) }, card)
-            mk("UIStroke", { Color = Color3.fromRGB(60, 60, 75), Thickness = 1, Transparency = 0.5 }, card)
-            mk("UIListLayout", {
-                Padding = UDim.new(0, 12),
-                HorizontalAlignment = Enum.HorizontalAlignment.Center,
-                SortOrder = Enum.SortOrder.LayoutOrder,
-            }, card)
-            mk("UIPadding", {
-                PaddingTop = UDim.new(0, 20), PaddingBottom = UDim.new(0, 20),
-                PaddingLeft = UDim.new(0, 20), PaddingRight = UDim.new(0, 20),
-            }, card)
-
-            -- แถบสีบนสุด
-            local bar = mk("Frame", {
-                Size = UDim2.new(1, 0, 0, 4),
-                BackgroundColor3 = AMBER_A, BorderSizePixel = 0, LayoutOrder = 1,
-            }, card)
-            local barGrad = mk("UIGradient", { Color = ColorSequence.new(AMBER_A, AMBER_B) }, bar)
-
-            -- Header: ไอคอน | ชื่อ | ปุ่มปิด
-            local headerFrame = mk("Frame", {
-                Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1, LayoutOrder = 2,
-            }, card)
-            mk("UIListLayout", {
-                FillDirection = Enum.FillDirection.Horizontal,
-                VerticalAlignment = Enum.VerticalAlignment.Center,
-                SortOrder = Enum.SortOrder.LayoutOrder,
-                Padding = UDim.new(0, 10),
-            }, headerFrame)
-
-            local icon = mk("TextLabel", {
-                Size = UDim2.new(0, 30, 0, 30),
-                BackgroundColor3 = Color3.fromRGB(48, 38, 18),
-                Text = "!", TextColor3 = AMBER_A, TextSize = 18,
-                Font = Enum.Font.GothamBold, LayoutOrder = 1,
-            }, headerFrame)
-            mk("UICorner", { CornerRadius = UDim.new(1, 0) }, icon)
-
-            local titleBox = mk("Frame", {
-                Size = UDim2.new(1, -80, 1, 0), BackgroundTransparency = 1, LayoutOrder = 2,
-            }, headerFrame)
-            mk("UIListLayout", {
-                Padding = UDim.new(0, 2), VerticalAlignment = Enum.VerticalAlignment.Center,
-                SortOrder = Enum.SortOrder.LayoutOrder,
-            }, titleBox)
-            local title = mk("TextLabel", {
-                Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1,
-                Text = "ปิดปรับปรุงชั่วคราว", TextColor3 = Color3.fromRGB(255, 255, 255),
-                TextSize = 17, Font = Enum.Font.GothamBold,
-                TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 1,
-            }, titleBox)
-            mk("TextLabel", {
-                Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
-                Text = "LuaSyncX v" .. CFG.loaderVersion, TextColor3 = Color3.fromRGB(140, 140, 160),
-                TextSize = 11, Font = Enum.Font.Gotham,
-                TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2,
-            }, titleBox)
-
-            local closeBtn = mk("TextButton", {
-                Size = UDim2.new(0, 28, 0, 28),
-                BackgroundColor3 = Color3.fromRGB(32, 32, 42), AutoButtonColor = false,
-                BorderSizePixel = 0, Text = "✕", TextColor3 = Color3.fromRGB(170, 170, 195),
-                TextSize = 13, Font = Enum.Font.GothamBold, LayoutOrder = 3,
-            }, headerFrame)
-            mk("UICorner", { CornerRadius = UDim.new(1, 0) }, closeBtn)
-            closeBtn.MouseEnter:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(52, 52, 66) end)
-            closeBtn.MouseLeave:Connect(function() closeBtn.BackgroundColor3 = Color3.fromRGB(32, 32, 42) end)
-            closeBtn.MouseButton1Click:Connect(function() pcall(function() gui:Destroy() end) end)
-
-            -- สถานะ
-            local pill = mk("Frame", {
-                Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = Color3.fromRGB(34, 28, 18),
-                BorderSizePixel = 0, LayoutOrder = 3,
-            }, card)
-            mk("UICorner", { CornerRadius = UDim.new(0, 14) }, pill)
-            local pillStroke = mk("UIStroke", {
-                Color = Color3.fromRGB(90, 70, 35), Thickness = 1, Transparency = 0.5,
-            }, pill)
-            local pillLabel = mk("TextLabel", {
-                Size = UDim2.new(1, -10, 1, 0), Position = UDim2.new(0, 5, 0, 0),
-                BackgroundTransparency = 1, Text = "●  สคริปต์ปิดให้บริการชั่วคราว",
-                TextColor3 = Color3.fromRGB(255, 200, 100), TextSize = 11,
-                Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Center,
-            }, pill)
-
-            mk("Frame", {
-                Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Color3.fromRGB(40, 40, 55),
-                BorderSizePixel = 0, LayoutOrder = 4,
-            }, card)
-
-            mk("TextLabel", {
-                Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1,
-                Text = "รายละเอียด", TextColor3 = Color3.fromRGB(180, 180, 205),
-                TextSize = 12, Font = Enum.Font.GothamBold,
-                TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 5,
-            }, card)
-
-            -- กล่องเหตุผล (สูงตามข้อความ)
-            local reasonBox = mk("Frame", {
-                Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-                BackgroundColor3 = Color3.fromRGB(12, 12, 17), BorderSizePixel = 0, LayoutOrder = 6,
-            }, card)
-            mk("UICorner", { CornerRadius = UDim.new(0, 8) }, reasonBox)
-            mk("UIStroke", { Color = Color3.fromRGB(45, 45, 60), Thickness = 1, Transparency = 0.2 }, reasonBox)
-            mk("UIPadding", {
-                PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10),
-                PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 12),
-            }, reasonBox)
-            local reasonLabel = mk("TextLabel", {
-                Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-                BackgroundTransparency = 1, Text = _reasonText(info.reason),
-                TextColor3 = Color3.fromRGB(215, 215, 228), TextSize = 13,
-                Font = Enum.Font.Gotham, TextWrapped = true,
-                TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
-            }, reasonBox)
-
-            local elapsedLabel = mk("TextLabel", {
-                Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
-                Text = "ปิดมาแล้ว  " .. _fmtElapsed(elapsedBase),
-                TextColor3 = Color3.fromRGB(120, 120, 140), TextSize = 11,
-                Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Left,
-                LayoutOrder = 7,
-            }, card)
-
-            local btn = mk("TextButton", {
-                Size = UDim2.new(1, 0, 0, 42), BackgroundColor3 = Color3.fromRGB(88, 101, 242),
-                AutoButtonColor = false, BorderSizePixel = 0,
-                Text = "💬  คัดลอก Discord Link", TextColor3 = Color3.fromRGB(255, 255, 255),
-                TextSize = 14, Font = Enum.Font.GothamBold, LayoutOrder = 8,
-            }, card)
-            mk("UICorner", { CornerRadius = UDim.new(0, 8) }, btn)
-            mk("UIGradient", {
-                Rotation = 90,
-                Color = ColorSequence.new(Color3.fromRGB(98, 111, 250), Color3.fromRGB(69, 78, 205)),
-            }, btn)
-            btn.MouseEnter:Connect(function() btn.BackgroundColor3 = Color3.fromRGB(110, 120, 255) end)
-            btn.MouseLeave:Connect(function() btn.BackgroundColor3 = Color3.fromRGB(88, 101, 242) end)
-            btn.MouseButton1Click:Connect(function()
-                pcall(function() setclipboard(CFG.discordUrl) end)
-                btn.Text = "✔  คัดลอกลิงก์แล้ว!"
-                btn.BackgroundColor3 = Color3.fromRGB(55, 170, 95)
-                task.delay(2, function()
-                    if btn and btn.Parent then
-                        btn.Text = "💬  คัดลอก Discord Link"
-                        btn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
-                    end
-                end)
-            end)
-
-            mk("TextLabel", {
-                Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1,
-                Text = "หน้านี้ตรวจสอบสถานะอัตโนมัติ — เมื่อเปิดใช้งานจะแจ้งให้ทราบ",
-                TextColor3 = Color3.fromRGB(110, 110, 130), TextSize = 10,
-                Font = Enum.Font.Gotham, TextWrapped = true, LayoutOrder = 9,
-            }, card)
-
-            local parented = false
-            pcall(function() gui.Parent = game:GetService("CoreGui"); parented = true end)
-            if not parented then
-                pcall(function() gui.Parent = PL:WaitForChild("PlayerGui", 3) end)
-            end
-            _curGui = gui
+            ctx.show()
+            pill.pulse()
 
             -- ── เปลี่ยนการ์ดเป็นสถานะ "เปิดให้ใช้งานแล้ว" แล้วปิดตัวเอง ──────────────────
             local reopened = false
             local function setReopened()
-                if not (gui and gui.Parent) then return false end
+                if not ctx.alive() then return false end
                 if reopened then return true end
                 reopened = true
-                title.Text = "เปิดให้ใช้งานแล้ว"
-                icon.Text = "✔"
-                icon.TextColor3 = GREEN_A
-                icon.BackgroundColor3 = Color3.fromRGB(18, 40, 28)
-                bar.BackgroundColor3 = GREEN_A
-                barGrad.Color = ColorSequence.new(GREEN_A, GREEN_B)
-                pill.BackgroundColor3 = Color3.fromRGB(18, 34, 24)
-                pillStroke.Color = Color3.fromRGB(45, 95, 65)
-                pillLabel.Text = "✔  สคริปต์กลับมาใช้งานได้แล้ว — กรุณารันสคริปต์ใหม่อีกครั้ง"
-                pillLabel.TextColor3 = Color3.fromRGB(90, 210, 130)
+                pill.stopped = true
+                head.set("checkCircle", P.green, "เปิดให้ใช้งานแล้ว")
+                ctx.setAccent(P.green, P.greenB)
+                pill.set("เปิดใช้งานแล้ว — กรุณารันสคริปต์ใหม่", P.green)
                 reasonLabel.Text = "การปรับปรุงเสร็จสิ้น ขออภัยในความไม่สะดวก"
-                elapsedLabel.Visible = false
+                metaRow.Visible = false
                 pcall(function()
                     game:GetService("StarterGui"):SetCore("SendNotification", {
                         Title = "LuaSyncX", Text = "สคริปต์เปิดใช้งานแล้ว — กรุณารันสคริปต์ใหม่", Duration = 6,
                     })
                 end)
-                task.delay(6, function()
-                    if gui and gui.Parent then gui:Destroy() end
-                end)
+                task.delay(6, function() ctx.close() end)
                 return true
             end
             _curReopen = setReopened
 
             -- อัปเดตเวลาที่ปิดมา
             task.spawn(function()
-                while gui and gui.Parent and not reopened do
+                while ctx.alive() and not reopened do
                     elapsedLabel.Text = "ปิดมาแล้ว  " .. _fmtElapsed(elapsedBase + (os.clock() - t0))
                     task.wait(5)
                 end
@@ -1341,9 +1256,9 @@ do
 
             -- เช็คสถานะกับ server เป็นระยะ (ข้อมูลไม่ลับ → ใช้ /api/status + client key)
             task.spawn(function()
-                while gui and gui.Parent and not reopened do
+                while ctx.alive() and not reopened do
                     task.wait(POLL_EVERY)
-                    if not (gui and gui.Parent) or reopened then break end
+                    if not ctx.alive() or reopened then break end
                     local gOk, raw = safeGetTimeout(CFG.API .. "/api/status", 6, CLIENT_HEADERS)
                     if gOk and raw and raw ~= "" and raw:sub(1, 1) ~= "<" then
                         local dOk, d = pcall(HS.JSONDecode, HS, raw)
@@ -1748,6 +1663,24 @@ print("[ LuaSyncX ]: Connecting to Server...")
 
 local _mainOk = xpcall(function()
     task.wait(CFG.waitOnStart)
+
+    -- ── เช็คสถานะปิดปรับปรุงก่อนทุกอย่าง (ก่อนตรวจ executor/บัญชี/key/HWID) ────────────
+    -- ปิดอยู่ → โชว์การ์ดทันที ไม่ต้องรอผ่านขั้นตอนอื่น · เช็คไม่ได้ (เน็ต/timeout) → ไปต่อตามปกติ
+    -- (server ยังบล็อกสคริปต์ที่ /api/lookup อยู่ดี จึงไม่ใช่ช่องโหว่)
+    do
+        local sOk, sRaw = safeGetTimeout(CFG.API .. "/api/status", 6, CLIENT_HEADERS)
+        if sOk and sRaw and sRaw ~= "" and sRaw:sub(1, 1) ~= "<" then
+            local dOk, d = pcall(HS.JSONDecode, HS, sRaw)
+            local m = dOk and type(d) == "table" and type(d.data) == "table" and d.data.maintenance
+            if type(m) == "table" and m.on == true then
+                warn(_TAG .. "สคริปต์ปิดปรับปรุงชั่วคราว")
+                getgenv()[_GK.running] = nil
+                task.spawn(function() _Maint.show(m) end)
+                return
+            end
+        end
+    end
+
     local _uid = PL.UserId
     do
         local _uidOk, _uidErr = _checkUIDSanity()
@@ -1824,15 +1757,15 @@ local _mainOk = xpcall(function()
         if NotificationLibrary then
             pcall(function()
                 NotificationLibrary:SendNotification("Info",
-                    "⚡  LuaSyncX  v" .. CFG.loaderVersion .. "  —  กำลังโหลด...", 4)
+                    "LuaSyncX  v" .. CFG.loaderVersion .. "  —  กำลังโหลด...", 4)
             end)
         end
-        local _label  = _isDev and "DEV ACCESS 👑"  or "FREE ACCESS 🎁"
+        local _label  = _isDev and "DEV ACCESS"  or "FREE ACCESS"
         local _keyTag = _isDev and "[DEV]"           or "[FREE]"
         local _timeTag = _isDev and "∞  Developer"  or "∞  Free"
         log(_label .. "  ·  " .. PL.Name .. "  ·  " .. _timeTag, "success", "Access granted")
         task.wait(0.5)
-        task.delay(1, function() _notifyWL(_timeTag, _isDev and "DEV 👑" or "FREE 🎁") end)
+        task.delay(1, function() _notifyWL(_timeTag, _isDev and "DEV" or "FREE") end)
         _expiresAt_cached = -1
         task.spawn(function() sendWebhook("login", { key = _keyTag, hwid = hwid, timeLeft = _timeTag }) end)
         log("Loading script...", "loading")
@@ -1982,7 +1915,7 @@ local _mainOk = xpcall(function()
     if NotificationLibrary then
         pcall(function()
             NotificationLibrary:SendNotification("Info",
-                "⚡  LuaSyncX  v" .. CFG.loaderVersion .. "  —  กำลังโหลด...", 4)
+                "LuaSyncX  v" .. CFG.loaderVersion .. "  —  กำลังโหลด...", 4)
         end)
     end
     local timeLeft, expiresAt = "Permanent", data.expiresAt
