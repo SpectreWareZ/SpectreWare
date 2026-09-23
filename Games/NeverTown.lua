@@ -44,19 +44,19 @@ for _,c in ipairs(LP.PlayerGui:GetChildren()) do
 end
 _pgBefore = nil
 
--- ── SpectreTheme v2 — matched to Spectre logo palette ──
-local SpectreAccent = Color3.fromRGB(160, 110, 255)
+-- ── SpectreTheme v3 — matched to WindUI Default Dark palette ──
+local SpectreAccent = Color3.fromRGB(75, 135, 255)
 
 pcall(function()
     WindUI:AddTheme({
         Name        = "SpectreTheme",
         Accent      = SpectreAccent,
-        Background  = Color3.fromRGB(10, 8, 18),
-        Outline     = Color3.fromRGB(80, 70, 120),
-        Button      = Color3.fromRGB(55, 46, 90),
-        Text        = Color3.fromRGB(235, 232, 252),
-        Placeholder = Color3.fromRGB(140, 130, 175),
-        Icon        = Color3.fromRGB(185, 170, 240),
+        Background  = Color3.fromRGB(25, 25, 25),
+        Outline     = Color3.fromRGB(55, 55, 55),
+        Button      = Color3.fromRGB(35, 35, 35),
+        Text        = Color3.fromRGB(240, 240, 240),
+        Placeholder = Color3.fromRGB(140, 140, 140),
+        Icon        = Color3.fromRGB(185, 185, 185),
     })
 end)
 
@@ -64,18 +64,18 @@ end)
 local SW = {
     UIS      = game:GetService("UserInputService"),
     Tween    = game:GetService("TweenService"),
-    Bg       = Color3.fromRGB(12, 10, 22),
-    BgTop    = Color3.fromRGB(28, 22, 52),
-    Row      = Color3.fromRGB(36, 30, 62),
-    Track    = Color3.fromRGB(18, 15, 32),
-    Text     = Color3.fromRGB(240, 237, 255),
-    Sub      = Color3.fromRGB(150, 141, 190),
+    Bg       = Color3.fromRGB(20, 20, 20),
+    BgTop    = Color3.fromRGB(30, 30, 30),
+    Row      = Color3.fromRGB(40, 40, 40),
+    Track    = Color3.fromRGB(15, 15, 15),
+    Text     = Color3.fromRGB(240, 240, 240),
+    Sub      = Color3.fromRGB(155, 155, 155),
     Water    = Color3.fromRGB(86, 176, 255),
     Food     = Color3.fromRGB(255, 118, 176),
     Growth   = Color3.fromRGB(104, 240, 160),
     Danger   = Color3.fromRGB(255, 96, 96),
     Good     = Color3.fromRGB(110, 255, 165),
-    Edge1    = Color3.fromRGB(123, 142, 200),
+    Edge1    = Color3.fromRGB(100, 100, 100),
     Edge2    = SpectreAccent,
 }
 
@@ -356,7 +356,7 @@ local Window = WindUI:CreateWindow({
 if not SW.windDragPatched then
     warn("[SpectreWare] WindUI drag patch ไม่ทำงาน (library เวอร์ชันนี้ไม่ได้เรียก Creator.Drag ผ่านตารางที่แพตช์ได้) — หน้าต่างหลักใช้การลากของ WindUI เดิม; แผงลอย Candy/HUD ยังใช้ engine ใหม่")
 end
-Window:Tag({Title="v1.6.12", Icon="github", Color=Color3.fromRGB(123,142,200), Radius=13})
+Window:Tag({Title="v1.6.12", Icon="github", Color=Color3.fromRGB(75,135,255), Radius=13})
 Window:SetIconSize(80)
 -- ตัดชื่อบนปุ่มเปิดให้สั้นลง (ตัวเต็ม "SpectreWare | NEVER TOWN" ยาวเกินจอมือถือ) + ขอบไล่สีตามธีม Spectre
 if not pcall(function()
@@ -364,7 +364,7 @@ if not pcall(function()
         Title = "SpectreWare",
         CornerRadius = UDim.new(1, 0),
         StrokeThickness = 2,
-        Color = ColorSequence.new(Color3.fromRGB(110, 168, 255), Color3.fromRGB(176, 104, 255)),
+        Color = ColorSequence.new(Color3.fromRGB(75, 135, 255), Color3.fromRGB(50, 100, 220)),
         Draggable = true,
     })
 end) then
@@ -496,9 +496,10 @@ local ESPObjects     = {}
 -- WorldToViewportPoint projection every single RenderStepped — reusing last frame's
 -- screen box for 2-4 frames is visually lossless at range but skips the priciest calls
 -- in the hot loop (this is what actually chokes framerate once 15-20+ ESP boxes stack up).
-local _frameCounter  = 0
+local _frameCounter   = 0
 local _staggerCounter = 0
-local _espPartCache  = {}
+local _espPartCache   = {}
+local _espCacheBuild  = {}  -- FIX: ไม่เคย declare ทำให้ indexing nil error ใน updateESPObject → ESP ไม่ขึ้น
 local Z_MARGIN       = 0.5  -- Z-buffer margin: kills edge-of-camera flicker
 
 -- FIX (ESP ติดจอ/กะพริบตอนหมุนกล้องเร็ว): ตอนกล้องหมุนเร็ว จุดที่ cache ไว้ (skipProjection)
@@ -1514,9 +1515,7 @@ local function walkToTarget(model)
     local hum2=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
     if not hum2 then return false, "ไม่พบ Humanoid ของตัวละคร (อาจกำลัง Respawn)" end
     if hum2.Health<=0 then return false, "ตัวละครตายอยู่ รอ Respawn ก่อน" end
-    local origSpeed=hum2.WalkSpeed
     local moveOk=pcall(function()
-        hum2.WalkSpeed=32
         hum2:MoveTo(part.Position)
     end)
     if not moveOk then return false, "สั่งเดินไม่สำเร็จ (ตัวละครถูกทำลายระหว่างเดิน)" end
@@ -1525,9 +1524,8 @@ local function walkToTarget(model)
     local t=os.clock()
     repeat
         task.wait(0.1)
-    until arrived or (os.clock()-t)>8 or hum2.Health<=0 or not hum2.Parent
+    until arrived or (os.clock()-t)>20 or hum2.Health<=0 or not hum2.Parent
     conn:Disconnect()
-    pcall(function() hum2.WalkSpeed=origSpeed end)
     if hum2.Health<=0 or not hum2.Parent then return false, "ตัวละครตายหรือถูกทำลายระหว่างเดิน" end
     if not arrived then return false, "เดินไม่ถึงภายในเวลาที่กำหนด (อาจติดสิ่งกีดขวาง/ทางตัน)" end
     local hrp=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
@@ -1585,7 +1583,7 @@ local function checkAndWater(tree)
     end
     local tries=0
     while autoWaterEnabled and tree.Parent and wv.Parent and m_floor(wv.Value)<100 do
-        giveWaterRemote:FireServer(tree); task.wait(0.3)
+        giveWaterRemote:FireServer(tree); task.wait(0.8)
         tries=tries+1; if tries>60 then break end
     end
 end
