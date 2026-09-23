@@ -459,11 +459,15 @@ local LOADER = (function()
             if closing then return end
             closing = true
             state = "closed"
-            tw(uiScale, 0.25, { Scale = 0.93 })
+            -- ทุก property ออกพร้อมกัน: duration + easing เหมือนกันหมด
+            local DUR = 0.28
+            local STYLE = Enum.EasingStyle.Quart
+            local DIR   = Enum.EasingDirection.In
+            tw(uiScale, DUR, { Scale = 0.84 }, STYLE, DIR)
             if cardClass == "CanvasGroup" then
-                tw(card, 0.25, { GroupTransparency = 1 })
+                tw(card, DUR, { GroupTransparency = 1 }, STYLE, DIR)
             end
-            task.delay(0.32, function()
+            task.delay(DUR + 0.04, function()
                 pcall(function() conn:Disconnect() end)
                 pcall(function() gui:Destroy() end)
             end)
@@ -493,12 +497,7 @@ local LOADER = (function()
             paint(C.ok, C.okB)
             ringGrad.Transparency = NumberSequence.new(0)
             curStage = "check"; stageIcon.Image = ICON.check; stageIcon.ImageColor3 = C.ok
-            -- subtle scale bump, then settle
-            tw(uiScale, 0.12, { Scale = 1.04 }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-            task.delay(0.12, function()
-                tw(uiScale, 0.18, { Scale = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-            end)
-            task.delay(1.1, close)
+            task.delay(0.9, close)  -- รอให้เห็น done state แล้วลบในครั้งเดียว
         end
 
         function A.Fail(text)
