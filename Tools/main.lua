@@ -8496,6 +8496,13 @@ end,true)
 at.Size=UDim2.new(1,0,0,aq.SearchBarHeight)
 at.Position=UDim2.new(0,0,0,0)
 at.Name="SearchBar"
+do
+local aD=at.Frame.Frame
+local aE=aD:FindFirstChildOfClass"TextBox"
+if aE then aE.TextSize=15 end
+local aF=aD:FindFirstChildOfClass"ImageLabel"
+if aF then aF.Size=UDim2.new(0,18,0,18) end
+end
 end
 end
 
@@ -8941,7 +8948,7 @@ UIPadding=12,
 MenuCorner=15,
 MenuPadding=5,
 TabPadding=10,
-SearchBarHeight=39,
+SearchBarHeight=34,
 TabIcon=18,
 }
 
