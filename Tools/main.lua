@@ -2658,7 +2658,7 @@ local ab=a.load'd'
 local ac=ab.New local ad=
 ab.Tween
 
-function aa.New(ae,af,ag,ah,ai,aj,ak,al,am)
+function aa.New(ae,af,ag,ah,ai,aj,ak,al,am,aC)
 ah=ah or"Input"
 local an=ak or 10
 local ao
@@ -2719,7 +2719,7 @@ ImageColor3="Outline",
 Size=UDim2.new(1,1,1,1),
 AnchorPoint=Vector2.new(0.5,0.5),
 Position=UDim2.new(0.5,0,0.5,0),
-ImageTransparency=0.8,
+ImageTransparency=aC or 0.8,
 })or nil,
 ab.NewRoundFrame(an,"Squircle",{
 Size=UDim2.new(1,0,1,0),
@@ -8121,7 +8121,9 @@ aj:Set(al,true)
 end,
 nil,
 ai.Window.NewElements and 12 or 10,
-aj.ClearTextOnFocus
+aj.ClearTextOnFocus,
+nil,
+0.4
 )
 
 if aj.Type~="Textarea"then
