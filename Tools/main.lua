@@ -1644,11 +1644,11 @@ local d=b.New
 local e=b.Tween
 
 local f={
-Size=UDim2.new(0,300,1,-56),
-SizeLower=UDim2.new(0,300,1,-56),
+Size=UDim2.new(0,280,1,-56),
+SizeLower=UDim2.new(0,280,1,-56),
 BottomOffset=52,
-UICorner=18,
-UIPadding=14,
+UICorner=16,
+UIPadding=13,
 
 Holder=nil,
 NotificationIndex=0,
@@ -1666,7 +1666,7 @@ h.Frame.Size=i and f.SizeLower or f.Size
 end
 
 h.Frame=d("Frame",{
-Position=UDim2.new(1,-29,0,56),
+Position=UDim2.new(1,-26,0,56),
 AnchorPoint=Vector2.new(1,0),
 Size=f.Size,
 Parent=g,
@@ -1680,7 +1680,7 @@ d("UIListLayout",{
 HorizontalAlignment="Center",
 SortOrder="LayoutOrder",
 VerticalAlignment="Bottom",
-Padding=UDim.new(0,8),
+Padding=UDim.new(0,7),
 }),
 d("UIPadding",{
 PaddingBottom=UDim.new(0,f.BottomOffset),
@@ -1749,7 +1749,7 @@ g.Window,
 "Notification",
 h.IconThemed
 )
-i.Size=UDim2.new(0,26,0,26)
+i.Size=UDim2.new(0,24,0,24)
 i.Position=UDim2.new(0,f.UIPadding,0,f.UIPadding)
 
 end
@@ -1761,7 +1761,7 @@ Image=b.Icon"x"[1],
 ImageRectSize=b.Icon"x"[2].ImageRectSize,
 ImageRectOffset=b.Icon"x"[2].ImageRectPosition,
 BackgroundTransparency=1,
-Size=UDim2.new(0,16,0,16),
+Size=UDim2.new(0,15,0,15),
 Position=UDim2.new(1,-f.UIPadding,0,f.UIPadding),
 AnchorPoint=Vector2.new(1,0),
 ThemeTag={
@@ -1789,7 +1789,7 @@ ImageColor3="NotificationDuration",
 })
 
 local p=d("Frame",{
-Size=UDim2.new(1,h.Icon and-28-f.UIPadding or 0,1,0),
+Size=UDim2.new(1,h.Icon and-26-f.UIPadding or 0,1,0),
 Position=UDim2.new(1,0,0,0),
 AnchorPoint=Vector2.new(1,0),
 BackgroundTransparency=1,
@@ -1803,12 +1803,12 @@ PaddingBottom=UDim.new(0,f.UIPadding),
 }),
 d("TextLabel",{
 AutomaticSize="Y",
-Size=UDim2.new(1,-30-f.UIPadding,0,0),
+Size=UDim2.new(1,-27-f.UIPadding,0,0),
 TextWrapped=true,
 TextXAlignment="Left",
 RichText=true,
 BackgroundTransparency=1,
-TextSize=18,
+TextSize=16,
 ThemeTag={
 TextColor3="NotificationTitle",
 TextTransparency="NotificationTitleTransparency",
@@ -1817,7 +1817,7 @@ Text=h.Title,
 FontFace=Font.new(b.Font,Enum.FontWeight.SemiBold),
 }),
 d("UIListLayout",{
-Padding=UDim.new(0,f.UIPadding/3),
+Padding=UDim.new(0,4),
 }),
 })
 
@@ -1830,7 +1830,7 @@ TextXAlignment="Left",
 RichText=true,
 BackgroundTransparency=1,
 
-TextSize=15,
+TextSize=14,
 ThemeTag={
 TextColor3="NotificationContent",
 TextTransparency="NotificationContentTransparency",
@@ -4396,7 +4396,7 @@ local ab=a.load'd'
 local ac=ab.New local ad=
 ab.Tween
 
-function aa.New(ae,af,ag,ah,ai,aj)
+function aa.New(ae,af,ag,ah,ai,aj,aB)
 local ak=ai or 10
 local al
 if af and af~=""then
@@ -4446,7 +4446,7 @@ ThemeTag={
 ImageColor3="Outline",
 },
 Size=UDim2.new(1,1,1,1),
-ImageTransparency=0.9,
+ImageTransparency=aB or 0.9,
 AnchorPoint=Vector2.new(0.5,0.5),
 Position=UDim2.new(0.5,0,0.5,0),
 })or nil,
@@ -8989,7 +8989,7 @@ Tags=ao.Tags,
 
 if ap.Callback then
 ap.UIElements.Dropdown=
-ai("",nil,ap.DropdownFrame.UIElements.Main,nil,ao.Window.NewElements and 12 or 10)
+ai("",nil,ap.DropdownFrame.UIElements.Main,nil,ao.Window.NewElements and 12 or 10,nil,0.4)
 
 ap.UIElements.Dropdown.Frame.Frame.TextLabel.TextTruncate="AtEnd"
 ap.UIElements.Dropdown.Frame.Frame.TextLabel.Size=
