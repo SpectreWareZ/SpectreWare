@@ -8690,6 +8690,15 @@ local aA=typeof(ap.Value)=="table"and ap.Value.Title or ap.Value
 ay.Selected=aA==ay.Name
 end
 
+if ay.Selected then
+ay.UIElements.TabItem.SelectStroke.Transparency=0.3
+ay.UIElements.TabItem.ImageTransparency=0.93
+ay.UIElements.TabItem.Frame.Title.TextLabel.TextTransparency=0
+if ay.UIElements.TabIcon then
+ay.UIElements.TabIcon.ImageLabel.ImageTransparency=0
+end
+end
+
 ap.Tabs[aw]=ay
 
 as:Display()
@@ -8949,7 +8958,7 @@ MenuCorner=15,
 MenuPadding=5,
 TabPadding=10,
 SearchBarHeight=34,
-TabIcon=26,
+TabIcon=18,
 }
 
 function am.New(an,ao)
