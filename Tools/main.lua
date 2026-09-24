@@ -8297,8 +8297,8 @@ AnchorPoint=Vector2.new(1,0),
 },{
 ap.UIElements.Menu,
 al("UISizeConstraint",{
-MinSize=Vector2.new(170,0),
-MaxSize=Vector2.new(300,400),
+MinSize=Vector2.new(140,0),
+MaxSize=Vector2.new(240,260),
 }),
 })
 
@@ -8951,7 +8951,7 @@ Desc=ao.Desc or nil,
 Locked=ao.Locked or false,
 LockedTitle=ao.LockedTitle,
 Values=ao.Values or{},
-MenuWidth=ao.MenuWidth or 180,
+MenuWidth=ao.MenuWidth or 160,
 Value=ao.Value,
 AllowNone=ao.AllowNone,
 SearchBarEnabled=ao.SearchBarEnabled or false,
