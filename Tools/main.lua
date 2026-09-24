@@ -12233,18 +12233,30 @@ ImageTransparency="TabIconTransparencyActive",
 end
 ao.Tabs[aq].Selected=true
 
+ao._TabSwitchToken=(ao._TabSwitchToken or 0)+1
+local _switchToken=ao._TabSwitchToken
+
 task.spawn(function()
+if ao._TabTween then
+pcall(function() ao._TabTween:Cancel() end)
+ao._TabTween=nil
+end
+
 for ar,as in next,ao.Containers do
 as.AnchorPoint=Vector2.new(0,0.05)
 as.Visible=false
 end
 ao.Containers[aq].Visible=true
+
+if ao._TabSwitchToken~=_switchToken then return end
+
 local ar=game:GetService"TweenService"
 
 local as=TweenInfo.new(0.15,Enum.EasingStyle.Quart,Enum.EasingDirection.Out)
 local at=ar:Create(ao.Containers[aq],as,{
 AnchorPoint=Vector2.new(0,0),
 })
+ao._TabTween=at
 at:Play()
 end)
 
