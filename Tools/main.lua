@@ -8548,6 +8548,19 @@ Name="Highlight",
 
 
 }),
+al("UIStroke",{
+Thickness=2,
+Transparency=1,
+Name="SelectStroke",
+ApplyStrokeMode="Border",
+ThemeTag={
+Color="DropdownTabBorder",
+},
+}),
+al("UICorner",{
+CornerRadius=UDim.new(0,aq.MenuCorner-aq.MenuPadding),
+Name="SelectStrokeCorner",
+}),
 al("Frame",{
 Size=UDim2.new(1,0,1,0),
 BackgroundTransparency=1,
@@ -8656,7 +8669,7 @@ end
 
 if ay.Selected and not ay.Locked then
 ay.UIElements.TabItem.ImageTransparency=an
-ay.UIElements.TabItem.Highlight.ImageTransparency=0
+ay.UIElements.TabItem.SelectStroke.Transparency=0
 
 ay.UIElements.TabItem.Frame.Title.TextLabel.TextTransparency=0
 if ay.UIElements.TabIcon then
@@ -8694,7 +8707,7 @@ ay.UIElements.TabItem,
 0.1,
 {ImageTransparency=an}
 ):Play()
-am(ay.UIElements.TabItem.Highlight,0.1,{ImageTransparency=0}):Play()
+am(ay.UIElements.TabItem.SelectStroke,0.1,{Transparency=0}):Play()
 
 am(ay.UIElements.TabItem.Frame.Title.TextLabel,0.1,{TextTransparency=0}):Play()
 if ay.UIElements.TabIcon then
@@ -8707,7 +8720,7 @@ return
 end
 ay.Selected=false
 am(ay.UIElements.TabItem,0.1,{ImageTransparency=1}):Play()
-am(ay.UIElements.TabItem.Highlight,0.1,{ImageTransparency=1}):Play()
+am(ay.UIElements.TabItem.SelectStroke,0.1,{Transparency=1}):Play()
 
 am(ay.UIElements.TabItem.Frame.Title.TextLabel,0.1,{TextTransparency=0.4}):Play()
 if ay.UIElements.TabIcon then
@@ -8724,7 +8737,7 @@ end
 else
 for aA,aB in next,ap.Tabs do
 am(aB.UIElements.TabItem,0.1,{ImageTransparency=1}):Play()
-am(aB.UIElements.TabItem.Highlight,0.1,{ImageTransparency=1}):Play()
+am(aB.UIElements.TabItem.SelectStroke,0.1,{Transparency=1}):Play()
 
 am(
 aB.UIElements.TabItem.Frame.Title.TextLabel,
@@ -8738,7 +8751,7 @@ aB.Selected=false
 end
 ay.Selected=true
 am(ay.UIElements.TabItem,0.1,{ImageTransparency=an}):Play()
-am(ay.UIElements.TabItem.Highlight,0.1,{ImageTransparency=0}):Play()
+am(ay.UIElements.TabItem.SelectStroke,0.1,{Transparency=0}):Play()
 
 am(ay.UIElements.TabItem.Frame.Title.TextLabel,0.1,{TextTransparency=0}):Play()
 if ay.UIElements.TabIcon then
