@@ -8667,16 +8667,6 @@ local aA=typeof(ap.Value)=="table"and ap.Value.Title or ap.Value
 ay.Selected=aA==ay.Name
 end
 
-if ay.Selected and not ay.Locked then
-ay.UIElements.TabItem.ImageTransparency=an
-ay.UIElements.TabItem.SelectStroke.Transparency=0
-
-ay.UIElements.TabItem.Frame.Title.TextLabel.TextTransparency=0
-if ay.UIElements.TabIcon then
-ay.UIElements.TabIcon.ImageLabel.ImageTransparency=0
-end
-end
-
 ap.Tabs[aw]=ay
 
 as:Display()
@@ -8702,11 +8692,6 @@ end
 if ap.Multi then
 if not ay.Selected then
 ay.Selected=true
-am(
-ay.UIElements.TabItem,
-0.1,
-{ImageTransparency=an}
-):Play()
 am(ay.UIElements.TabItem.SelectStroke,0.1,{Transparency=0}):Play()
 
 am(ay.UIElements.TabItem.Frame.Title.TextLabel,0.1,{TextTransparency=0}):Play()
@@ -8719,7 +8704,6 @@ if not ap.AllowNone and#ap.Value==1 then
 return
 end
 ay.Selected=false
-am(ay.UIElements.TabItem,0.1,{ImageTransparency=1}):Play()
 am(ay.UIElements.TabItem.SelectStroke,0.1,{Transparency=1}):Play()
 
 am(ay.UIElements.TabItem.Frame.Title.TextLabel,0.1,{TextTransparency=0.4}):Play()
@@ -8736,7 +8720,6 @@ end
 end
 else
 for aA,aB in next,ap.Tabs do
-am(aB.UIElements.TabItem,0.1,{ImageTransparency=1}):Play()
 am(aB.UIElements.TabItem.SelectStroke,0.1,{Transparency=1}):Play()
 
 am(
@@ -8750,7 +8733,6 @@ end
 aB.Selected=false
 end
 ay.Selected=true
-am(ay.UIElements.TabItem,0.1,{ImageTransparency=an}):Play()
 am(ay.UIElements.TabItem.SelectStroke,0.1,{Transparency=0}):Play()
 
 am(ay.UIElements.TabItem.Frame.Title.TextLabel,0.1,{TextTransparency=0}):Play()
