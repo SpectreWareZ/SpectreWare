@@ -8530,7 +8530,7 @@ ay.UIElements.TabItem=ak.NewRoundFrame(
 aq.MenuCorner-aq.MenuPadding,
 "Squircle",
 {
-Size=UDim2.new(1,0,0,36),
+Size=UDim2.new(1,0,0,42),
 AutomaticSize=ay.Desc and"Y",
 ImageTransparency=1,
 Parent=ap.UIElements.Menu.Frame.ScrollingFrame,
@@ -8958,7 +8958,7 @@ MenuCorner=15,
 MenuPadding=5,
 TabPadding=10,
 SearchBarHeight=34,
-TabIcon=18,
+TabIcon=22,
 }
 
 function am.New(an,ao)
