@@ -8553,9 +8553,7 @@ Thickness=1,
 Transparency=1,
 Name="SelectStroke",
 ApplyStrokeMode="Border",
-ThemeTag={
-Color="DropdownTabBorder",
-},
+Color=Color3.fromRGB(130,130,130),
 },{
 al("UIGradient",{
 Name="SelectGradient",
