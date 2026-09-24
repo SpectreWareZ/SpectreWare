@@ -8549,13 +8549,23 @@ Name="Highlight",
 
 }),
 al("UIStroke",{
-Thickness=2,
+Thickness=1,
 Transparency=1,
 Name="SelectStroke",
 ApplyStrokeMode="Border",
 ThemeTag={
 Color="DropdownTabBorder",
 },
+},{
+al("UIGradient",{
+Name="SelectGradient",
+Rotation=20,
+Transparency=NumberSequence.new{
+NumberSequenceKeypoint.new(0,0.05),
+NumberSequenceKeypoint.new(0.5,0.5),
+NumberSequenceKeypoint.new(1,0.85),
+},
+}),
 }),
 al("UICorner",{
 CornerRadius=UDim.new(0,aq.MenuCorner-aq.MenuPadding),
@@ -8692,7 +8702,8 @@ end
 if ap.Multi then
 if not ay.Selected then
 ay.Selected=true
-am(ay.UIElements.TabItem.SelectStroke,0.1,{Transparency=0}):Play()
+am(ay.UIElements.TabItem.SelectStroke,0.18,{Transparency=0.3}):Play()
+am(ay.UIElements.TabItem,0.18,{ImageTransparency=0.93}):Play()
 
 am(ay.UIElements.TabItem.Frame.Title.TextLabel,0.1,{TextTransparency=0}):Play()
 if ay.UIElements.TabIcon then
@@ -8704,7 +8715,8 @@ if not ap.AllowNone and#ap.Value==1 then
 return
 end
 ay.Selected=false
-am(ay.UIElements.TabItem.SelectStroke,0.1,{Transparency=1}):Play()
+am(ay.UIElements.TabItem.SelectStroke,0.18,{Transparency=1}):Play()
+am(ay.UIElements.TabItem,0.18,{ImageTransparency=1}):Play()
 
 am(ay.UIElements.TabItem.Frame.Title.TextLabel,0.1,{TextTransparency=0.4}):Play()
 if ay.UIElements.TabIcon then
@@ -8720,7 +8732,8 @@ end
 end
 else
 for aA,aB in next,ap.Tabs do
-am(aB.UIElements.TabItem.SelectStroke,0.1,{Transparency=1}):Play()
+am(aB.UIElements.TabItem.SelectStroke,0.18,{Transparency=1}):Play()
+am(aB.UIElements.TabItem,0.18,{ImageTransparency=1}):Play()
 
 am(
 aB.UIElements.TabItem.Frame.Title.TextLabel,
@@ -8733,7 +8746,8 @@ end
 aB.Selected=false
 end
 ay.Selected=true
-am(ay.UIElements.TabItem.SelectStroke,0.1,{Transparency=0}):Play()
+am(ay.UIElements.TabItem.SelectStroke,0.18,{Transparency=0.3}):Play()
+am(ay.UIElements.TabItem,0.18,{ImageTransparency=0.93}):Play()
 
 am(ay.UIElements.TabItem.Frame.Title.TextLabel,0.1,{TextTransparency=0}):Play()
 if ay.UIElements.TabIcon then
