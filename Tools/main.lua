@@ -8274,6 +8274,12 @@ CanvasSize=UDim2.new(0,0,0,0),
 BackgroundTransparency=1,
 ScrollBarImageTransparency=1,
 },{
+al("UIPadding",{
+PaddingTop=UDim.new(0,4),
+PaddingBottom=UDim.new(0,4),
+PaddingLeft=UDim.new(0,2),
+PaddingRight=UDim.new(0,2),
+}),
 ap.UIElements.UIListLayout,
 }),
 }),
