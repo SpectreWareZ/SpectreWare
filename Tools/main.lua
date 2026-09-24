@@ -8581,9 +8581,9 @@ ThemeTag={
 TextColor3="Text",
 BackgroundColor3="Text",
 },
-TextSize=15,
+TextSize=16,
 BackgroundTransparency=1,
-TextTransparency=ar=="Dropdown"and 0.4 or 0.05,
+TextTransparency=ar=="Dropdown"and 0.08 or 0.05,
 LayoutOrder=999,
 AutomaticSize="Y",
 Size=UDim2.new(1,0,0,0),
@@ -8596,9 +8596,9 @@ ThemeTag={
 TextColor3="Text",
 BackgroundColor3="Text",
 },
-TextSize=15,
+TextSize=13,
 BackgroundTransparency=1,
-TextTransparency=ar=="Dropdown"and 0.6 or 0.35,
+TextTransparency=ar=="Dropdown"and 0.35 or 0.35,
 LayoutOrder=999,
 AutomaticSize="Y",
 TextWrapped=true,
@@ -8668,6 +8668,18 @@ ap.Tabs[aw]=ay
 as:Display()
 
 if ar=="Dropdown"then
+if not ay.Locked then
+ak.AddSignal(ay.UIElements.TabItem.MouseEnter,function()
+if not ay.Selected then
+am(ay.UIElements.TabItem,0.12,{ImageTransparency=0.85}):Play()
+end
+end)
+ak.AddSignal(ay.UIElements.TabItem.MouseLeave,function()
+if not ay.Selected then
+am(ay.UIElements.TabItem,0.12,{ImageTransparency=1}):Play()
+end
+end)
+end
 ak.AddSignal(ay.UIElements.TabItem.MouseButton1Click,function()
 if ap.Locked or ay.Locked then
 return
@@ -8799,13 +8811,13 @@ ap.UIElements.Menu.Visible=true
 ap.UIElements.MenuCanvas.Visible=true
 ap.UIElements.MenuCanvas.Active=true
 ap.UIElements.Menu.Size=UDim2.new(1,0,0,0)
-am(ap.UIElements.Menu,0.1,{
+am(ap.UIElements.Menu,0.18,{
 Size=UDim2.new(1,0,1,0),
 ImageTransparency=0,
-},Enum.EasingStyle.Quart,Enum.EasingDirection.Out):Play()
+},Enum.EasingStyle.Quint,Enum.EasingDirection.Out):Play()
 
 task.spawn(function()
-task.wait(0.1)
+task.wait(0.18)
 if ap.Locked then
 return
 end
@@ -8819,18 +8831,18 @@ end
 function as.Close(au)
 ap.Opened=false
 
-am(ap.UIElements.Menu,0.25,{
+am(ap.UIElements.Menu,0.2,{
 Size=UDim2.new(1,0,0,0),
 ImageTransparency=1,
-},Enum.EasingStyle.Quart,Enum.EasingDirection.Out):Play()
+},Enum.EasingStyle.Quint,Enum.EasingDirection.In):Play()
 
 task.spawn(function()
-task.wait(0.1)
+task.wait(0.12)
 ap.UIElements.Menu.Visible=false
 end)
 
 task.spawn(function()
-task.wait(0.25)
+task.wait(0.2)
 ap.UIElements.MenuCanvas.Visible=false
 ap.UIElements.MenuCanvas.Active=false
 end)
