@@ -8949,7 +8949,7 @@ MenuCorner=15,
 MenuPadding=5,
 TabPadding=10,
 SearchBarHeight=34,
-TabIcon=18,
+TabIcon=26,
 }
 
 function am.New(an,ao)
