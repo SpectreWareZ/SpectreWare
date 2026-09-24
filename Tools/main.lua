@@ -10743,11 +10743,28 @@ end)
 
 local au=am.ElementsModule
 
+local SectionInitDone=false
+local function ApplyExpandable()
+at.Size=UDim2.new(at.Size.X.Scale,at.Size.X.Offset,0,at.Outline.Top.AbsoluteSize.Y/am.UIScale)
+at.AutomaticSize="None"
+at.Outline.Top.Size=UDim2.new(1,0,0,(not as and an.HeaderSize or 0))
+at.Outline.Top.AutomaticSize=(not an.Expandable or as)and"Y"or"None"
+at.Outline.Content.Visible=true
+end
+
 au.Load(an,at.Outline.Content,au.Elements,am.Window,am.WindUI,function()
 if not an.Expandable then
 an.Expandable=true
 ap.Visible=true
 UpdateTitleSize()
+if SectionInitDone then
+ApplyExpandable()
+if an.Opened then
+an:Open(true)
+else
+an:Close(true)
+end
+end
 end
 end,au,am.UIScale,am.Tab)
 
@@ -10867,21 +10884,9 @@ end)
 
 task.defer(function()
 if an.Expandable then
-
-
-
-
-
-
-
-
-at.Size=
-UDim2.new(at.Size.X.Scale,at.Size.X.Offset,0,at.Outline.Top.AbsoluteSize.Y/am.UIScale)
-at.AutomaticSize="None"
-at.Outline.Top.Size=UDim2.new(1,0,0,(not as and an.HeaderSize or 0))
-at.Outline.Top.AutomaticSize=(not an.Expandable or as)and"Y"or"None"
-at.Outline.Content.Visible=true
+ApplyExpandable()
 end
+SectionInitDone=true
 if an.Opened then
 an:Open()
 else
