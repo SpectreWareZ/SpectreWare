@@ -1644,11 +1644,11 @@ local d=b.New
 local e=b.Tween
 
 local f={
-Size=UDim2.new(0,220,1,-56),
-SizeLower=UDim2.new(0,220,1,-56),
+Size=UDim2.new(0,262,1,-56),
+SizeLower=UDim2.new(0,262,1,-56),
 BottomOffset=52,
-UICorner=12,
-UIPadding=9,
+UICorner=15,
+UIPadding=12,
 
 Holder=nil,
 NotificationIndex=0,
@@ -1666,7 +1666,7 @@ h.Frame.Size=i and f.SizeLower or f.Size
 end
 
 h.Frame=d("Frame",{
-Position=UDim2.new(1,-16,0,56),
+Position=UDim2.new(1,-22,0,56),
 AnchorPoint=Vector2.new(1,0),
 Size=f.Size,
 Parent=g,
@@ -1680,7 +1680,7 @@ d("UIListLayout",{
 HorizontalAlignment="Center",
 SortOrder="LayoutOrder",
 VerticalAlignment="Bottom",
-Padding=UDim.new(0,5),
+Padding=UDim.new(0,6),
 }),
 d("UIPadding",{
 PaddingBottom=UDim.new(0,f.BottomOffset),
@@ -1749,7 +1749,7 @@ g.Window,
 "Notification",
 h.IconThemed
 )
-i.Size=UDim2.new(0,18,0,18)
+i.Size=UDim2.new(0,22,0,22)
 i.Position=UDim2.new(0,f.UIPadding,0,f.UIPadding)
 
 end
@@ -1761,7 +1761,7 @@ Image=b.Icon"x"[1],
 ImageRectSize=b.Icon"x"[2].ImageRectSize,
 ImageRectOffset=b.Icon"x"[2].ImageRectPosition,
 BackgroundTransparency=1,
-Size=UDim2.new(0,11,0,11),
+Size=UDim2.new(0,14,0,14),
 Position=UDim2.new(1,-f.UIPadding,0,f.UIPadding),
 AnchorPoint=Vector2.new(1,0),
 ThemeTag={
@@ -1789,7 +1789,7 @@ ImageColor3="NotificationDuration",
 })
 
 local p=d("Frame",{
-Size=UDim2.new(1,h.Icon and-20-f.UIPadding or 0,1,0),
+Size=UDim2.new(1,h.Icon and-24-f.UIPadding or 0,1,0),
 Position=UDim2.new(1,0,0,0),
 AnchorPoint=Vector2.new(1,0),
 BackgroundTransparency=1,
@@ -1803,12 +1803,12 @@ PaddingBottom=UDim.new(0,f.UIPadding),
 }),
 d("TextLabel",{
 AutomaticSize="Y",
-Size=UDim2.new(1,-20-f.UIPadding,0,0),
+Size=UDim2.new(1,-24-f.UIPadding,0,0),
 TextWrapped=true,
 TextXAlignment="Left",
 RichText=true,
 BackgroundTransparency=1,
-TextSize=13,
+TextSize=15,
 ThemeTag={
 TextColor3="NotificationTitle",
 TextTransparency="NotificationTitleTransparency",
@@ -1817,7 +1817,7 @@ Text=h.Title,
 FontFace=Font.new(b.Font,Enum.FontWeight.SemiBold),
 }),
 d("UIListLayout",{
-Padding=UDim.new(0,2),
+Padding=UDim.new(0,3),
 }),
 })
 
@@ -1830,7 +1830,7 @@ TextXAlignment="Left",
 RichText=true,
 BackgroundTransparency=1,
 
-TextSize=11,
+TextSize=13,
 ThemeTag={
 TextColor3="NotificationContent",
 TextTransparency="NotificationContentTransparency",
