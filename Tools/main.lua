@@ -506,9 +506,9 @@ WindowSearchBarBackground="Dialog",
 
 TabBackground="Hover",
 TabBackgroundHover="Hover",
-TabBackgroundHoverTransparency=0.97,
-TabBackgroundActive="Hover",
-TabBackgroundActiveTransparency=0.93,
+TabBackgroundHoverTransparency=0.94,
+TabBackgroundActive="Primary",
+TabBackgroundActiveTransparency=0.86,
 TabText="Text",
 TabTextTransparency=0.3,
 TabTextTransparencyActive=0,
@@ -517,8 +517,8 @@ TabIcon="Icon",
 TabIconTransparency=0.4,
 TabIconTransparencyActive=0.1,
 TabBorderTransparency=1,
-TabBorderTransparencyActive=0.75,
-TabBorder="White",
+TabBorderTransparencyActive=0.6,
+TabBorder="Primary",
 
 ElementBackground="Text",
 ElementBackgroundTransparency=0.93,
@@ -11711,7 +11711,7 @@ ShowTabTitle=ap.ShowTabTitle,
 TabTitleAlign=ap.TabTitleAlign or"Left",
 CustomEmptyPage=(ap.CustomEmptyPage and next(ap.CustomEmptyPage)~=nil)and ap.CustomEmptyPage
 or{Icon="lucide:frown",IconSize=48,Title="This tab is Empty",Desc=nil},
-Border=ap.Border,
+Border=(ap.Border==nil)and true or ap.Border,
 Selected=false,
 Index=nil,
 Parent=ap.Parent,
@@ -11722,8 +11722,8 @@ UICorner=Window.UICorner-(Window.UIPadding/2),
 
 Gap=Window.NewElements and 1 or 6,
 
-TabPaddingX=4+(Window.UIPadding/2),
-TabPaddingY=3+(Window.UIPadding/2),
+TabPaddingX=5+(Window.UIPadding/2),
+TabPaddingY=5+(Window.UIPadding/2),
 TitlePaddingY=0,
 }
 
@@ -11748,7 +11748,7 @@ ar.Index=as
 
 ar.UIElements.Main=ak.NewRoundFrame(ar.UICorner,"Squircle",{
 BackgroundTransparency=1,
-Size=UDim2.new(1,-7,0,0),
+Size=UDim2.new(1,Window.ScrollBarEnabled and-7 or 0,0,0),
 AutomaticSize="Y",
 Parent=ap.Parent,
 ThemeTag={
@@ -11791,7 +11791,7 @@ Name="Frame",
 },{
 al("UIListLayout",{
 SortOrder="LayoutOrder",
-Padding=UDim.new(0,2+(Window.UIPadding/2)),
+Padding=UDim.new(0,6+(Window.UIPadding/2)),
 FillDirection="Horizontal",
 VerticalAlignment="Center",
 }),
@@ -11825,6 +11825,28 @@ PaddingRight=UDim.new(0,ar.TabPaddingX),
 PaddingBottom=UDim.new(0,ar.TabPaddingY),
 }),
 }),
+al("Frame",{
+Name="AccentBar",
+Size=UDim2.new(0,3,0,0),
+AnchorPoint=Vector2.new(0,0.5),
+Position=UDim2.new(0,3,0.5,0),
+BackgroundTransparency=1,
+BorderSizePixel=0,
+ZIndex=5,
+ThemeTag={
+BackgroundColor3="Primary",
+},
+},{
+al("UICorner",{CornerRadius=UDim.new(1,0)}),
+}),
+al("UIGradient",{
+Name="TabGlow",
+Rotation=0,
+Transparency=NumberSequence.new{
+NumberSequenceKeypoint.new(0,0),
+NumberSequenceKeypoint.new(1,0.55),
+},
+}),
 },true)
 
 local at=0
@@ -11850,7 +11872,7 @@ if not ar.IconShape then
 au.Parent=ar.UIElements.Main.Frame
 ar.UIElements.Icon=au
 au.ImageLabel.ImageTransparency=not ar.Locked and 0 or 0.7
-at=-18-(Window.UIPadding/2)
+at=-22-(Window.UIPadding/2)
 ar.UIElements.Main.Frame.TextLabel.Size=UDim2.new(1,at,0,0)
 elseif ar.IconColor then
 ak.NewRoundFrame(
@@ -11896,7 +11918,7 @@ au.AnchorPoint=Vector2.new(0.5,0.5)
 au.Position=UDim2.new(0.5,0,0.5,0)
 au.ImageLabel.ImageTransparency=0
 au.ImageLabel.ImageColor3=ak.GetTextColorForHSB(ar.IconColor,0.68)
-at=-28-(Window.UIPadding/2)
+at=-32-(Window.UIPadding/2)
 ar.UIElements.Main.Frame.TextLabel.Size=UDim2.new(1,at,0,0)
 end
 
@@ -12256,6 +12278,12 @@ ak.SetThemeTag(as.UIElements.Main.Outline,{
 ImageTransparency="TabBorderTransparency",
 },0.15)
 end
+if as.UIElements.Main:FindFirstChild"AccentBar"then
+ak.Tween(as.UIElements.Main.AccentBar,0.18,{
+Size=UDim2.new(0,3,0,0),
+BackgroundTransparency=1,
+},Enum.EasingStyle.Quint,Enum.EasingDirection.Out):Play()
+end
 ak.SetThemeTag(as.UIElements.Main.Frame.TextLabel,{
 TextTransparency="TabTextTransparency",
 },0.15)
@@ -12283,6 +12311,12 @@ if ao.Tabs[aq].UIElements.Icon and not ao.Tabs[aq].IconColor then
 ak.SetThemeTag(ao.Tabs[aq].UIElements.Icon.ImageLabel,{
 ImageTransparency="TabIconTransparencyActive",
 },0.15)
+end
+if ao.Tabs[aq].UIElements.Main:FindFirstChild"AccentBar"then
+ak.Tween(ao.Tabs[aq].UIElements.Main.AccentBar,0.22,{
+Size=UDim2.new(0,3,0,18),
+BackgroundTransparency=0,
+},Enum.EasingStyle.Quint,Enum.EasingDirection.Out):Play()
 end
 ao.Tabs[aq].Selected=true
 
@@ -13290,8 +13324,9 @@ Padding=UDim.new(0,aw.Gap),
 }),
 ao("UIPadding",{
 
-PaddingLeft=UDim.new(0,aw.UIPadding/2),
-PaddingRight=UDim.new(0,aw.UIPadding/2),
+PaddingTop=UDim.new(0,aw.UIPadding/2),
+PaddingLeft=UDim.new(0,aw.UIPadding),
+PaddingRight=UDim.new(0,aw.UIPadding),
 PaddingBottom=UDim.new(0,aw.UIPadding/2),
 }),
 
@@ -13308,6 +13343,26 @@ Position=UDim2.new(0,0,0,aw.Topbar.Height),
 BackgroundTransparency=1,
 Visible=true,
 },{
+an.NewRoundFrame(aw.UICorner-(aw.UIPadding/2),"Squircle",{
+Name="SidebarPanel",
+AnchorPoint=Vector2.new(0,1),
+Position=UDim2.new(0,aw.UIPadding/2,1,aw.User.Enabled and 0 or-aw.UIPadding/2),
+Size=UDim2.new(1,-aw.UIPadding,1,(not aw.HideSearchBar and-45 or 0)-(aw.User.Enabled and 0 or aw.UIPadding/2)),
+ThemeTag={
+ImageColor3="PanelBackground",
+ImageTransparency="PanelBackgroundTransparency",
+},
+ZIndex=0,
+},{
+an.NewRoundFrame(aw.UICorner-(aw.UIPadding/2),"Glass-1.4",{
+Name="SidebarStroke",
+Size=UDim2.new(1,0,1,0),
+ThemeTag={
+ImageColor3="White",
+},
+ImageTransparency=0.9,
+}),
+}),
 ao("Frame",{
 Name="Content",
 BackgroundTransparency=1,
@@ -14780,15 +14835,23 @@ local J=ao("Frame",{
 Size=UDim2.new(1,0,0,1),
 Position=UDim2.new(0.5,0,0,0),
 AnchorPoint=Vector2.new(0.5,0),
-BackgroundTransparency=0.9,
+BackgroundTransparency=0.8,
 ThemeTag={
 BackgroundColor3="Text",
 },
+},{
+ao("UIGradient",{
+Transparency=NumberSequence.new{
+NumberSequenceKeypoint.new(0,1),
+NumberSequenceKeypoint.new(0.5,0),
+NumberSequenceKeypoint.new(1,1),
+},
+}),
 })
 local L=ao("Frame",{
 Parent=aw.UIElements.SideBar.Frame,
 
-Size=UDim2.new(1,-7,0,5),
+Size=UDim2.new(1,0,0,5),
 BackgroundTransparency=1,
 },{
 J,
@@ -15204,7 +15267,7 @@ local R=false
 
 
 local S=aq("Search","search",aw.UIElements.SideBarContainer,true)
-S.Size=UDim2.new(1,-aw.UIPadding/2,0,39)
+S.Size=UDim2.new(1,-aw.UIPadding,0,39)
 S.Position=UDim2.new(0,aw.UIPadding/2,0,0)
 
 an.AddSignal(S.MouseButton1Click,function()
