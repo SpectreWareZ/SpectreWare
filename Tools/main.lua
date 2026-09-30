@@ -13308,7 +13308,7 @@ VerticalScrollBarPosition="Left",
 ao("Frame",{
 BackgroundTransparency=1,
 AutomaticSize="Y",
-Size=UDim2.new(1,0,0,0),
+Size=UDim2.new(1,-aw.UIPadding*2,0,0),
 Name="Frame",
 },{
 ao("UIPadding",{
