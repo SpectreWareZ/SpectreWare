@@ -8530,7 +8530,7 @@ ay.UIElements.TabItem=ak.NewRoundFrame(
 aq.MenuCorner-aq.MenuPadding,
 "Squircle",
 {
-Size=UDim2.new(1,0,0,42),
+Size=UDim2.new(1,0,0,50),
 AutomaticSize=ay.Desc and"Y",
 ImageTransparency=1,
 Parent=ap.UIElements.Menu.Frame.ScrollingFrame,
@@ -13416,6 +13416,15 @@ ImageTransparency="PanelBackgroundTransparency",
 ZIndex=3,
 Name="Background",
 Visible=not aw.HidePanelBackground,
+},{
+an.NewRoundFrame(aw.UICorner-(aw.UIPadding/2),"Glass-1.4",{
+Name="MainPanelStroke",
+Size=UDim2.new(1,0,1,0),
+ThemeTag={
+ImageColor3="White",
+},
+ImageTransparency=0.9,
+}),
 }),
 ao("UIPadding",{
 
