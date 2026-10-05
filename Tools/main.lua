@@ -8224,6 +8224,18 @@ local am=ak.Tween
 
 local an=0.67
 
+
+
+
+
+local DROPDOWN_MAX_HEIGHT=260
+local DROPDOWN_MAX_HEIGHT_MOBILE=200
+
+local function GetDropdownMaxHeight()
+local isMobile=af.TouchEnabled and not af.KeyboardEnabled
+return isMobile and DROPDOWN_MAX_HEIGHT_MOBILE or DROPDOWN_MAX_HEIGHT
+end
+
 function aa.New(ao,ap,aq,ar)
 local as={}
 
@@ -8300,7 +8312,7 @@ AnchorPoint=Vector2.new(1,0),
 ap.UIElements.Menu,
 al("UISizeConstraint",{
 MinSize=Vector2.new(140,0),
-MaxSize=Vector2.new(240,260),
+MaxSize=Vector2.new(240,GetDropdownMaxHeight()),
 }),
 })
 
@@ -8310,7 +8322,9 @@ UDim2.fromOffset(0,ap.UIElements.UIListLayout.AbsoluteContentSize.Y)
 end
 
 local function RecalculateListSize()
-local at=ao.WindUI.DropdownGui.AbsoluteSize.Y
+local at=math.min(ao.WindUI.DropdownGui.AbsoluteSize.Y,GetDropdownMaxHeight())
+
+ap.UIElements.MenuCanvas.UISizeConstraint.MaxSize=Vector2.new(240,at)
 
 local au=ap.UIElements.UIListLayout.AbsoluteContentSize.Y/ao.UIScale
 local av=ap.SearchBarEnabled and(aq.SearchBarHeight+(aq.MenuPadding*3))
