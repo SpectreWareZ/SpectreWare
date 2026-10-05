@@ -8228,12 +8228,17 @@ local an=0.67
 
 
 
-local DROPDOWN_MAX_HEIGHT=260
-local DROPDOWN_MAX_HEIGHT_MOBILE=200
+-- Dropdown popup OUTER height (px). Edit these two values only.
+-- The popup is the MenuCanvas frame; it shrinks to fit short lists and
+-- stops at this height, with the item list scrolling inside it.
+local DROPDOWN_POPUP_HEIGHT_MOBILE=250
+local DROPDOWN_POPUP_HEIGHT_DESKTOP=260
 
 local function GetDropdownMaxHeight()
-local isMobile=af.TouchEnabled and not af.KeyboardEnabled
-return isMobile and DROPDOWN_MAX_HEIGHT_MOBILE or DROPDOWN_MAX_HEIGHT
+if af.TouchEnabled then
+return DROPDOWN_POPUP_HEIGHT_MOBILE
+end
+return DROPDOWN_POPUP_HEIGHT_DESKTOP
 end
 
 function aa.New(ao,ap,aq,ar)
@@ -8300,7 +8305,7 @@ ap.UIElements.UIListLayout,
 })
 
 ap.UIElements.MenuCanvas=al("Frame",{
-Size=UDim2.new(0,ap.MenuWidth,0,300),
+Size=UDim2.new(0,ap.MenuWidth,0,GetDropdownMaxHeight()),
 BackgroundTransparency=1,
 Position=UDim2.new(-10,0,-10,0),
 Visible=false,
@@ -8857,6 +8862,8 @@ RecalculateCanvasSize()
 
 function as.Open(au)
 if not ap.Locked then
+RecalculateListSize()
+RecalculateCanvasSize()
 ap.UIElements.Menu.Visible=true
 ap.UIElements.MenuCanvas.Visible=true
 ap.UIElements.MenuCanvas.Active=true
