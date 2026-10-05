@@ -8231,7 +8231,7 @@ local an=0.67
 -- Dropdown popup OUTER height (px). Edit these two values only.
 -- The popup is the MenuCanvas frame; it shrinks to fit short lists and
 -- stops at this height, with the item list scrolling inside it.
-local DROPDOWN_POPUP_HEIGHT_MOBILE=250
+local DROPDOWN_POPUP_HEIGHT_MOBILE=200
 local DROPDOWN_POPUP_HEIGHT_DESKTOP=260
 
 local function GetDropdownMaxHeight()
@@ -8320,6 +8320,20 @@ MinSize=Vector2.new(140,0),
 MaxSize=Vector2.new(240,GetDropdownMaxHeight()),
 }),
 })
+
+-- Hard guard: if anything writes a taller popup height, clamp it back.
+ak.AddSignal(ap.UIElements.MenuCanvas:GetPropertyChangedSignal"Size",function()
+local size=ap.UIElements.MenuCanvas.Size
+local limit=GetDropdownMaxHeight()
+if size.Y.Scale~=0 or size.Y.Offset>limit then
+ap.UIElements.MenuCanvas.Size=UDim2.new(
+size.X.Scale,
+size.X.Offset,
+0,
+math.min(size.Y.Offset>0 and size.Y.Offset or limit,limit)
+)
+end
+end)
 
 local function RecalculateCanvasSize()
 ap.UIElements.Menu.Frame.ScrollingFrame.CanvasSize=
