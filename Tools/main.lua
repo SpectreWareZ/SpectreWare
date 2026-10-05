@@ -12036,6 +12036,22 @@ ao:SelectTab(as)
 end
 end)
 
+-- Startup state: if nothing has been selected yet, show the first unlocked tab
+-- through the normal SelectTab path so the initial view uses the exact same
+-- panel/transparency/styling as every other page (no separate empty state).
+if Window.AutoSelectFirstTab~=false and not ao._AutoSelectQueued then
+ao._AutoSelectQueued=true
+task.defer(function()
+if ao.SelectedTab~=nil then return end
+for _,_tab in ipairs(ao.Tabs)do
+if _tab and not _tab.Locked then
+ao:SelectTab(_tab.Index)
+break
+end
+end
+end)
+end
+
 if Window.ScrollBarEnabled then
 an(
 ar.UIElements.ContainerFrame,
@@ -13145,6 +13161,7 @@ Acrylic=av.Acrylic or false,
 NewElements=av.NewElements or false,
 IgnoreAlerts=av.IgnoreAlerts or false,
 HidePanelBackground=av.HidePanelBackground or false,
+AutoSelectFirstTab=av.AutoSelectFirstTab~=false,
 AutoScale=av.AutoScale~=false,
 OpenButton=av.OpenButton,
 DragFrameSize=160,
