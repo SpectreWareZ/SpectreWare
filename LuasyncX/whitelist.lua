@@ -1072,8 +1072,10 @@ do
 end
 
 -- ── HWID Reset UI ─────────────────────────────────────────────────────────────
-local function _showHWIDResetUI(currentHwid, kickDelay)
+-- onOk (optional): เรียกหลัง server ยืนยันว่ารีเซ็ตแล้ว → ใช้ยืนยันตัวตนใหม่/รันสคริปต์ต่ออัตโนมัติ
+local function _showHWIDResetUI(currentHwid, kickDelay, onOk)
     kickDelay = kickDelay or 5
+    local _hasRetry = type(onOk) == "function"
     _ui("Close")
     local _ok, _err = pcall(function()
         local U, P = _SWUI, _SWUI.P
@@ -1140,19 +1142,20 @@ local function _showHWIDResetUI(currentHwid, kickDelay)
                                 or (success and dHwid ~= "" and dHwid ~= currentHwid)
                             if success and not stillMismatch then
                                 pill.stopped = true
-                                pill.set("รีเซ็ตสำเร็จ — กรุณารีจอยเซิร์ฟเวอร์", P.green)
+                                pill.set(_hasRetry and "รีเซ็ตสำเร็จ — กำลังเข้าสู่ระบบอีกครั้ง..." or "รีเซ็ตสำเร็จ — กรุณารีจอยเซิร์ฟเวอร์", P.green)
                                 head.set("checkCircle", P.green, "รีเซ็ต HWID สำเร็จ")
                                 ctx.setAccent(P.green, P.greenB)
                                 dbtn.btn.Visible = false
                                 pcall(function()
                                     game:GetService("StarterGui"):SetCore("SendNotification", {
                                         Title = "LuaSyncX",
-                                        Text = "HWID reset สำเร็จ — กรุณารีจอยเซิร์ฟเวอร์",
+                                        Text = _hasRetry and "HWID reset สำเร็จ — กำลังเข้าสู่ระบบอีกครั้ง..." or "HWID reset สำเร็จ — กรุณารีจอยเซิร์ฟเวอร์",
                                         Duration = 6,
                                     })
                                 end)
                                 task.wait(2)
                                 ctx.close()
+                                if _hasRetry then task.spawn(onOk) end
                                 break
                             end
                         end
@@ -1661,7 +1664,11 @@ end
 -- ══════════════════════════════════════════════════════════════════════════════
 print("[ LuaSyncX ]: Connecting to Server...")
 
-local _mainOk = xpcall(function()
+-- ถูกกำหนดค่าด้านล่าง: ยืนยันตัวตนใหม่หลังรีเซ็ต HWID สำเร็จ (ใช้จากการ์ด HWID Mismatch)
+local _onResetRetry
+
+local function _runAuth()
+return xpcall(function()
     task.wait(CFG.waitOnStart)
 
     -- ── เช็คสถานะปิดปรับปรุงก่อนทุกอย่าง (ก่อนตรวจ executor/บัญชี/key/HWID) ────────────
@@ -1864,7 +1871,7 @@ local _mainOk = xpcall(function()
             task.spawn(function() sendWebhook("mismatch", { key = _getKey(), hwid = hwid, timeLeft = "BLOCKED" }) end)
             getgenv()[_GK.running] = nil
             task.spawn(function()
-                _showHWIDResetUI(hwid, 5)
+                _showHWIDResetUI(hwid, 5, function() if _onResetRetry then _onResetRetry() end end)
             end)
             return
         end
@@ -1890,7 +1897,7 @@ local _mainOk = xpcall(function()
         task.spawn(function() sendWebhook("mismatch", { key = _getKey(), hwid = hwid, timeLeft = "BLOCKED" }) end)
         getgenv()[_GK.running] = nil
         task.spawn(function()
-            _showHWIDResetUI(hwid, 5)
+            _showHWIDResetUI(hwid, 5, function() if _onResetRetry then _onResetRetry() end end)
         end)
         return
     end
@@ -2019,8 +2026,9 @@ end, function(err)
     warn("LuaSyncX: unexpected error — " .. tostring(err))
     _clearSentinel(); getgenv()[_GK.running] = nil; getgenv()[_GK.canary] = nil
 end)
+end
 
-if not _mainOk or not _verified then return end
+local function _postLaunch()
 
 -- ── Post-launch: rotation counters (poller itself now starts earlier, see
 --    startAnnouncePoller() above — defined before _mainOk) ───────────────────
@@ -2159,4 +2167,22 @@ task.spawn(function()
     local gev = getgenv()
     gev[_GK.running] = nil; gev[_GK.stime] = nil; gev[_GK.canary] = nil; luasyncx_key = nil
     if _conn then _conn:Disconnect() end
-end)
+end)end -- _postLaunch
+
+-- ── HWID reset → ยืนยันตัวตนใหม่และรันสคริปต์ต่ออัตโนมัติ ─────────────────────────
+local _retrying = false
+_onResetRetry = function()
+    if _verified or _retrying then return end
+    _retrying = true
+    local gev = getgenv()
+    gev[_GK.running] = true; gev[_GK.stime] = _startTime
+    _writeSentinel(_sessionToken); _plantCanary()
+    _sessionActive = true
+    log("HWID reset OK — re-authenticating...", "info")
+    local ok = _runAuth()
+    _retrying = false
+    if ok and _verified then _postLaunch() end
+end
+
+local _mainOk = _runAuth()
+if _mainOk and _verified then _postLaunch() end
