@@ -8,7 +8,7 @@
     local Section = Tab:CreateSection({ Name = "Settings" })
     Section:CreateToggle({ Name = "Example", Default = false, Flag = "ex", Callback = function(v) end })
 
-    Window options : Title, Logo (asset id), Width, Height, ToggleKey (Enum.KeyCode), Theme (table), OnClose
+    Window options : Title, Transparency (0..1, background see-through), Logo (asset id / "rbxassetid://.."), LogoSize (26 or {w,h}), LogoColor (Color3), LogoCorner (px), OpenLogoScale (0.58, floating button), Width, Height, ToggleKey (Enum.KeyCode), Theme (table), OnClose
     Tab options    : Name, Icon (text glyph, asset id number / "rbxassetid://..", or an icon name like "lucide:home" / "home")
     Section options: Name, Column (1|2), Collapsible (default true), Collapsed
     Controls       : CreateToggle / CreateDropdown / CreateSlider / CreateButton / CreateLabel / CreateDivider
@@ -1696,11 +1696,14 @@ function Library:CreateWindow(cfg)
 		local fr, fb, fn = Library._fontPair(cfg.Font)
 		if fr then T.Font, T.FontBold, fontName = fr, fb, fn end
 	end
-	local GLOW = T.Glow ~= false
+	local GLOW = false -- halo rings around the window removed (PC and mobile now look the same)
 	local RADIUS = 24
+	-- cfg.Transparency: 0 = default look ... 1 = fully see-through (backgrounds only, text/controls stay visible)
+	local GLASS = math.clamp(tonumber(cfg.Transparency) or 0, 0, 1)
+	local function glass(base) return base + (1 - base) * GLASS end
 
 	local win = setmetatable({
-		Library = self, Theme = T, Cfg = cfg, Tabs = {}, Conns = {}, Visible = true,
+		Library = self, Theme = T, Cfg = cfg, Glass = GLASS, Tabs = {}, Conns = {}, Visible = true,
 		_drag = {}, _openDrag = { Threshold = 8 }, Maximized = false, FontName = fontName,
 	}, Window)
 
@@ -1727,7 +1730,7 @@ function Library:CreateWindow(cfg)
 
 	local main = new("Frame", {
 		Name = "Main", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-		BackgroundColor3 = T.Background, BackgroundTransparency = 0.02, BorderSizePixel = 0,
+		BackgroundColor3 = T.Background, BackgroundTransparency = glass(0.02), BorderSizePixel = 0,
 		Active = true, -- sink input so touching / clicking the window never moves the camera
 		Parent = gui,
 	}, {
@@ -1782,7 +1785,7 @@ function Library:CreateWindow(cfg)
 	-- floating rounded header card (inset from the window edge, concentric with the window radius)
 	local hcard = new("Frame", {
 		Name = "HeaderCard", Position = UDim2.fromOffset(10, 8), Size = UDim2.new(1, -20, 0, HEADER_H - 14),
-		BackgroundColor3 = T.Control, BackgroundTransparency = 0.4, BorderSizePixel = 0, Parent = header,
+		BackgroundColor3 = T.Control, BackgroundTransparency = glass(0.4), BorderSizePixel = 0, Parent = header,
 	}, {
 		corner(18), stroke(T.Accent, 1, 0.65),
 		new("Frame", {
@@ -1811,10 +1814,21 @@ function Library:CreateWindow(cfg)
 	})
 	win.Left = left
 	if cfg.Logo then
-		new("ImageLabel", {
-			LayoutOrder = 1, Size = UDim2.fromOffset(26, 26), BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit,
-			Image = type(cfg.Logo) == "number" and ("rbxassetid://" .. cfg.Logo) or cfg.Logo, Parent = left,
+		-- header logo: tweak with cfg.LogoSize (number or {w,h}), cfg.LogoColor (Color3), cfg.LogoCorner (px, 0 = square)
+		local ls = cfg.LogoSize or 26
+		local lw, lh
+		if type(ls) == "table" then lw, lh = ls[1] or ls.X or 26, ls[2] or ls.Y or 26
+		elseif typeof(ls) == "Vector2" then lw, lh = ls.X, ls.Y
+		else lw, lh = ls, ls end
+		local hlogo = new("ImageLabel", {
+			Name = "Logo", LayoutOrder = 1, Size = UDim2.fromOffset(lw, lh), BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit,
+			ImageColor3 = cfg.LogoColor or Color3.new(1, 1, 1),
+			Image = (type(cfg.Logo) == "number" or tonumber(cfg.Logo)) and ("rbxassetid://" .. tostring(cfg.Logo)) or cfg.Logo, Parent = left,
 		})
+		if cfg.LogoCorner and cfg.LogoCorner > 0 then
+			new("UICorner", { CornerRadius = UDim.new(0, cfg.LogoCorner), Parent = hlogo })
+		end
+		win.LogoImage = hlogo
 	else
 		new("Frame", {
 			LayoutOrder = 1, Size = UDim2.fromOffset(34, 34), BackgroundColor3 = Color3.new(1, 1, 1),
@@ -1999,7 +2013,7 @@ function Library:CreateWindow(cfg)
 	local sidebar = new("Frame", { Size = UDim2.new(0, 164, 1, 0), BackgroundTransparency = 1, Parent = body })
 	win.SidePanel = new("Frame", {
 		Name = "SidePanel", Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -19, 1, -10),
-		BackgroundColor3 = T.Control, BackgroundTransparency = 0.55, BorderSizePixel = 0, Parent = sidebar,
+		BackgroundColor3 = T.Control, BackgroundTransparency = glass(0.55), BorderSizePixel = 0, Parent = sidebar,
 	}, { corner(18), stroke(T.Border, 1, 0.5) })
 	win.Sidebar = sidebar
 	win.TabList = new("ScrollingFrame", {
@@ -2396,9 +2410,9 @@ function Library:CreateWindow(cfg)
 	local obLogo
 	if cfg.Logo then
 		obLogo = new("ImageLabel", {
-			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(BS * 0.58, BS * 0.58),
-			BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit,
-			Image = type(cfg.Logo) == "number" and ("rbxassetid://" .. cfg.Logo) or cfg.Logo, Parent = ob,
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(BS * (cfg.OpenLogoScale or 0.58), BS * (cfg.OpenLogoScale or 0.58)),
+			BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, ImageColor3 = cfg.LogoColor or Color3.new(1, 1, 1),
+			Image = (type(cfg.Logo) == "number" or tonumber(cfg.Logo)) and ("rbxassetid://" .. tostring(cfg.Logo)) or cfg.Logo, Parent = ob,
 		})
 	else
 		new("UIGradient", { Color = cseq({ 0, T.Panel }, { 1, T.Lift }), Rotation = 90, Parent = ob })
@@ -2471,7 +2485,7 @@ function Library:CreateWindow(cfg)
 
 	-- glow ring around the floating button — skipped in low power (a rounded stroke
 	-- that would re-rasterize on every drag frame)
-	if not lowPower() then
+	if false and not lowPower() then -- glow ring around the floating button disabled
 		win.OpenGlow = new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5), Position = ob.Position, Size = UDim2.fromOffset(BS + 14, BS + 14),
 			BackgroundTransparency = 1, ZIndex = 0, Visible = false, Parent = gui,
@@ -5257,7 +5271,7 @@ function Tab:CreateSection(cfg)
 	}, Section)
 
 	s.Frame = new("Frame", {
-		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundColor3 = T.Card, BackgroundTransparency = self.Window.FXOn and 0.2 or 0.12,
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundColor3 = T.Card, BackgroundTransparency = (function(b) return b + (1 - b) * (self.Window.Glass or 0) end)(self.Window.FXOn and 0.2 or 0.12),
 		BorderSizePixel = 0, Parent = self.Cols[1],
 	}, { corner(18), stroke(T.Border, 1, 0.55), list(0, { HorizontalAlignment = Enum.HorizontalAlignment.Center }),
 		wash(cseq({ 0, T.Top }, { 1, T.Card }), 90) })
