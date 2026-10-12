@@ -1399,7 +1399,7 @@ end
 local FX_KINDS = {}
 
 -- lite mode (phones): same look, ~1/3 of the particles and a single aurora band
-local function cnt(fx, n) return fx.Lite and math.max(3, n // 3) or n end
+local function cnt(fx, n) return fx.Lite and 0 or math.max(3, n // 2) end
 
 -- sakura petals: tumbling, drifting down and sideways
 FX_KINDS.petals = function(fx, layer, T)
@@ -1488,13 +1488,55 @@ local function aurora(fx, layer, radius, a, b, rot, peak, dur, from, to)
 	loopTween(fx, g, dur, { Offset = Vector2.new(to, 0) }, SINE, true)
 end
 
+-- Static backdrop scene (zero per-frame cost: nothing here is animated).
+-- Every layer is a full-size frame with its own UICorner, so it follows the window's rounded shape.
+--   1. base   diagonal tinted gradient (accent -> background -> accent2)
+--   2. glowA / glowB  two soft light bands crossing each other = a soft glow spot, no hard edges
+--   3. vignette  darkens the bottom so cards / text stay readable
+local function scene(layer, radius, T, minimal)
+	local bg = T.Background
+	local function full(color, grads)
+		local kids = { new("UICorner", { CornerRadius = UDim.new(0, radius) }) }
+		for _, g in ipairs(grads) do kids[#kids + 1] = g end
+		return new("Frame", {
+			Size = UDim2.fromScale(1, 1), BackgroundColor3 = color, BorderSizePixel = 0,
+			Active = false, Parent = layer,
+		}, kids)
+	end
+	-- 1. base (opaque): gives the window depth instead of a flat fill
+	full(Color3.new(1, 1, 1), { new("UIGradient", {
+		Rotation = 135,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, bg:Lerp(T.Accent, 0.16)),
+			ColorSequenceKeypoint.new(0.5, bg),
+			ColorSequenceKeypoint.new(1, bg:Lerp(T.Accent2, 0.11)),
+		}),
+	}) })
+	if minimal then return end
+	-- 2. soft light: where the two bands cross the glow is strongest
+	local function band(color, rot, at, peak)
+		full(color, { new("UIGradient", {
+			Rotation = rot,
+			Transparency = NumberSequence.new({
+				nsk(0, 1), nsk(math.max(at - 0.42, 0.01), 1), nsk(at, peak), nsk(math.min(at + 0.42, 0.99), 1), nsk(1, 1),
+			}),
+		}) })
+	end
+	band(T.Accent, 25, 0.22, 0.84)
+	band(T.Accent2, 115, 0.82, 0.88)
+	-- 3. vignette
+	full(Color3.new(0, 0, 0), { new("UIGradient", {
+		Rotation = 90,
+		Transparency = NumberSequence.new({ nsk(0, 1), nsk(0.55, 1), nsk(1, 0.5) }),
+	}) })
+end
+
 -- Window:SetBackground("petals" | "orbs" | "embers" | "rain" | "grid" | false | nil)
 -- nil -> theme default, false -> off. `quiet` is used internally at creation time.
 function Window:SetBackground(kind, quiet)
 	local fx = self.FX
 	if not fx then return end
 	if kind == nil then kind = self.Theme.FX end
-	if (self._qual or 0) >= 2 then kind = false end   -- the governor switched the backdrop off
 	for _, tw in ipairs(fx.Tweens) do pcall(function() tw:Cancel() end) end
 	table.clear(fx.Tweens)
 	fx.Paused = false
@@ -1502,8 +1544,9 @@ function Window:SetBackground(kind, quiet)
 	self.FXOn = false
 
 	if not kind then return end
-	-- phones get the lite version; Library.Perf.Backdrop = false turns it off there
+	-- Library.Perf.Backdrop = false turns the whole backdrop off on phones
 	if lowPower() and Library.Perf.Backdrop == false then return end
+	-- phones / a struggling frame rate: static scene only (no tweens, no particles)
 	fx.Lite = lowPower() or (self._qual or 0) >= 1
 	local T = self.Theme
 	local layer = new("Frame", {
@@ -1514,9 +1557,11 @@ function Window:SetBackground(kind, quiet)
 	self.FXOn = true
 
 	local r = self.Radius or 12
-	aurora(fx, layer, r, T.Accent, T.Accent2, 28, 0.72, rnd(9, 12), -0.55, 0.55)
-	if not fx.Lite then aurora(fx, layer, r, T.Accent2, T.Accent, -42, 0.8, rnd(13, 17), 0.5, -0.5) end
+	scene(layer, r, T, (self._qual or 0) >= 2)
+	if fx.Lite then return end   -- static only: nothing animated, nothing to pause
 
+	-- PC only: ONE slow aurora sweep + a few particles (half of the old amount)
+	aurora(fx, layer, r, T.Accent, T.Accent2, 28, 0.9, rnd(18, 24), -0.55, 0.55)
 	local build = FX_KINDS[kind] or FX_KINDS.orbs
 	build(fx, layer, T)
 
@@ -2013,24 +2058,27 @@ function Library:CreateWindow(cfg)
 	})
 	win.Content = content
 	-- search box now lives in the header card, in the gap between the title and the - / [] / x buttons
-	local SEARCH_BAR_H = 36
+	local SEARCH_BAR_H = closeW   -- collapsed = same size as the - / [] / x buttons
 	local searchBar = new("Frame", {
 		Name = "SearchBar", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -(8 + btnArea + 10), 0.5, 0),
 		Size = UDim2.fromOffset(SEARCH_BAR_H, SEARCH_BAR_H), BackgroundColor3 = T.Control,
-		BackgroundTransparency = 0.35, BorderSizePixel = 0, ClipsDescendants = true, Parent = hcard,
-	}, { corner(math.floor(SEARCH_BAR_H / 2)), stroke(T.Border, 1, 0.45) })
+		BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = true, Parent = hcard,
+	}, { corner(20), stroke(T.Border, 1, 1) })   -- collapsed: transparent like the other header buttons
 	win.SearchBar = searchBar
 	local searchStroke = searchBar:FindFirstChildOfClass("UIStroke")
+	searchStroke.Transparency = 1   -- stroke() lightens by 0.15; start fully hidden while collapsed
 	-- magnifier drawn from frames (no asset needed)
+	local magX = math.floor((SEARCH_BAR_H - 16) / 2)   -- centered while collapsed
 	local mag = new("Frame", {
-		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0), Size = UDim2.fromOffset(16, 16),
+		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, magX, 0.5, 0), Size = UDim2.fromOffset(16, 16),
 		BackgroundTransparency = 1, Parent = searchBar,
 	})
-	new("Frame", {
+	local magRing = new("Frame", {
 		Size = UDim2.fromOffset(10, 10), BackgroundTransparency = 1, Parent = mag,
-	}, { corner(5), stroke(T.Accent, 1.6, 0.15) })
-	new("Frame", {
-		Position = UDim2.fromOffset(8, 10), Size = UDim2.fromOffset(6, 2), Rotation = 45, BackgroundColor3 = T.Accent,
+	}, { corner(5), stroke(T.SubText, 1.6, 0.15) })
+	local magRingStroke = magRing:FindFirstChildOfClass("UIStroke")
+	local magHandle = new("Frame", {
+		Position = UDim2.fromOffset(8, 10), Size = UDim2.fromOffset(6, 2), Rotation = 45, BackgroundColor3 = T.SubText,
 		BorderSizePixel = 0, Parent = mag,
 	})
 	win.SearchBox = new("TextBox", {
@@ -2083,8 +2131,17 @@ function Library:CreateWindow(cfg)
 		hit.Visible = not v
 		win.SearchBox.Visible = v
 		if win._searchChip then win._searchChip.Visible = v and win.SearchBox.Text == "" end
+		-- open = boxed field with the icon on the left; collapsed = bare icon centered, like the other buttons
+		tween(mag, 0.2, { Position = UDim2.new(0, v and 10 or magX, 0.5, 0) })
+		tween(magRingStroke, 0.2, { Color = v and T.Accent or T.SubText })
+		tween(magHandle, 0.2, { BackgroundColor3 = v and T.Accent or T.SubText })
+		tween(searchBar, 0.2, { BackgroundTransparency = v and 0.35 or 1 })
+		tween(searchStroke, 0.2, { Transparency = v and 0.45 or 1 })
 		applyHeader(true)
 	end
+	-- hover feedback identical to the - / [] / x buttons (collapsed only)
+	hit.MouseEnter:Connect(function() if not searchOpen then tween(searchBar, 0.14, { BackgroundTransparency = 0.4 }) end end)
+	hit.MouseLeave:Connect(function() if not searchOpen then tween(searchBar, 0.16, { BackgroundTransparency = 1 }) end end)
 	hit.MouseButton1Click:Connect(function()
 		setSearchOpen(true)
 		task.defer(function()
@@ -2125,8 +2182,10 @@ function Library:CreateWindow(cfg)
 	end)
 	win.SearchBox.FocusLost:Connect(function()
 		if win.SearchBox.Text == "" then setSearchOpen(false) end
-		tween(searchStroke, 0.22, { Color = T.Border, Transparency = 0.45 })
-		tween(searchBar, 0.22, { BackgroundTransparency = 0.35 })
+		if searchOpen then
+			tween(searchStroke, 0.22, { Color = T.Border, Transparency = 0.45 })
+			tween(searchBar, 0.22, { BackgroundTransparency = 0.35 })
+		end
 	end)
 
 	win.Pages = new("Frame", {
@@ -8459,8 +8518,13 @@ local function decorate(sec, kind, cfg, obj)
 			obj._hasDefault = true
 		end
 		local dot
+		-- the switch itself already shows on/off, so a toggle never gets the "modified" dot
+		-- (it used to appear next to the label whenever a switch was turned ON, even though it is a normal state).
+		-- cfg.ModDot = true brings it back for one control; Library.ModDot = false turns the dot off everywhere.
+		local noDot = Library.ModDot == false or cfg.ModDot == false
+			or ((kind == "Toggle" or kind == "KeybindToggle") and cfg.ModDot ~= true)
 		table.insert(conns, Library:Watch(cfg.Flag, function(val)
-			local on = obj._hasDefault and not deepEq(val, obj._default) or false
+			local on = (not noDot) and obj._hasDefault and not deepEq(val, obj._default) or false
 			if on and not dot then
 				dot = new("Frame", {
 					Name = "ModDot", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 2, 0, math.floor(rowH() / 2)), Size = UDim2.fromOffset(4, 4),
@@ -11941,7 +12005,8 @@ end
 
 ------------------------------------------------------------ Splash / launch screen (v3.16)
 -- Plain launch screen shown while CreateWindow builds the UI: logo, name, thin progress bar, one status line.
--- No particles / glitch / HUD frames; short fade in and fade out.
+-- No particles / glitch / HUD frames; short fade in and fade out. A gradient card sits behind it (Splash = { Panel = false } to remove);
+-- taps pass through to whatever is underneath while it shows (Splash = { Block = true } blocks them).
 --   Library:CreateWindow({ Splash = false })                       skip it for this window
 --   Library:CreateWindow({ Splash = { Title = "SPECTREWARE", Subtitle = "ANIME ASTRAL", Duration = 2.5,
 --       Steps = { "Checking key", "Loading" }, Logo = 123456, Skippable = true, Async = false } })
@@ -11954,7 +12019,7 @@ end
 do
 	local TS, RS, UIS = game:GetService("TweenService"), game:GetService("RunService"), game:GetService("UserInputService")
 	local Plrs, CG = game:GetService("Players"), game:GetService("CoreGui")
-	local S = { Enabled = true, Duration = 4, Skippable = true, Async = false, Backdrop = 1, Theme = "Mono",
+	local S = { Enabled = true, Duration = 4, Skippable = true, Async = false, Backdrop = 1, Theme = "Mono", Panel = true, Block = false,
 		Steps = { "Loading", "Preparing interface", "Almost ready" } }
 	Library.Splash = S
 	local EZ, ED, V2, U2 = Enum.EasingStyle, Enum.EasingDirection, Vector2.new, UDim2.new
@@ -12020,11 +12085,24 @@ do
 		task.delay(D + 12, function() if gui.Parent then pcall(gui.Destroy, gui) end end)
 
 		-- flat backdrop + one centered group (fades as a whole)
-		local bg = fr({ Name = "BG", Size = U2(1, 0, 1, 0), BackgroundColor3 = bgc, BackgroundTransparency = 1, Active = true, Parent = gui })
+		local bg = fr({ Name = "BG", Size = U2(1, 0, 1, 0), BackgroundColor3 = bgc, BackgroundTransparency = 1, Active = opt("Block") == true, Parent = gui })
 		local stack = mk("CanvasGroup", { Name = "Stack", AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0.5, 10), Size = U2(0, 280, 0, 172),
 			BackgroundTransparency = 1, BorderSizePixel = 0, GroupTransparency = 1, Parent = bg })
 		local sc0 = math.clamp(math.min(vp.X / 760, vp.Y / 520), 0.8, 1.15)
 		local stackScale = mk("UIScale", { Scale = sc0, Parent = stack })
+
+		-- card behind the logo: gradient fill only (no border, no glow). Pure frames (no loops), fades with the rest.
+		-- Splash = { Panel = false } turns it off. Taps pass through the splash unless Splash = { Block = true }.
+		local panel, panelScales
+		if opt("Panel") ~= false then
+			local PW, PH = 344, 240
+			panel = fr({ Name = "Panel", AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0.5, 10), Size = U2(0, PW, 0, PH),
+				BackgroundColor3 = white, BackgroundTransparency = 1, Active = false, ZIndex = 0, Parent = bg }, { round(22) })
+			mk("UIGradient", { Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, bgc:Lerp(acc, 0.22)), ColorSequenceKeypoint.new(0.55, bgc:Lerp(acc2, 0.06)),
+				ColorSequenceKeypoint.new(1, bgc:Lerp(Color3.new(0, 0, 0), 0.25)) }), Rotation = 90, Parent = panel })
+			panelScales = { mk("UIScale", { Scale = sc0, Parent = panel }) }
+		end
 
 		-- soft outline so the text stays readable on a transparent backdrop
 		local function shadow() return mk("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 1, Transparency = 0.55 }) end
@@ -12078,13 +12156,17 @@ do
 		-- state
 		local t, shown, fin, skip, done = 0, 0, false, false, false
 		local pcache, lastS = -1, ""
-		bg.InputBegan:Connect(function(i)
+		local hit = panel or bg
+		hit.InputBegan:Connect(function(i)
 			if opt("Skippable") and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) and t > 0.8 then skip = true end
 		end)
 
 		local bd = tonumber(opt("Backdrop")) or 1
 		if bd < 1 then tw(bg, 0.25, { BackgroundTransparency = bd }) end   -- default: stays fully transparent
 		tw(stack, 0.45, { GroupTransparency = 0, Position = U2(0.5, 0, 0.5, 0) }, EZ.Quint)
+		if panel then
+			tw(panel, 0.45, { BackgroundTransparency = 0.08, Position = U2(0.5, 0, 0.5, 0) }, EZ.Quint)
+		end
 
 		local function step(dt)
 			t = t + dt
@@ -12125,6 +12207,10 @@ do
 			tw(stackScale, 0.35, { Scale = sc0 * 1.12 }, EZ.Quad, ED.In)   -- slight zoom towards the player while it fades
 			tw(stack, 0.3, { GroupTransparency = 1, Position = U2(0.5, 0, 0.5, -6) }, EZ.Quad, ED.In)
 			tw(ver, 0.3, { TextTransparency = 1 })
+			if panel then
+				for _, ps in ipairs(panelScales) do tw(ps, 0.35, { Scale = sc0 * 1.12 }, EZ.Quad, ED.In) end
+				tw(panel, 0.3, { BackgroundTransparency = 1, Position = U2(0.5, 0, 0.5, -6) }, EZ.Quad, ED.In)
+			end
 			task.delay(0.15, function()
 				if gui.Parent then tw(bg, 0.35, { BackgroundTransparency = 1 }) end
 			end)
