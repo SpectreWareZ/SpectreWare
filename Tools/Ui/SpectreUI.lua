@@ -6007,20 +6007,45 @@ function Section:CreateDropdown(cfg)
 				AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, footH),
 				BackgroundTransparency = 1, Parent = popup,
 			}, { padding(6, 5, 6, 6) })
+			-- footer: [Select All] [Clear] [Done]   (cfg.SelectAll = false removes the Select All button)
+			local withAll = cfg.SelectAll ~= false
+			local selAll
+			if withAll then
+				selAll = new("TextButton", {
+					Size = UDim2.new(0.34, -4, 1, 0), BackgroundColor3 = T.Control, AutoButtonColor = false, Text = cfg.SelectAllText or "Select All",
+					Font = T.Font, TextSize = 13, TextColor3 = T.Accent, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer,
+				}, { corner(10) })
+				feedback(selAll, selAll, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
+			end
 			local clear = new("TextButton", {
-				Size = UDim2.new(0.38, -3, 1, 0), BackgroundColor3 = T.Control, AutoButtonColor = false, Text = "Clear",
+				Position = withAll and UDim2.new(0.34, 2, 0, 0) or UDim2.new(),
+				Size = withAll and UDim2.new(0.26, -4, 1, 0) or UDim2.new(0.38, -3, 1, 0),
+				BackgroundColor3 = T.Control, AutoButtonColor = false, Text = "Clear",
 				Font = T.Font, TextSize = 13, TextColor3 = T.SubText, Parent = footer,
 			}, { corner(10) })
 			feedback(clear, clear, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
 			local done = new("TextButton", {
-				Position = UDim2.new(0.38, 3, 0, 0), Size = UDim2.new(0.62, -3, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1),
-				AutoButtonColor = false, Text = "", Parent = footer,
+				Position = withAll and UDim2.new(0.60, 2, 0, 0) or UDim2.new(0.38, 3, 0, 0),
+				Size = withAll and UDim2.new(0.40, -2, 1, 0) or UDim2.new(0.62, -3, 1, 0),
+				BackgroundColor3 = Color3.new(1, 1, 1), AutoButtonColor = false, Text = "", Parent = footer,
 			}, { corner(10), gradient(T.Accent, T.Accent2, 0), stroke(T.Accent2, 1, 0.6) })
 			-- UIGradient tints the parent's own text too (it made "Done" vanish), so the label is a separate child
 			Library._oa(new("TextLabel", {
 				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "Done", Font = T.FontBold, TextSize = 13,
 				TextColor3 = Library.OnAccent(T), ZIndex = 2, Parent = done,
 			}))
+			if selAll then
+				-- selects every option that is currently visible (so it respects the search box), keeps what was already picked
+				selAll.MouseButton1Click:Connect(function()
+					local cur, have = selectedList(), {}
+					for _, o in ipairs(cur) do have[o] = true end
+					for _, o in ipairs(options) do
+						local r = rows[o]
+						if not have[o] and (not r or r.btn.Visible) then table.insert(cur, o) end
+					end
+					dd:Set(cur)
+				end)
+			end
 			strokeFeedback(done, done:FindFirstChildOfClass("UIStroke"), 0.6, 0.15)
 			clear.MouseButton1Click:Connect(function() dd:Set({}) end)
 			done.MouseButton1Click:Connect(function() dd:Close() end)
