@@ -5563,11 +5563,13 @@ function Section:CreateToggle(cfg)
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(42, 22),
 		BackgroundColor3 = value and T.Accent or T.Control, BorderSizePixel = 0, Parent = row,
 	}, { corner(11), stroke(T.Border, 1, 0.6) })
-	local trackGrad = gradient(T.Accent, T.Accent2, 0)
-	trackGrad.Parent = track
-	trackGrad.Transparency = value and NumberSequence.new(0) or NumberSequence.new(1)
+	-- gradient fill lives on its own frame so its fade can be tweened (UIGradient.Transparency snaps instantly)
+	local trackFill = new("Frame", {
+		Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = value and 0 or 1,
+		BorderSizePixel = 0, ZIndex = 1, Parent = track,
+	}, { corner(11), gradient(T.Accent, T.Accent2, 0) })
 	local knob = new("Frame", {
-		AnchorPoint = Vector2.new(0, 0.5), Position = value and ON_POS or OFF_POS,
+		AnchorPoint = Vector2.new(0, 0.5), Position = value and ON_POS or OFF_POS, ZIndex = 2,
 		Size = UDim2.fromOffset(16, 16), BackgroundColor3 = T.Knob, BorderSizePixel = 0, Parent = track,
 	}, { corner(8), stroke(T.Accent, 1.5, 0.4) })
 	local knobStroke = knob:FindFirstChildOfClass("UIStroke")
@@ -5576,7 +5578,7 @@ function Section:CreateToggle(cfg)
 	function obj:Set(v, silent)
 		value = v and true or false
 		tween(track, 0.22, { BackgroundColor3 = value and T.Accent or T.Control })
-		trackGrad.Transparency = value and NumberSequence.new(0) or NumberSequence.new(1)
+		tween(trackFill, 0.22, { BackgroundTransparency = value and 0 or 1 })
 		tween(knob, 0.24, { Position = value and ON_POS or OFF_POS })
 		tween(knobStroke, 0.22, { Transparency = value and 0 or 0.5 })
 		setFlag(cfg, value)
@@ -5846,15 +5848,22 @@ function Section:CreateDropdown(cfg)
 	end
 
 	local function paint()
+		local live = popup and popup.Visible
+		local function put(inst, t, props, animate)
+			if animate then tween(inst, t, props)
+			else for k, v in pairs(props) do inst[k] = v end end
+		end
 		for opt, r in pairs(rows) do
 			local sel = isSel(opt)
-			tween(r.btn, 0.16, { BackgroundTransparency = sel and 0 or 1 })
-			tween(r.bar, 0.16, { BackgroundTransparency = sel and 0 or 1 })
-			tween(r.label, 0.16, { TextColor3 = sel and selText or T.Text })
-			tween(r.check, 0.16, { TextTransparency = sel and 0 or 1 })
+			-- rows that are hidden (filtered out) or inside a closed popup are set directly, not tweened
+			local an = live and r.btn.Visible
+			put(r.btn, 0.16, { BackgroundTransparency = sel and 0 or 1 }, an)
+			put(r.bar, 0.16, { BackgroundTransparency = sel and 0 or 1 }, an)
+			put(r.label, 0.16, { TextColor3 = sel and selText or T.Text }, an)
+			put(r.check, 0.16, { TextTransparency = sel and 0 or 1 }, an)
 			if multi then
-				tween(r.box, 0.16, { BackgroundColor3 = sel and T.Accent or T.Control })
-				tween(r.boxStroke, 0.16, { Color = sel and T.Accent or T.Border })
+				put(r.box, 0.16, { BackgroundColor3 = sel and T.Accent or T.Control }, an)
+				put(r.boxStroke, 0.16, { Color = sel and T.Accent or T.Border }, an)
 			end
 		end
 	end
@@ -6781,11 +6790,12 @@ function Section:CreateKeybindToggle(cfg)
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(38, 20),
 		BackgroundColor3 = value and T.Accent or T.Control, BorderSizePixel = 0, Parent = row,
 	}, { corner(10) })
-	local trackGrad = gradient(T.Accent, T.Accent2, 0)
-	trackGrad.Parent = track
-	trackGrad.Transparency = value and NumberSequence.new(0) or NumberSequence.new(1)
+	local trackFill = new("Frame", {
+		Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = value and 0 or 1,
+		BorderSizePixel = 0, ZIndex = 1, Parent = track,
+	}, { corner(10), gradient(T.Accent, T.Accent2, 0) })
 	local knob = new("Frame", {
-		AnchorPoint = Vector2.new(0, 0.5), Position = value and UDim2.new(1, -17, 0.5, 0) or UDim2.new(0, 3, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5), Position = value and UDim2.new(1, -17, 0.5, 0) or UDim2.new(0, 3, 0.5, 0), ZIndex = 2,
 		Size = UDim2.fromOffset(14, 14), BackgroundColor3 = T.Knob, BorderSizePixel = 0, Parent = track,
 	}, { corner(7), stroke(T.Accent, 1.5, 0.4) })
 
@@ -6801,7 +6811,7 @@ function Section:CreateKeybindToggle(cfg)
 	local function setValue(v, silent)
 		value = v and true or false
 		tween(track, 0.22, { BackgroundColor3 = value and T.Accent or T.Control })
-		trackGrad.Transparency = value and NumberSequence.new(0) or NumberSequence.new(1)
+		tween(trackFill, 0.22, { BackgroundTransparency = value and 0 or 1 })
 		tween(knob, 0.24, { Position = value and UDim2.new(1, -17, 0.5, 0) or UDim2.new(0, 3, 0.5, 0) })
 		setFlag(cfg, value)
 		if not silent then safe(cfg.Callback, value) end
@@ -8560,7 +8570,7 @@ local function decorate(sec, kind, cfg, obj)
 			obj._default = cloneVal(v)
 			obj._hasDefault = true
 		end
-		local dot
+		local dot, dotSeq = nil, 0
 		-- toggles: the dot shows whenever the switch is ON (cfg.ModDot = false hides it for one control).
 		-- other controls: the dot shows when the value differs from its default.
 		local isToggle = (kind == "Toggle" or kind == "KeybindToggle")
@@ -8573,10 +8583,20 @@ local function decorate(sec, kind, cfg, obj)
 			if on and not dot then
 				dot = new("Frame", {
 					Name = "ModDot", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 1, 0, math.floor(rowH() / 2)), Size = UDim2.fromOffset(5, 5),
-					BackgroundColor3 = T.Accent, BorderSizePixel = 0, ZIndex = 10, Parent = frame,
+					BackgroundColor3 = T.Accent, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 10, Visible = false, Parent = frame,
 				}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 			end
-			if dot then dot.Visible = on end
+			if not dot then return end
+			dotSeq += 1
+			local my = dotSeq
+			if on then
+				dot.Visible = true
+				tween(dot, 0.18, { BackgroundTransparency = 0 })
+			else
+				tween(dot, 0.16, { BackgroundTransparency = 1 }).Completed:Connect(function()
+					if dotSeq == my and dot then dot.Visible = false end   -- a newer change wins
+				end)
+			end
 		end
 		table.insert(conns, Library:Watch(cfg.Flag, applyDot))
 		if isToggle and ok then applyDot(v) end -- toggles that start ON
