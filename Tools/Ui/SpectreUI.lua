@@ -5007,6 +5007,8 @@ function Window:CreateTab(cfg)
 	}, { corner(16), stroke(T.Accent, 1, 1), gradient(T.AccentSoft, T.AccentSoft, 0) })
 	tab.Button = btn
 	tab.BtnStroke = btn:FindFirstChildOfClass("UIStroke")
+	-- stroke() lowers transparency by 0.15, so stroke(.., 1, 1) was 0.85 (a faint outline on never-selected tabs): force it fully hidden
+	tab.BtnStroke.Transparency = 1
 	tab.BtnGrad = btn:FindFirstChildOfClass("UIGradient")
 	tab.Indicator = new("Frame", {
 		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 4, 0.5, 0), Size = UDim2.new(0, 3, 0, 0),
