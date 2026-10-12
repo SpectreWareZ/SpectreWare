@@ -8534,21 +8534,25 @@ local function decorate(sec, kind, cfg, obj)
 			obj._hasDefault = true
 		end
 		local dot
-		-- the switch itself already shows on/off, so a toggle never gets the "modified" dot
-		-- (it used to appear next to the label whenever a switch was turned ON, even though it is a normal state).
-		-- cfg.ModDot = true brings it back for one control; Library.ModDot = false turns the dot off everywhere.
+		-- toggles: the dot shows whenever the switch is ON (cfg.ModDot = false hides it for one control).
+		-- other controls: the dot shows when the value differs from its default.
+		local isToggle = (kind == "Toggle" or kind == "KeybindToggle")
 		local noDot = Library.ModDot == false or cfg.ModDot == false
-			or ((kind == "Toggle" or kind == "KeybindToggle") and cfg.ModDot ~= true)
-		table.insert(conns, Library:Watch(cfg.Flag, function(val)
-			local on = (not noDot) and obj._hasDefault and not deepEq(val, obj._default) or false
+		local function applyDot(val)
+			local on
+			if noDot then on = false
+			elseif isToggle then on = (val == true)
+			else on = (obj._hasDefault and not deepEq(val, obj._default)) or false end
 			if on and not dot then
 				dot = new("Frame", {
-					Name = "ModDot", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 2, 0, math.floor(rowH() / 2)), Size = UDim2.fromOffset(4, 4),
-					BackgroundColor3 = T.Accent, BorderSizePixel = 0, ZIndex = 5, Parent = frame,
+					Name = "ModDot", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 1, 0, math.floor(rowH() / 2)), Size = UDim2.fromOffset(5, 5),
+					BackgroundColor3 = T.Accent, BorderSizePixel = 0, ZIndex = 10, Parent = frame,
 				}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 			end
 			if dot then dot.Visible = on end
-		end))
+		end
+		table.insert(conns, Library:Watch(cfg.Flag, applyDot))
+		if isToggle and ok then applyDot(v) end -- toggles that start ON
 		sec._objs = sec._objs or {}
 		table.insert(sec._objs, obj)
 	end
