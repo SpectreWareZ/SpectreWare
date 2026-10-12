@@ -2019,7 +2019,7 @@ function Library:CreateWindow(cfg)
 	win.TabList = new("ScrollingFrame", {
 		Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -19, 1, -FOOT_H - 10), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
 		CanvasSize = UDim2.new(), AutomaticCanvasSize = AY, ScrollingDirection = Enum.ScrollingDirection.Y,
-		ElasticBehavior = Enum.ElasticBehavior.WhenScrollable, Parent = sidebar,
+		ElasticBehavior = Enum.ElasticBehavior.Never, Parent = sidebar,
 	}, { list(UserInputService.TouchEnabled and 5 or 6), padding(8, 10, 8, 6) })
 
 	local footer = new("Frame", {
@@ -2219,7 +2219,7 @@ function Library:CreateWindow(cfg)
 		local SKIP = { Separator = true, Divider = true }
 		local function hex(c) return string.format("#%02x%02x%02x", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5)) end
 		local function esc(x) return (tostring(x):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")) end
-		local resPanel = new("ScrollingFrame", {
+		local resPanel = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
 			Name = "SearchResults", Position = UDim2.fromOffset(6, 4), Size = UDim2.new(1, -26, 0, 0),
 			BackgroundColor3 = T.Panel, BackgroundTransparency = 0, BorderSizePixel = 0, ScrollBarThickness = 3,
 			ScrollBarImageColor3 = T.Accent, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
@@ -2938,7 +2938,7 @@ function Window:_BuildProfile()
 		Size = UDim2.fromOffset(CARD_W, 300), BackgroundColor3 = T.Panel, BackgroundTransparency = 0.02, BorderSizePixel = 0,
 		Visible = false, ZIndex = 56, ClipsDescendants = true, Parent = main,
 	}, { corner(18), stroke(T.Accent, 1, 0.45) })
-	local scroll = new("ScrollingFrame", {
+	local scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
 		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
 		CanvasSize = UDim2.new(), AutomaticCanvasSize = AY, ScrollingDirection = Enum.ScrollingDirection.Y, Parent = card,
 	}, { list(8), padding(12, 12, 12, 12) })
@@ -3226,10 +3226,11 @@ function Window:_ApplySearch(fromSelect)
 		local any = false
 		for _, c in ipairs(s.Controls) do
 			local vis = (secMatch or c.Name:find(q, 1, true) ~= nil) and not c.Hidden
-			c.Frame.Visible = vis
+			if c.Frame.Visible ~= vis then c.Frame.Visible = vis end
 			any = any or vis
 		end
-		s.Frame.Visible = secMatch or any
+		local secVis = secMatch or any
+		if s.Frame.Visible ~= secVis then s.Frame.Visible = secVis end
 	end
 	tab._clean = (q == "")
 	tab:_QueueRelayout()
@@ -3257,12 +3258,19 @@ function Window:SelectTab(tab)
 	self:_ApplySearch(true)
 	tab:_QueueRelayout()
 
-	if prev and not lowPower() then
+	-- phones (lowPower) used to skip the whole transition, so tabs just popped; they now get the slide + fade,
+	-- only the accent sweep is left out there
+	if prev and Library.Anim.TabSwitch ~= false then
+		local lite = lowPower()
 		self._pseq = (self._pseq or 0) + 1
 		local seq = self._pseq
 		local pv = self.PageVeil
-		pv.BackgroundTransparency = 0.2   -- not fully opaque: the new page eases in instead of popping out of a flat color
-		pv.Visible = true
+		-- The veil used to snap to 80% opaque in one frame and then fade out: on a translucent window that
+		-- dimmed both columns at once and they "blinked". It now starts much lighter (the slide carries the motion).
+		--   Library.Anim.PageVeil = false  -> no veil at all (slide only)     Library.Anim.PageVeilAlpha = 0.6 (1 = invisible)
+		local useVeil = Library.Anim.PageVeil ~= false
+		pv.BackgroundTransparency = useVeil and (Library.Anim.PageVeilAlpha or 0.6) or 1
+		pv.Visible = useVeil
 		self:_MotionBegin(0.34, true)   -- backdrop rests while the page slides; the halo stays (nothing moves it)
 		tab.Page.Position = UDim2.fromOffset(0, 14 * dir)
 		-- the page was just made visible and re-laid out: that frame is the heavy one, so the slide starts on the next
@@ -3273,9 +3281,12 @@ function Window:SelectTab(tab)
 				return
 			end
 			tween(tab.Page, 0.34, { Position = UDim2.new() }, QUINT, OUT)
-			tween(pv, 0.26, { BackgroundTransparency = 1 }, SINE, OUT).Completed:Connect(function()
-				if self._pseq == seq then pv.Visible = false end
-			end)
+			if useVeil then
+				tween(pv, 0.26, { BackgroundTransparency = 1 }, SINE, OUT).Completed:Connect(function()
+					if self._pseq == seq then pv.Visible = false end
+				end)
+			end
+			if lite then return end
 			-- one-shot accent sweep across the top of the new page
 			local sweep = new("Frame", {
 				Size = UDim2.new(0, 0, 0, 2), Position = UDim2.fromOffset(0, 0), BackgroundColor3 = Color3.new(1, 1, 1),
@@ -4584,7 +4595,7 @@ function NM:Dialog(cfg)
 	})
 
 	-- body (scrolls when the screen is too small for it)
-	local scroll = new("ScrollingFrame", {
+	local scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
 		LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
 		ScrollBarImageColor3 = accent, CanvasSize = UDim2.new(), AutomaticCanvasSize = AY, ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 3, Parent = col,
 	})
@@ -5112,7 +5123,7 @@ function Window:CreateTab(cfg)
 			LayoutOrder = i, Size = UDim2.new(0.5, -6, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0,
 			ScrollBarThickness = UserInputService.TouchEnabled and 4 or 3,
 			ScrollBarImageColor3 = T.Accent, CanvasSize = UDim2.new(), AutomaticCanvasSize = AY,
-			ScrollingDirection = Enum.ScrollingDirection.Y, ElasticBehavior = Enum.ElasticBehavior.WhenScrollable, Parent = tab.Scroll,
+			ScrollingDirection = Enum.ScrollingDirection.Y, ElasticBehavior = Enum.ElasticBehavior.Never, Parent = tab.Scroll,
 		}, { list(12), padding(0, 0, 0, 8) })
 	end
 
@@ -5217,7 +5228,7 @@ function Tab:_SetSelected(sel)
 		if part:IsA("ImageLabel") then tween(part, 0.22, { ImageColor3 = icol }) end
 	end
 	-- gentle icon pop when a tab becomes active (one tween, no loop)
-	if sel and self.IconScale and not lowPower() then
+	if sel and self.IconScale then
 		self.IconScale.Scale = 0.7
 		tween(self.IconScale, 0.32, { Scale = 1 }, BACK, OUT)
 	end
@@ -5245,16 +5256,19 @@ end
 function Tab:_Relayout()
 	local two = self.Window.TwoCol
 	local c1, c2 = self.Cols[1], self.Cols[2]
-	c2.Visible = two and true or false
-	c1.Size = two and UDim2.new(0.5, -6, 1, 0) or UDim2.new(1, 0, 1, 0)
+	-- only write what actually changed: re-writing the same Visible / Size / Parent every tab switch made the columns redraw
+	if c2.Visible ~= (two and true or false) then c2.Visible = two and true or false end
+	local want1 = two and UDim2.new(0.5, -6, 1, 0) or UDim2.new(1, 0, 1, 0)
+	if c1.Size ~= want1 then c1.Size = want1 end
 	local h1, h2 = 0, 0
 	for i, s in ipairs(self.Sections) do
 		local col
 		if not two then col = 1
 		elseif s.Column then col = s.Column
 		else col = (h1 <= h2) and 1 or 2 end
-		s.Frame.LayoutOrder = i
-		s.Frame.Parent = (col == 1) and c1 or c2
+		if s.Frame.LayoutOrder ~= i then s.Frame.LayoutOrder = i end
+		local target = (col == 1) and c1 or c2
+		if s.Frame.Parent ~= target then s.Frame.Parent = target end
 		if s.Frame.Visible then
 			if col == 1 then h1 += s.Est + 12 else h2 += s.Est + 12 end
 		end
@@ -5997,7 +6011,7 @@ function Section:CreateDropdown(cfg)
 			ClearTextOnFocus = false, Parent = searchHolder,
 		}, { corner(6), stroke(T.Border, 1, 0.4), padding(10, 0, 10, 0) })
 
-		scroll = new("ScrollingFrame", {
+		scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
 			Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = touch and 4 or 3,
 			ScrollBarImageColor3 = T.Accent, CanvasSize = UDim2.new(), AutomaticCanvasSize = AY,
 			ScrollingDirection = Enum.ScrollingDirection.Y, Parent = popup,
@@ -7763,7 +7777,7 @@ function Window:OpenPalette(initial)
 		PlaceholderColor3 = T.SubText, TextColor3 = T.Text, Font = T.Font, TextSize = 14, TextXAlignment = LEFT,
 		ClearTextOnFocus = false, TextTruncate = Enum.TextTruncate.AtEnd, Parent = card,
 	}, { corner(8), stroke(T.Border, 1, 0.35), padding(10, 0, 10, 0) })
-	local scroll = new("ScrollingFrame", {
+	local scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
 		Position = UDim2.fromOffset(8, 54), Size = UDim2.new(1, -16, 1, -62), BackgroundTransparency = 1, BorderSizePixel = 0,
 		ScrollBarThickness = 3, ScrollBarImageColor3 = T.Accent, CanvasSize = UDim2.new(), AutomaticCanvasSize = AY,
 		ScrollingDirection = Enum.ScrollingDirection.Y, Parent = card,
@@ -8408,7 +8422,7 @@ function Section:CreateConsole(cfg)
 		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(52, 20), BackgroundColor3 = T.Control,
 		BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "Clear", Font = T.Font, TextSize = 13, TextColor3 = T.SubText, Parent = frame,
 	}, { corner(10), stroke(T.Border, 1, 0.4) })
-	local view = new("ScrollingFrame", {
+	local view = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
 		Position = UDim2.fromOffset(0, 24), Size = UDim2.new(1, 0, 0, H), BackgroundColor3 = T.Deep, BackgroundTransparency = 0.1,
 		BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = T.Accent, CanvasSize = UDim2.new(), AutomaticCanvasSize = AY,
 		ScrollingDirection = Enum.ScrollingDirection.Y, Parent = frame,
@@ -9989,7 +10003,10 @@ end
 local _prevSelectTab = Window.SelectTab
 function Window:SelectTab(tab)
 	local r = table.pack(_prevSelectTab(self, tab))
-	self:_QueueCheck(0.6)
+	-- The audit walks every control of the tab (GetDescendants + TextFits on all of them). Run 0.6 s after a tab switch it
+	-- landed right at the end of the page animation, which showed up as a stutter / unstable switch.
+	-- It is now off for tab switches by default; Library.AutoCheck.OnTabSwitch = true brings it back (and then it waits 2.5 s).
+	if Library.AutoCheck.OnTabSwitch == true then self:_QueueCheck(2.5) end
 	return table.unpack(r, 1, r.n)
 end
 
@@ -10002,7 +10019,7 @@ function Library:CreateWindow(cfg)
 		if over == false then own = { Enabled = false } end
 		win._autoCheck = setmetatable(own, { __index = function(_, k) return Library.AutoCheck[k] end })
 		if win.Gui then
-			local c = win.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() win:_QueueCheck(0.6) end)
+			local c = win.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() win:_QueueCheck(1.5) end)
 			table.insert(win.Conns, c)
 		end
 		win:_QueueCheck()
@@ -11435,7 +11452,7 @@ function Section:CreateCodeBlock(cfg)
 		})
 	end
 	local text = tostring(cfg.Text or "")
-	local scroll = new("ScrollingFrame", {
+	local scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
 		Position = UDim2.fromOffset(0, top), Size = UDim2.new(1, 0, 0, bodyH), BackgroundColor3 = T.Control, BackgroundTransparency = 0.25,
 		BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = T.Accent, CanvasSize = UDim2.new(), AutomaticCanvasSize = AY,
 		ScrollingDirection = Enum.ScrollingDirection.Y, Parent = frame,
@@ -11599,7 +11616,7 @@ function Section:CreateListBox(cfg)
 			TextColor3 = T.Text, TextXAlignment = LEFT, ClearTextOnFocus = false, Parent = sf,
 		})
 	end
-	local scroll = new("ScrollingFrame", {
+	local scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
 		Position = UDim2.fromOffset(0, listTop), Size = UDim2.new(1, 0, 0, listH), BackgroundColor3 = T.Control, BackgroundTransparency = 0.25,
 		BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = T.Accent, CanvasSize = UDim2.new(), AutomaticCanvasSize = AY,
 		ScrollingDirection = Enum.ScrollingDirection.Y, Parent = frame,
@@ -11830,7 +11847,7 @@ function Section:CreateTable(cfg)
 			Font = T.FontBold, TextSize = 12, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = head,
 		})
 	end
-	local scroll = new("ScrollingFrame", {
+	local scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
 		Position = UDim2.fromOffset(0, top + headH + 4), Size = UDim2.new(1, 0, 0, bodyH), BackgroundColor3 = T.Control,
 		BackgroundTransparency = 0.25, BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = T.Accent,
 		CanvasSize = UDim2.new(), AutomaticCanvasSize = AY, ScrollingDirection = Enum.ScrollingDirection.Y, Parent = frame,
