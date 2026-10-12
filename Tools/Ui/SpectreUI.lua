@@ -6012,23 +6012,25 @@ function Section:CreateDropdown(cfg)
 			local selAll
 			if withAll then
 				selAll = new("TextButton", {
-					Size = UDim2.new(0.34, -4, 1, 0), BackgroundColor3 = T.Control, AutoButtonColor = false, Text = cfg.SelectAllText or "Select All",
-					Font = T.Font, TextSize = 13, TextColor3 = T.Accent, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer,
-				}, { corner(10) })
+					Size = UDim2.new(0.34, -4, 1, 0), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = cfg.SelectAllText or "Select All",
+					Font = T.FontBold, TextSize = 13, TextColor3 = T.Accent, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer,
+				}, { corner(14), stroke(T.Accent, 1, 0.5) })
 				feedback(selAll, selAll, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
+				strokeFeedback(selAll, selAll:FindFirstChildOfClass("UIStroke"), 0.5, 0.15)
 			end
 			local clear = new("TextButton", {
 				Position = withAll and UDim2.new(0.34, 2, 0, 0) or UDim2.new(),
 				Size = withAll and UDim2.new(0.26, -4, 1, 0) or UDim2.new(0.38, -3, 1, 0),
-				BackgroundColor3 = T.Control, AutoButtonColor = false, Text = "Clear",
-				Font = T.Font, TextSize = 13, TextColor3 = T.SubText, Parent = footer,
-			}, { corner(10) })
+				BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "Clear",
+				Font = T.Font, TextSize = 13, TextColor3 = T.Text, Parent = footer,
+			}, { corner(14), stroke(T.Border, 1, 0.35) })
 			feedback(clear, clear, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
+			strokeFeedback(clear, clear:FindFirstChildOfClass("UIStroke"), 0.35, 0.05)
 			local done = new("TextButton", {
 				Position = withAll and UDim2.new(0.60, 2, 0, 0) or UDim2.new(0.38, 3, 0, 0),
 				Size = withAll and UDim2.new(0.40, -2, 1, 0) or UDim2.new(0.62, -3, 1, 0),
 				BackgroundColor3 = Color3.new(1, 1, 1), AutoButtonColor = false, Text = "", Parent = footer,
-			}, { corner(10), gradient(T.Accent, T.Accent2, 0), stroke(T.Accent2, 1, 0.6) })
+			}, { corner(14), gradient(T.Accent, T.Accent2, 0), stroke(T.Accent2, 1, 0.5) })
 			-- UIGradient tints the parent's own text too (it made "Done" vanish), so the label is a separate child
 			Library._oa(new("TextLabel", {
 				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "Done", Font = T.FontBold, TextSize = 13,
@@ -6046,7 +6048,7 @@ function Section:CreateDropdown(cfg)
 					dd:Set(cur)
 				end)
 			end
-			strokeFeedback(done, done:FindFirstChildOfClass("UIStroke"), 0.6, 0.15)
+			strokeFeedback(done, done:FindFirstChildOfClass("UIStroke"), 0.5, 0.05)
 			clear.MouseButton1Click:Connect(function() dd:Set({}) end)
 			done.MouseButton1Click:Connect(function() dd:Close() end)
 		end
