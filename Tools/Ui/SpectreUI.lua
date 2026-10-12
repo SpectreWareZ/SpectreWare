@@ -2,7 +2,7 @@
     SpectreUI - dark/violet Roblox UI library  (beautified build)
     Window / Sidebar tabs / Search / Sections / Toggle / Dropdown (+Multi) / Slider / Button / Label / Divider / Textbox / Keybind / ColorPicker / Paragraph / Notify / Toast / Dialog / Loading / Config
 
-    local Library = loadstring(readfile("SpectreUI.lua"))()   -- or require(module)
+    local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Tools/Ui/SpectreUI.lua"))()   -- or require(module)
     local Window  = Library:CreateWindow({ Title = "SpectreWare | Anime Astral" })
     local Tab     = Window:CreateTab({ Name = "Main", Icon = "M" })
     local Section = Tab:CreateSection({ Name = "Settings" })

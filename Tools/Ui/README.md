@@ -32,17 +32,17 @@ SpectreUI คือไลบรารี UI สำหรับสคริปต
 
 ## 1. สิ่งที่ต้องมี
 
-- ไฟล์ `SpectreUI.lua` วางไว้ในโฟลเดอร์ workspace ของ executor
-- executor ที่รองรับ `loadstring`, `readfile` และฟังก์ชันไฟล์ (Config กับธีมถูกบันทึกเป็นไฟล์)
+- executor ที่รองรับ `loadstring`, `game:HttpGet` และฟังก์ชันไฟล์ (`readfile` / `writefile` ใช้บันทึก Config กับธีม)
+- ไม่ต้องดาวน์โหลดไฟล์เอง: สคริปต์โหลด `SpectreUI.lua` จาก GitHub ทุกครั้งที่รัน (ต้องต่ออินเทอร์เน็ต)
 - ปุ่ม "คัดลอก Config" ต้องใช้คลิปบอร์ด ถ้าไม่รองรับ UI จะแจ้งว่าเครื่องนี้ใช้ไม่ได้
-- ถ้าใช้เป็น ModuleScript ให้ใช้ `require(ModuleScript)` แทน `loadstring(readfile(...))`
+- ถ้าใช้เป็น ModuleScript ให้ใช้ `require(ModuleScript)` แทน `loadstring(game:HttpGet(...))`
 
 ---
 
 ## 2. เริ่มต้นเร็ว (copy แล้วรัน)
 
 ```lua
-local Library = loadstring(readfile("SpectreUI.lua"))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Tools/Ui/SpectreUI.lua"))()
 
 local Window = Library:CreateWindow({
     Title     = "SpectreWare | ชื่อเกม",
@@ -1154,7 +1154,7 @@ Window:CreateSettingsTab({ Icons = { Theme = "solar:palette-bold", Save = "lucid
 ## 18. ปัญหาที่พบบ่อย
 
 **เมนูไม่ขึ้น**
-ตรวจว่า `SpectreUI.lua` อยู่ในโฟลเดอร์ workspace และชื่อไฟล์ตรงกับ `readfile("SpectreUI.lua")` แล้วลองกดปุ่มเปิด/ปิดเมนู (`RightShift` ตามตัวอย่าง)
+ตรวจว่า executor รองรับ `game:HttpGet` และต่ออินเทอร์เน็ตอยู่ (เปิด URL ด้านบนในเบราว์เซอร์ดูได้ว่าโหลดขึ้นไหม) แล้วลองกดปุ่มเปิด/ปิดเมนู (`RightShift` ตามตัวอย่าง)
 
 **รันแล้วเมนูยังว่าง / แท็บยังไม่ครบ**
 เป็นการโหลดเป็นขั้นตามปกติ รอจนการ์ด Loading ขึ้น "Ready" ถ้าอยากให้ขึ้นทันทีใช้ `StagedLoad = false` ใน `CreateWindow`
@@ -1175,7 +1175,7 @@ executor ไม่รองรับคลิปบอร์ด ใช้กา�
 ถ้าเป็นปุ่มที่ตั้ง `TextColor` เอง ให้ลบออก (ไลบรารีเลือกสีให้เอง) หรือเลือกสีที่ตัดกับพื้น
 
 **รันแล้ว UI ไม่เหมือนที่คู่มือบอก (เช่น ไม่มี Splash แบบใหม่ / ไม่มี `CreateListBox`)**
-ส่วนใหญ่คือ `SpectreUI.lua` ในโฟลเดอร์ workspace ของ executor ยังเป็นไฟล์เก่า (`readfile` อ่านจากโฟลเดอร์นั้น ไม่ได้อ่านไฟล์ที่แนบ) วางไฟล์ใหม่ทับ แล้วเช็ก:
+ส่วนใหญ่คือไฟล์บน GitHub ยังไม่ได้อัปเดต หรือ executor แคชผลโหลดเก่าไว้ ลองรันใหม่ แล้วเช็ก:
 ```lua
 print(Library.Splash, Library.StagedLoad, Library.CreateListBox == nil)
 ```
