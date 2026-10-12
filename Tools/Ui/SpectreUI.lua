@@ -12100,10 +12100,15 @@ end
 --            With no theme chosen it uses Mono (grey / white). Splash = { Theme = "Cyber" } forces one preset;
 --            Library.Splash.Theme = "Mono" (default) is that fallback; set it to false to always use the UI default theme instead.
 --   Library.Splash.Enabled = false  /  .Duration  /  .Steps  /  .Skippable  /  .Async   global defaults
+--   WaitBuild (default true): the window stays hidden and the splash stays up until the script has finished creating its tabs /
+--            controls, then the window opens fully built. It is detected automatically (no new UI for IdleTime seconds, default 0.8),
+--            or explicitly: Window:HoldLoading() / Window:ReleaseLoading() / Window:FinishLoading().  BuildTimeout (30 s) is the safety net.
+--            Splash = { WaitBuild = false } (or Library.Splash.WaitBuild = false) brings back the old timed splash.
 do
 	local TS, RS, UIS = game:GetService("TweenService"), game:GetService("RunService"), game:GetService("UserInputService")
 	local Plrs, CG = game:GetService("Players"), game:GetService("CoreGui")
 	local S = { Enabled = true, Duration = 4, Skippable = true, Async = false, Backdrop = 1, Theme = "Mono", Panel = true, Block = false,
+		WaitBuild = true, IdleTime = 0.8, BuildTimeout = 30,
 		Steps = { "Loading", "Preparing interface", "Almost ready" } }
 	Library.Splash = S
 	local EZ, ED, V2, U2 = Enum.EasingStyle, Enum.EasingDirection, Vector2.new, UDim2.new
@@ -12166,7 +12171,8 @@ do
 		Library._mount(gui)
 		ctx.gui = gui
 		-- watchdog: the launch screen can never stay up, whatever happens while the window builds
-		task.delay(D + 12, function() if gui.Parent then pcall(gui.Destroy, gui) end end)
+		local holdT = (ctx and ctx.hold) and (tonumber(opt("BuildTimeout")) or 30) or 0
+		task.delay(D + 12 + holdT, function() if gui.Parent then pcall(gui.Destroy, gui) end end)
 
 		-- flat backdrop + one centered group (fades as a whole)
 		local bg = fr({ Name = "BG", Size = U2(1, 0, 1, 0), BackgroundColor3 = bgc, BackgroundTransparency = 1, Active = opt("Block") == true, Parent = gui })
@@ -12307,6 +12313,22 @@ do
 		local e = 0
 		while e < 0.2 do e = e + tick() end   -- let the last frame draw before build() blocks
 		if build then build() end   -- real window is created here, hidden behind the splash until the exit starts
+		if ctx and ctx.hold and ctx.win then
+			-- WaitBuild: the splash stays up (bar parked at 85%) until the script has finished creating its tabs / controls
+			local win = ctx.win
+			local t0, last = os.clock(), os.clock()
+			local conn
+			if win.Gui then conn = win.Gui.DescendantAdded:Connect(function() last = os.clock() end) end
+			local idle = tonumber(opt("IdleTime")) or 0.8
+			local limit = tonumber(opt("BuildTimeout")) or 30
+			while not ctx.released and not win._destroyed and win.Gui and win.Gui.Parent do
+				local now = os.clock()
+				if (win._loadHolds or 0) <= 0 and now - last >= idle then break end
+				if now - t0 >= limit then break end
+				tick()
+			end
+			if conn then conn:Disconnect() end
+		end
 		fin = true
 		e = 0
 		while shown < 0.995 and e < 1.5 do e = e + tick() end
@@ -12314,6 +12336,7 @@ do
 		burst()
 		e = 0
 		while e < 0.3 do e = e + tick() end   -- brief "Ready", then the window's own launch animation takes over
+		if ctx and ctx.onExit then pcall(ctx.onExit) end   -- WaitBuild: show the finished window now
 		task.spawn(function()
 			pcall(function()
 				exit()
@@ -12325,13 +12348,79 @@ do
 	end
 
 	local orig = Library.CreateWindow
+	local function traceback(e) return debug.traceback(tostring(e), 2) end
+
+	-- WaitBuild helpers: Window:HoldLoading() / :ReleaseLoading() keep the splash up while you build; :FinishLoading() ends it now
+	function Window:HoldLoading() self._loadHolds = (self._loadHolds or 0) + 1 end
+	function Window:ReleaseLoading() self._loadHolds = math.max(0, (self._loadHolds or 0) - 1) end
+	function Window:FinishLoading() local c = self._splashCtx if c then c.released = true end end
+
 	function Library:CreateWindow(cfg)
 		cfg = cfg or {}
 		if cfg.Splash == false or S.Enabled == false then return orig(self, cfg) end
 		local o = type(cfg.Splash) == "table" and cfg.Splash or {}
 		local async = o.Async
 		if async == nil then async = S.Async end
+		local hold = o.WaitBuild
+		if hold == nil then hold = S.WaitBuild end
 		local ctx, w = {}, nil
+
+		if hold then
+			-- WaitBuild: the window is built hidden, CreateWindow returns at once, and the splash keeps running until the script
+			-- has finished creating its tabs / controls; only then the finished window opens.
+			ctx.hold = true
+			local function reveal()
+				if not w then return end
+				w._loadHeld = nil
+				if w._introHeld then
+					w._introHeld = nil
+					pcall(function() w.Gui.Enabled = true end)
+					pcall(function() w:_PlayIntro() end)
+				else
+					pcall(function() w.Gui.Enabled = true end)
+				end
+			end
+			ctx.onExit = reveal
+			local function buildHeld()
+				ctx.built = true
+				Library._holdIntro = true
+				local okb, res = pcall(orig, self, cfg)
+				Library._holdIntro = nil
+				if not okb then error(res, 0) end
+				w = res
+				ctx.win = w
+				w._splashCtx = ctx
+				w._loadHeld = true
+				-- while loading nothing may switch the window on early (scripts that force Gui.Enabled / the toggle key / the open button)
+				pcall(function()
+					w.Gui:GetPropertyChangedSignal("Enabled"):Connect(function()
+						if w._loadHeld and w.Gui.Enabled then w.Gui.Enabled = false end
+					end)
+				end)
+				pcall(function() w.Gui.Enabled = false end)
+			end
+			local failed = false
+			local function run(build)
+				local ok, err = xpcall(play, traceback, cfg, build, ctx)
+				if not ok then
+					warn("[SpectreUI] splash error: " .. tostring(err))
+					if ctx.gui then ctx.gui:Destroy() end
+					failed = true
+					pcall(ctx.onExit)
+				end
+			end
+			if async then
+				local okb, err = pcall(buildHeld)
+				if not okb then error(err, 0) end
+				task.spawn(run, nil)
+				return w
+			end
+			task.spawn(run, buildHeld)
+			while not w and not failed do task.wait() end   -- returns as soon as the window exists; the splash goes on in its own thread
+			if not w then w = orig(self, cfg) end
+			return w
+		end
+
 		if async then
 			w = orig(self, cfg)
 			task.spawn(function()
