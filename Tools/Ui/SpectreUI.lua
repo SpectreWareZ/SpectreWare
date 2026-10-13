@@ -8,7 +8,7 @@
     local Section = Tab:CreateSection({ Name = "Settings" })
     Section:CreateToggle({ Name = "Example", Default = false, Flag = "ex", Callback = function(v) end })
 
-    Window options : Title, Transparency (0..1, background see-through), Logo (asset id / "rbxassetid://.."), LogoSize (26 or {w,h}), LogoColor (Color3), LogoCorner (px), OpenLogoScale (0.58, floating button), Width, Height, ToggleKey (Enum.KeyCode), Theme (table), OnClose
+    Window options : Title, Transparency (0..1, background see-through), Logo (asset id / "rbxassetid://.."), LogoSize (26 or {w,h}), LogoColor (Color3), LogoCorner (px), OpenLogoScale (0.58, floating button), Width, Height, ToggleKey (Enum.KeyCode), HideOpenButtonOnPC (true = no floating open button on PC, mobile keeps it), Theme (table), OnClose
     Tab options    : Name, Icon (text glyph, asset id number / "rbxassetid://..", or an icon name like "lucide:home" / "home")
     Section options: Name, Column (1|2), Collapsible (default true), Collapsed
     Controls       : CreateToggle / CreateDropdown / CreateSlider / CreateButton / CreateLabel / CreateDivider
@@ -2396,7 +2396,18 @@ function Library:CreateWindow(cfg)
 	local touchUI = UserInputService.TouchEnabled
 	local BS = touchUI and 52 or 44 -- button size
 	win.OpenSize = BS
-	local toggleKey = cfg.ToggleKey or Enum.KeyCode.RightShift
+	-- resolve cfg.ToggleKey every time it is read: accepts Enum.KeyCode or a name string ("F4"); falls back to RightShift
+	local function resolveToggleKey()
+		local k = cfg.ToggleKey
+		if type(k) == "string" then
+			local okk, v = pcall(function() return Enum.KeyCode[k] end)
+			k = okk and v or nil
+		end
+		if typeof(k) == "EnumItem" and k.EnumType == Enum.KeyCode then return k end
+		return Enum.KeyCode.RightShift
+	end
+	win._ResolveToggleKey = resolveToggleKey
+	local toggleKey = resolveToggleKey()
 	win.OpenBtn = new("TextButton", {
 		Name = "OpenButton", AnchorPoint = Vector2.new(0.5, 0.5),
 		-- default spot: upper-left, just under the Roblox top bar (override with OpenPosition = UDim2...)
@@ -2429,8 +2440,12 @@ function Library:CreateWindow(cfg)
 			TextColor3 = T.Text, Visible = false, ZIndex = 3, Parent = ob,
 		}, { corner(8), stroke(T.Border, 1, 0.2), padding(10, 0, 10, 0) })
 	end
+	function win:_RefreshToggleTip()
+		if tip then tip.Text = "Open " .. brand .. "  [" .. resolveToggleKey().Name .. "]" end
+	end
 	local function showTip(on)
 		if not tip then return end
+		win:_RefreshToggleTip()
 		if on and not win._openDrag.Dragging then
 			local vp = gui.AbsoluteSize
 			local leftSide = ob.AbsolutePosition.X + BS / 2 < vp.X / 2
@@ -2537,7 +2552,11 @@ function Library:CreateWindow(cfg)
 
 	---------------------------------------------------------- toggle key / responsive
 	table.insert(win.Conns, UserInputService.InputBegan:Connect(function(i)
-		if i.KeyCode == (cfg.ToggleKey or Enum.KeyCode.RightShift) and not UserInputService:GetFocusedTextBox() then win:SetVisible(not win.Visible) end
+		if i.UserInputType ~= Enum.UserInputType.Keyboard then return end
+		if Library._listening then return end -- a keybind is being rebound: this press is the new key, not "toggle menu"
+		if i.KeyCode ~= resolveToggleKey() then return end
+		if UserInputService:GetFocusedTextBox() then return end
+		win:SetVisible(not win.Visible)
 	end))
 	table.insert(win.Conns, gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() win:_Fit() end))
 	win:_Fit()
@@ -2822,10 +2841,23 @@ function Window:_PlayClose()
 		self:_AnimDone()
 		self:_FXPause() -- nothing is on screen: stop the looping backdrop tweens
 		self:_GlowVisible(false)
-		self.OpenBtn.Visible = true
+		if self:_OpenBtnAllowed() then self.OpenBtn.Visible = true end
 		self.OpenScale.Scale = 0.6
 		tween(self.OpenScale, 0.4, { Scale = 1 }, BACK, OUT)
 	end)
+end
+
+-- Window option HideOpenButtonOnPC = true : no floating open button on PC (touch devices keep it; reopen with the toggle key)
+function Window:_OpenBtnAllowed()
+	return not (self.Cfg.HideOpenButtonOnPC == true and not UserInputService.TouchEnabled)
+end
+
+-- Window:SetHideOpenButtonOnPC(bool)  change it at runtime
+function Window:SetHideOpenButtonOnPC(v)
+	self.Cfg.HideOpenButtonOnPC = v and true or false
+	if not self.Visible and self.OpenBtn and not self.Main.Visible then
+		self.OpenBtn.Visible = self:_OpenBtnAllowed()
+	end
 end
 
 function Window:SetVisible(v)
@@ -3268,9 +3300,15 @@ function Window:SelectTab(tab)
 		-- The veil used to snap to 80% opaque in one frame and then fade out: on a translucent window that
 		-- dimmed both columns at once and they "blinked". It now starts much lighter (the slide carries the motion).
 		--   Library.Anim.PageVeil = false  -> no veil at all (slide only)     Library.Anim.PageVeilAlpha = 0.6 (1 = invisible)
-		local useVeil = Library.Anim.PageVeil ~= false
+		local useVeil = Library.Anim.PageVeil == true   -- FIX: off by default, it flashed a dark overlay over the whole page area
+		if self._veilTw then pcall(function() self._veilTw:Cancel() end) self._veilTw = nil end   -- FIX: never fight an older veil tween
 		pv.BackgroundTransparency = useVeil and (Library.Anim.PageVeilAlpha or 0.6) or 1
 		pv.Visible = useVeil
+		if useVeil then   -- FIX: failsafe, the veil can never stay stuck on screen
+			task.delay(0.8, function()
+				if self._pseq == seq and pv.Parent then pv.Visible = false pv.BackgroundTransparency = 1 end
+			end)
+		end
 		self:_MotionBegin(0.34, true)   -- backdrop rests while the page slides; the halo stays (nothing moves it)
 		tab.Page.Position = UDim2.fromOffset(0, 14 * dir)
 		-- the page was just made visible and re-laid out: that frame is the heavy one, so the slide starts on the next
@@ -3278,15 +3316,17 @@ function Window:SelectTab(tab)
 			if self._pseq ~= seq or self._destroyed then
 				-- a newer switch took over: do not leave this page parked at its slide offset
 				if self.Active ~= tab and tab.Page.Parent then tab.Page.Position = UDim2.new() end
+				if not useVeil then pv.Visible = false end
 				return
 			end
 			tween(tab.Page, 0.34, { Position = UDim2.new() }, QUINT, OUT)
 			if useVeil then
-				tween(pv, 0.26, { BackgroundTransparency = 1 }, SINE, OUT).Completed:Connect(function()
+				self._veilTw = tween(pv, 0.26, { BackgroundTransparency = 1 }, SINE, OUT)
+				self._veilTw.Completed:Connect(function()
 					if self._pseq == seq then pv.Visible = false end
 				end)
 			end
-			if lite then return end
+			if lite or Library.Anim.TabSweep ~= true then return end   -- FIX: sweep is opt-in (Library.Anim.TabSweep = true)
 			-- one-shot accent sweep across the top of the new page
 			local sweep = new("Frame", {
 				Size = UDim2.new(0, 0, 0, 2), Position = UDim2.fromOffset(0, 0), BackgroundColor3 = Color3.new(1, 1, 1),
@@ -6363,6 +6403,31 @@ function Section:CreateTextbox(cfg)
 	return regObj(cfg, obj)
 end
 
+-- listening helpers: while a keybind waits for a key, (a) swallow keyboard input so Roblox/game hotkeys
+-- (Esc menu, Tab, chat...) cannot fire, and (b) release the "listening" slot a moment AFTER the key press,
+-- so the very press that sets the key is not also handled as "use the key" (this used to toggle/close the menu at once)
+local CAS_ = game:GetService("ContextActionService")
+local function sinkKeys(on)
+	if on then
+		pcall(function()
+			CAS_:BindActionAtPriority("SpectreKeybindSink", function() return Enum.ContextActionResult.Sink end, false, 3000, Enum.UserInputType.Keyboard)
+		end)
+	else
+		pcall(function() CAS_:UnbindAction("SpectreKeybindSink") end)
+	end
+end
+Library._setListening = function(token, on)
+	if on then
+		Library._listening = token
+		sinkKeys(true)
+	else
+		sinkKeys(false)
+		task.delay(0.25, function()
+			if Library._listening == token then Library._listening = nil end
+		end)
+	end
+end
+
 local function toKey(v)
 	if typeof(v) == "EnumItem" then return v end
 	if type(v) == "string" then
@@ -6396,11 +6461,7 @@ function Section:CreateKeybind(cfg)
 
 	local function setListening(v)
 		listening = v and true or false
-		if listening then
-			Library._listening = token -- claim the "listening" slot for this keybind
-		elseif Library._listening == token then
-			Library._listening = nil
-		end
+		Library._setListening(token, listening)
 	end
 	local function refresh()
 		btn.Text = listening and "..." or (key and key.Name or "None")
@@ -6834,6 +6895,8 @@ function Section:CreateKeybindToggle(cfg)
 	function obj:Get() return value end
 	function obj:SetKey(v, silent)
 		key = toKey(v)
+		listening = false
+		Library._setListening(token, false)
 		refreshKey()
 		if not silent then safe(cfg.Changed, key) end
 	end
@@ -6845,7 +6908,7 @@ function Section:CreateKeybindToggle(cfg)
 	end)
 	keyBtn.MouseButton1Click:Connect(function()
 		listening = not listening
-		if listening then Library._listening = token elseif Library._listening == token then Library._listening = nil end
+		Library._setListening(token, listening)
 		refreshKey()
 	end)
 	table.insert(win.Conns, UserInputService.InputBegan:Connect(function(i, gp)
@@ -6853,7 +6916,7 @@ function Section:CreateKeybindToggle(cfg)
 			if i.UserInputType ~= Enum.UserInputType.Keyboard then return end
 			if i.KeyCode == Enum.KeyCode.Escape then
 				listening = false
-				if Library._listening == token then Library._listening = nil end
+				Library._setListening(token, false)
 				refreshKey()
 			elseif i.KeyCode == Enum.KeyCode.Backspace or i.KeyCode == Enum.KeyCode.Delete then
 				obj:SetKey(nil)
@@ -9446,9 +9509,9 @@ function Window:CreateSettingsTab(cfg)
 		local ui = tab:CreateSection({ Icon = ico("UISection", "lucide:keyboard"), Name = tx(L, "UISection", "UI / Hotkeys"), Column = 1 })
 		local flag = P .. "menu_key"
 		parts.MenuKey = ui:CreateKeybind({ Name = tx(L, "MenuKey", "Menu toggle key"), Default = win.Cfg.ToggleKey or Enum.KeyCode.RightShift, Flag = flag,
-			Changed = function(k) if k then win.Cfg.ToggleKey = k end end })
+			Changed = function(k) if k then win:SetToggleKey(k) end end })
 		-- also follow config loads / undo (those set the flag silently)
-		Library:Watch(flag, function(k) if typeof(k) == "EnumItem" then win.Cfg.ToggleKey = k end end)
+		Library:Watch(flag, function(k) if typeof(k) == "EnumItem" then win:SetToggleKey(k) end end)
 		ui:CreateButton({ Icon = ico("Palette", "lucide:search"), Name = tx(L, "Palette", "Search / commands (Ctrl+K)"), Gradient = { win.Theme.Accent, win.Theme.Accent2 },
 			Callback = function() win:OpenPalette() end })
 		ui:CreateParagraph({ Title = tx(L, "HowTitle", "How to use"),
@@ -12047,9 +12110,13 @@ function Window:SetToggleKey(key)
 	end
 	if typeof(key) ~= "EnumItem" or key.EnumType ~= Enum.KeyCode then return nil end
 	self.Cfg.ToggleKey = key
+	if self._RefreshToggleTip then self:_RefreshToggleTip() end
 	return key
 end
-function Window:GetToggleKey() return self.Cfg.ToggleKey or Enum.KeyCode.RightShift end
+function Window:GetToggleKey()
+	if self._ResolveToggleKey then return self._ResolveToggleKey() end
+	return self.Cfg.ToggleKey or Enum.KeyCode.RightShift
+end
 
 -- Window:Open() / Close() / IsOpen()
 function Window:Open() self:SetVisible(true) end
