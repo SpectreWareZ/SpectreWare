@@ -169,7 +169,7 @@
 
     Ready-made tabs (v3.7)
     - Window:CreateThemeTab({ Name, Icon, Text = {..}, Manager = {..}, Maker = false, Effects = false, Fonts = false, Keys = false })      -> tab, parts
-    - Window:CreateSettingsTab({ Name, Icon, Text = {..}, Sections = { Theme, Hotkeys, Config, Window, History = false } })      -> tab, parts
+    - Window:CreateSettingsTab({ Name, Icon, Text = {..}, Sections = { Theme, Hotkeys, Interface, Config, Window, History = false } })   -- includes theme colors/font/effects      -> tab, parts
     - Window:CreateDefaultTabs({ Theme = {..} | false, Settings = {..} | false })                                       -> themeTab, settingsTab
       Text = { key = "..." } renames / translates any label (see README_SpectreUI_Tabs.md for the key list)
 
@@ -9366,7 +9366,8 @@ end
 -- Common cfg : Name, Icon, FlagPrefix (default "ui_"), Text = { key = "override text" }  (translate / rename anything)
 -- Theme tab  : Manager = { Random = false, Delete = false, Remember = true, Flag }  Maker = false  Effects = false  Keys = false | { Next, Prev }
 --              MakerColors = { Accent, Accent2 }   Tip = false | "text"
--- Settings   : Sections = { Theme = false, Hotkeys = false, Config = false, Window = false, History = false }   (false hides that section)
+-- Settings   : Sections = { Theme = false, Hotkeys = false, Interface = false, Config = false, Window = false, History = false }   (false hides that part)
+--              SETTINGS now includes the whole theme tool (manager / font / maker / effects). Same cfg keys as the Theme tab: Manager, Maker, Effects, Fonts, Keys, MakerColors, Tip
 --              ToggleKeyFlag is FlagPrefix .. "menu_key"
 local function tx(L, key, default)
 	local v = L and L[key]
@@ -9381,8 +9382,8 @@ function Window:CreateThemeTab(cfg)
 	local P = cfg.FlagPrefix or "ui_"
 	local I = cfg.Icons or {}   -- Icons = { Theme = "lucide:...", Save = false, ... }  (false = no icon)
 	local function ico(k, d) local v = I[k] if v == nil then return d end return v or nil end
-	local tab = self:CreateTab({ Name = cfg.Name or "THEME", Icon = cfg.Icon or "lucide:palette" })
-	local parts = { Tab = tab }
+	local tab = cfg._tab or self:CreateTab({ Name = cfg.Name or "THEME", Icon = cfg.Icon or "lucide:palette" })
+	local parts = cfg._parts or { Tab = tab }
 
 	-- theme dropdown + rename / duplicate / random / delete
 	local sec = tab:CreateSection({ Icon = ico("ThemeSection", "lucide:paintbrush"), Name = tx(L, "ThemeSection", "Theme colors"), Column = 1 })
@@ -9420,7 +9421,7 @@ function Window:CreateThemeTab(cfg)
 
 	-- build a theme from two picked colours
 	if cfg.Maker ~= false then
-		local mk = tab:CreateSection({ Icon = ico("MakerSection", "lucide:pipette"), Name = tx(L, "MakerSection", "Create your own theme"), Column = 2 })
+		local mk = tab:CreateSection({ Icon = ico("MakerSection", "lucide:pipette"), Name = tx(L, "MakerSection", "Create your own theme"), Column = (cfg.Columns or {}).Maker or 2 })
 		local mc = cfg.MakerColors or {}
 		local c1 = mk:CreateColorPicker({ Name = tx(L, "Accent", "Accent color"), Default = mc.Accent or Color3.fromRGB(56, 189, 248) })
 		local c2 = mk:CreateColorPicker({ Name = tx(L, "Accent2", "Accent 2 color"), Default = mc.Accent2 or Color3.fromRGB(99, 102, 241) })
@@ -9443,7 +9444,7 @@ function Window:CreateThemeTab(cfg)
 
 	-- backdrop effect / quality / quick-switch keys
 	if cfg.Effects ~= false then
-		local fx = tab:CreateSection({ Icon = ico("FxSection", "lucide:sparkles"), Name = tx(L, "FxSection", "Background / effects"), Column = 2 })
+		local fx = tab:CreateSection({ Icon = ico("FxSection", "lucide:sparkles"), Name = tx(L, "FxSection", "Background / effects"), Column = (cfg.Columns or {}).Fx or 2 })
 		local AUTO, OFF = tx(L, "FxAuto", "Follow theme"), tx(L, "FxOff", "Off")
 		parts.Background = fx:CreateDropdown({ Name = tx(L, "FxName", "Background effect"),
 			Options = { AUTO, "petals", "orbs", "embers", "rain", "grid", OFF }, Default = AUTO, Flag = P .. "bg_fx",
@@ -9479,34 +9480,19 @@ function Window:CreateSettingsTab(cfg)
 	local parts = { Tab = tab }
 	local CFG_T = tx(L, "ConfigTitle", "Config")
 
-	-- quick theme switch (the full Theme tab with maker / effects still lives in Window:CreateThemeTab)
+	-- full theme tools live here now (manager, font, maker, effects) - no separate THEME tab needed
 	if S.Theme ~= false then
-		local th = tab:CreateSection({ Icon = ico("ThemeSection", "lucide:palette"), Name = tx(L, "ThemeSection", "Theme"), Column = 1 })
-		local dd = th:CreateDropdown({ Name = tx(L, "Theme", "Theme"), Options = Library:ListThemes(),
-			Default = win:GetThemeName(), Flag = P .. "settings_theme",
-			Tooltip = tx(L, "ThemeTip", "Switch the colour theme of this window"),
-			Callback = function(v)
-				if type(v) ~= "string" or v == win:GetThemeName() then return end
-				local ok, res = win:SetTheme(v, true)
-				if not ok then win:Error(tx(L, "ThemeNotifyTitle", "Theme"), tostring(res), 3) end
-			end })
-		th:CreateButton({ Icon = ico("RandomButton", "lucide:dices"), Name = tx(L, "RandomButton", "Random theme"), Callback = function()
-			local ok, res = win:RandomTheme(true)
-			if not ok then win:Error(tx(L, "ThemeNotifyTitle", "Theme"), tostring(res), 3) end
-		end })
-		-- stay in sync when the theme changes from the Theme tab, a keybind cycle, config load, undo, etc.
-		Library:OnThemeChange(function(ev)
-			if ev == "list" or ev == "rename" or ev == "switch" then
-				dd:Refresh(Library:ListThemes(), true)
-				dd:Set(win:GetThemeName(), true)
-			end
-		end, function() return dd.Frame and dd.Frame.Parent ~= nil end)
-		parts.ThemePicker, parts.ThemeSection = dd, th
+		local tcfg = {}
+		for k, v in pairs(cfg) do tcfg[k] = v end
+		tcfg._tab, tcfg._parts = tab, parts
+		tcfg.Columns = cfg.Columns or { Maker = 1, Fx = 1 }   -- left = look (theme / font / maker / effects), right = system
+		win:CreateThemeTab(tcfg)
+		parts.ThemePicker = parts.Manager
 	end
 
 	-- menu key / palette
 	if S.Hotkeys ~= false then
-		local ui = tab:CreateSection({ Icon = ico("UISection", "lucide:keyboard"), Name = tx(L, "UISection", "UI / Hotkeys"), Column = 1 })
+		local ui = tab:CreateSection({ Icon = ico("UISection", "lucide:keyboard"), Name = tx(L, "UISection", "UI / Hotkeys"), Column = 2 })
 		local flag = P .. "menu_key"
 		parts.MenuKey = ui:CreateKeybind({ Name = tx(L, "MenuKey", "Menu toggle key"), Default = win.Cfg.ToggleKey or Enum.KeyCode.RightShift, Flag = flag,
 			Changed = function(k) if k then win:SetToggleKey(k) end end })
@@ -9518,6 +9504,39 @@ function Window:CreateSettingsTab(cfg)
 			Content = tx(L, "HowText", "Click a Keybind and press a key (Esc = cancel, Backspace = clear). Right-click or long-press any control for reset / copy / lock.") })
 		parts.UISection = ui
 	end
+
+	-- HUD + notifications
+	if S.Interface ~= false then
+		local ifs = tab:CreateSection({ Icon = ico("InterfaceSection", "lucide:layout-dashboard"), Name = tx(L, "InterfaceSection", "Interface"), Column = 2 })
+		local wm, kl
+		parts.WatermarkToggle = ifs:CreateToggle({ Name = tx(L, "Watermark", "Show FPS / Ping"), Default = false, Flag = P .. "watermark",
+			Callback = function(v)
+				if v and not wm and type(win.Watermark) == "function" then
+					local ok, h = pcall(win.Watermark, win, cfg.WatermarkText or "SpectreWare")
+					if ok then wm = h end
+				end
+				if wm then pcall(function() wm:SetVisible(v and true or false) end) end
+			end })
+		parts.KeybindListToggle = ifs:CreateToggle({ Name = tx(L, "KeybindList", "Show keybind list"), Default = false, Flag = P .. "keybind_list",
+			Callback = function(v)
+				if v and not kl and type(win.KeybindList) == "function" then
+					local ok, h = pcall(win.KeybindList, win, {})
+					if ok then kl = h end
+				end
+				if kl then pcall(function() kl:SetVisible(v and true or false) end) end
+			end })
+		local POS = { "TopLeft", "TopCenter", "TopRight", "BottomLeft", "BottomCenter", "BottomRight" }
+		parts.NotifyPosition = ifs:CreateDropdown({ Name = tx(L, "NotifyPosition", "Notification position"), Options = POS,
+			Default = Library.NotifyConfig.Position or "BottomRight", Flag = P .. "notify_pos",
+			Callback = function(v) if type(v) == "string" then Library.NotifyConfig.Position = v end end })
+		parts.NotifyDuration = ifs:CreateSlider({ Name = tx(L, "NotifyDuration", "Notification time"), Min = 1, Max = 10, Increment = 1,
+			Default = Library.NotifyConfig.Duration or 4, Suffix = "s", Flag = P .. "notify_dur",
+			Callback = function(v) if tonumber(v) then Library.NotifyConfig.Duration = tonumber(v) end end })
+		ifs:CreateButton({ Icon = ico("TestNotify", "lucide:bell"), Name = tx(L, "TestNotify", "Test notification"),
+			Callback = function() win:Info(tx(L, "TestTitle", "Notification"), tx(L, "TestText", "This is how notifications look"), nil) end })
+		parts.InterfaceSection = ifs
+	end
+
 
 	-- save / load / delete configs
 	if S.Config ~= false then
@@ -9566,17 +9585,6 @@ function Window:CreateSettingsTab(cfg)
 		parts.ConfigName, parts.ConfigList, parts.ConfigSection = name, list, cs
 	end
 
-	-- window helpers
-	if S.Window ~= false then
-		local ws = tab:CreateSection({ Icon = ico("WindowSection", "lucide:app-window"), Name = tx(L, "WindowSection", "Window"), Column = 1 })
-		ws:CreateButton({ Icon = ico("Center", "lucide:locate-fixed"), Name = tx(L, "Center", "Center window"), Callback = function() win:Center() win:Flash() end })
-		ws:CreateButton({ Icon = ico("Unload", "lucide:power"), Name = tx(L, "Unload", "Close UI completely (Unload)"), Color = Color3.fromRGB(248, 113, 113), Callback = function()
-			win:Confirm({ Title = tx(L, "UnloadTitle", "Unload UI"), Content = tx(L, "UnloadText", "Close and remove the whole UI?"),
-				Yes = tx(L, "Yes", "Unload"), No = tx(L, "Cancel", "Cancel"), Danger = true, OnYes = function() Library:Unload() end })
-		end })
-		parts.WindowSection = ws
-	end
-
 	-- undo / redo / snapshot / reset
 	if S.History ~= false then
 		local hs = tab:CreateSection({ Icon = ico("HistorySection", "lucide:history"), Name = tx(L, "HistorySection", "Undo / Snapshot"), Column = 2 })
@@ -9602,6 +9610,17 @@ function Window:CreateSettingsTab(cfg)
 			Callback = function() Library:ResetAll() end })
 		parts.HistorySection = hs
 	end
+	-- window helpers
+	if S.Window ~= false then
+		local ws = tab:CreateSection({ Icon = ico("WindowSection", "lucide:app-window"), Name = tx(L, "WindowSection", "Window"), Column = 1 })
+		ws:CreateButton({ Icon = ico("Center", "lucide:locate-fixed"), Name = tx(L, "Center", "Center window"), Callback = function() win:Center() win:Flash() end })
+		ws:CreateButton({ Icon = ico("Unload", "lucide:power"), Name = tx(L, "Unload", "Close UI completely (Unload)"), Color = Color3.fromRGB(248, 113, 113), Callback = function()
+			win:Confirm({ Title = tx(L, "UnloadTitle", "Unload UI"), Content = tx(L, "UnloadText", "Close and remove the whole UI?"),
+				Yes = tx(L, "Yes", "Unload"), No = tx(L, "Cancel", "Cancel"), Danger = true, OnYes = function() Library:Unload() end })
+		end })
+		parts.WindowSection = ws
+	end
+
 	return tab, parts
 end
 
@@ -9610,7 +9629,7 @@ end
 function Window:CreateDefaultTabs(cfg)
 	cfg = cfg or {}
 	local t, s
-	if cfg.Theme ~= false then t = self:CreateThemeTab(type(cfg.Theme) == "table" and cfg.Theme or nil) end
+	if cfg.Theme == true or type(cfg.Theme) == "table" then t = self:CreateThemeTab(type(cfg.Theme) == "table" and cfg.Theme or nil) end   -- theme tools are inside SETTINGS now
 	if cfg.Settings ~= false then s = self:CreateSettingsTab(type(cfg.Settings) == "table" and cfg.Settings or nil) end
 	return t, s
 end

@@ -2,7 +2,7 @@
 
 SpectreUI คือไลบรารี UI สำหรับสคริปต์ Roblox (Lua) มีหน้าต่าง แท็บ ตัวควบคุมครบ (สวิตช์ สไลเดอร์ ดรอปดาวน์ คีย์บายด์ ตาราง ฯลฯ) ระบบธีม ระบบ Config และ Command Palette (`Ctrl+K`) ในตัว
 
-แท็บ **THEME** กับ **SETTINGS** เป็นของสำเร็จรูป เรียกบรรทัดเดียวก็ได้ ไม่ต้องเขียนเอง
+แท็บ **SETTINGS** เป็นของสำเร็จรูป รวมธีม ฟอนต์ เอฟเฟกต์ ปุ่มลัด Config และ Undo ไว้ในแท็บเดียว เรียกบรรทัดเดียวก็ได้ ไม่ต้องเขียนเอง
 
 > **ไม่รู้จะเริ่มตรงไหน?** อ่านหัวข้อ 1–4 (ประมาณ 5 นาที) ก็เขียน UI เป็นแล้ว ที่เหลือเปิดดูเฉพาะตอนต้องใช้
 
@@ -18,7 +18,7 @@ SpectreUI คือไลบรารี UI สำหรับสคริปต
 8. [แจ้งเตือน / Dialog / Loading](#8-แจ้งเตือน--dialog--loading)
 9. [Flag, Config, Undo](#9-flag-config-undo)
 10. [ธีมและฟอนต์](#10-ธีมและฟอนต์)
-11. [แท็บสำเร็จรูป THEME / SETTINGS](#11-แท็บสำเร็จรูป-theme--settings)
+11. [แท็บสำเร็จรูป SETTINGS](#11-แท็บสำเร็จรูป-settings)
 12. [Command Palette และปุ่มลัด](#12-command-palette-และปุ่มลัด)
 13. [HUD และ Tour](#13-hud-และ-tour)
 14. [Load API (โหลดสคริปต์)](#14-load-api-โหลดสคริปต์)
@@ -61,9 +61,8 @@ Window:CreateTab({ Name = "MAIN", Icon = "lucide:home", Build = function(tab)
     sec:CreateSlider({ Name = "ความเร็ว", Min = 16, Max = 200, Default = 16, Flag = "speed" })
 end })
 
--- แท็บสำเร็จรูป: เรียกท้ายสุด จะได้อยู่ล่างแถบด้านข้าง
-Window:CreateThemeTab()
-Window:CreateSettingsTab()      -- หรือทีเดียวสองแท็บ: Window:CreateDefaultTabs()
+-- แท็บตั้งค่าสำเร็จรูป (มีธีม/ฟอนต์/Config/ปุ่มลัดครบในแท็บเดียว): เรียกท้ายสุด จะได้อยู่ล่างแถบด้านข้าง
+Window:CreateSettingsTab()      -- หรือ Window:CreateDefaultTabs() ได้แท็บเดียวกัน
 
 -- โหลด Config อัตโนมัติ: ต้องรอให้ UI สร้างเสร็จก่อน
 Window:OnLoaded(function()
@@ -93,7 +92,7 @@ end)
 | อ่านค่าที่ผู้ใช้ตั้ง | `Library.Flags["flag"]` | 9 |
 | บันทึก/โหลดค่าตั้งค่า | `Library:SaveConfig` / `LoadConfig` / `AutoloadConfig` | 9 |
 | เปลี่ยนธีม / ฟอนต์ | `Window:SetTheme` / `SetFont` | 10 |
-| แท็บตั้งค่า/ธีมสำเร็จรูป | `Window:CreateDefaultTabs()` | 11 |
+| แท็บตั้งค่า + ธีมสำเร็จรูป | `Window:CreateSettingsTab()` | 11 |
 | ลายน้ำ FPS / รายการคีย์ / ทัวร์สอนใช้ | `Watermark` / `KeybindList` / `Tour` | 13 |
 | โหลดสคริปต์จาก URL | `Window:Load(url)` | 14 |
 | ล็อกแท็บ VIP | `CreateTab({ Locked = true })` | 17 |
@@ -235,15 +234,20 @@ Library.Splash.Duration = 4
 |---|---|---|
 | `Enabled` | `true` | เปิด/ปิดทั้งระบบ (ใช้ได้เฉพาะ `Library.Splash`) |
 | `Title` / `Subtitle` | จาก `Title` ของ `CreateWindow` (ส่วนก่อน/หลัง `\|`) | ข้อความชื่อ / ข้อความรอง |
-| `Duration` | `2.5` | ความยาว วินาที (ขั้นต่ำ `1`) |
+| `Duration` | `4` | ความยาว วินาที (ขั้นต่ำ `1`) ใช้เมื่อปิด `WaitBuild` เท่านั้น (ตัวอย่างด้านบนตั้ง `2.5` เอง) |
 | `Steps` | `Loading`, `Preparing interface`, `Almost ready` | ข้อความสถานะที่ไล่เปลี่ยน (list ของ string) |
 | `Logo` | `Logo` ของ `CreateWindow` | asset id หรือ `"rbxassetid://..."` |
 | `Skippable` | `true` | แตะ/คลิกเพื่อข้าม (ไม่รับการแตะใน 0.8 วินาทีแรก) |
 | `Async` | `false` | `true` = ไม่บล็อก |
+| `WaitBuild` | `true` | หน้าต่างซ่อนไว้และ Splash ค้างจนสคริปต์สร้างแท็บ/control เสร็จ แล้วค่อยเปิดแบบครบ (ตรวจเองเมื่อไม่มี UI ใหม่เกิน `IdleTime`) · `false` = กลับเป็น Splash ตามเวลา `Duration` |
+| `IdleTime` / `BuildTimeout` | `0.8` / `30` | วินาทีที่ไม่มี UI ใหม่ถึงถือว่าสร้างเสร็จ / เวลารอสูงสุดกันค้าง |
+| `Theme` | `"Mono"` | สี Splash เมื่อผู้ใช้ยังไม่เคยเลือกธีม (ขาว/เทา) · ใส่ชื่อธีมเพื่อบังคับ · `false` = ใช้ธีมเริ่มต้นของ UI |
+| `Panel` / `Block` / `Backdrop` | `true` / `false` / `1` | การ์ดไล่สีด้านหลัง / `true` = กันการแตะผ่าน / พื้นหลัง `1` โปร่งใส ถึง `0` ทึบ |
 
 ข้อควรรู้:
 
 - ค่าเริ่มต้น `CreateWindow` จะ **รอ** จน Splash จบ แล้วค่อยคืนหน้าต่าง สคริปต์ถัดไปจึงรันหลัง Splash จบ ถ้าไม่อยากรอใช้ `Async = true`
+- ถ้าตรวจจังหวะ "สร้างเสร็จ" อัตโนมัติไม่แม่น (เช่น สร้าง UI ทีหลังด้วย `task.wait` นานๆ) คุมเองได้ด้วย `Window:HoldLoading()` / `Window:ReleaseLoading()` / `Window:FinishLoading()`
 - ถ้า Splash มี error จะ `warn("[SpectreUI] splash error: ...")` ทิ้งหน้าโหลดแล้วสร้างหน้าต่างตามปกติ ไม่ทำให้ UI ไม่ขึ้น
 - ตัวเลือกใน `Splash = { ... }` มีผลเฉพาะหน้าต่างนั้นและมาก่อนค่ากลาง
 
@@ -753,69 +757,63 @@ Window:SetTextScale(1.15, true)      -- 0.7 .. 1.4 เรียกหลัง�
 | `Section:CreateFontPicker({ Name, Flag, Remember })` | dropdown เลือกฟอนต์ |
 | `Window:SetTextScale(s, remember)` / `GetTextScale()` | ขนาดตัวอักษรทั้งหน้าต่าง |
 
-ฟอนต์/ขนาดตัวอักษรเก็บใน `themes.json` และไม่ถูกรีเซ็ตเมื่อเปลี่ยนธีม · แท็บ THEME มีตัวเลือก Font และ Text size (85/100/115%) ให้ในตัว (ปิดด้วย `CreateThemeTab({ Fonts = false })`)
+ฟอนต์/ขนาดตัวอักษรเก็บใน `themes.json` และไม่ถูกรีเซ็ตเมื่อเปลี่ยนธีม · แท็บ SETTINGS มีตัวเลือก Font และ Text size (85/100/115%) ให้ในตัว (ปิดด้วย `CreateSettingsTab({ Fonts = false })`)
 
 > ฟอนต์ของ Roblox ครอบคลุมเฉพาะตัวอักษรละติน ข้อความภาษาไทยจะใช้ฟอนต์สำรองของระบบเสมอ
 
 ---
 
-## 11. แท็บสำเร็จรูป THEME / SETTINGS
+## 11. แท็บสำเร็จรูป SETTINGS
 
-เรียกท้ายสุดหลังสร้างแท็บของเกมครบ เพื่อให้สองแท็บนี้อยู่ล่างแถบด้านข้าง
+แท็บเดียวที่มีทุกอย่าง: ธีม สีธีมของเราเอง ฟอนต์ เอฟเฟกต์ ปุ่มลัด HUD การแจ้งเตือน Config และ Undo เรียกท้ายสุดหลังสร้างแท็บของเกมครบ เพื่อให้อยู่ล่างแถบด้านข้าง
 
 ```lua
-Window:CreateThemeTab()
 Window:CreateSettingsTab()
 -- หรือ
 Window:CreateDefaultTabs({
-    Theme    = { Text = TEXT_TH },                              -- false = ไม่สร้าง
-    Settings = { Text = TEXT_TH, Sections = { History = false } },
+    Settings = { Text = TEXT_TH, Sections = { History = false } },    -- false = ไม่สร้าง
 })
 ```
 
-### THEME — `Window:CreateThemeTab(cfg)` → `tab, parts`
+> **เปลี่ยนจากเดิม:** แท็บ THEME ถูกรวมเข้ามาใน SETTINGS แล้ว ไม่ต้องเรียก `CreateThemeTab()` แยก และ `CreateDefaultTabs()` จะไม่สร้างแท็บ THEME ให้อีก ถ้ายังอยากได้แท็บแยก ส่ง `Theme = true` (หรือ `Theme = { ... }`) ให้ `CreateDefaultTabs` หรือเรียก `Window:CreateThemeTab(cfg)` เอง (ตัวเลือกเดียวกับตารางด้านล่าง ชื่อและไอคอนเริ่มต้น `"THEME"` / `"lucide:palette"`)
 
-| ส่วน | มีอะไร |
-|---|---|
-| **ธีมสี** (คอลัมน์ 1) | เปลี่ยนธีมสด, เปลี่ยนชื่อ, ทำสำเนา, สุ่ม, ลบ (เฉพาะธีมที่สร้างเอง), ทิป, Font, Text size |
-| **สร้างธีมของตัวเอง** (คอลัมน์ 2) | เลือกสีหลัก/สีรอง + ตั้งชื่อ + ปุ่มสร้างและใช้ทันที |
-| **พื้นหลัง / เอฟเฟกต์** (คอลัมน์ 2) | เอฟเฟกต์ (petals/orbs/embers/rain/grid/ปิด/ตามธีม), คุณภาพ auto/low/high, คีย์ F6 = ธีมถัดไป, F5 = ก่อนหน้า |
+### SETTINGS — `Window:CreateSettingsTab(cfg)` → `tab, parts`
+
+| ส่วน | คอลัมน์ | มีอะไร |
+|---|---|---|
+| **ธีมสี** | 1 | เปลี่ยนธีมสด, เปลี่ยนชื่อ, ทำสำเนา, สุ่ม, ลบ (เฉพาะธีมที่สร้างเอง), ทิป |
+| **Font** | 1 | เลือกฟอนต์ + Text size (85 / 100 / 115%) |
+| **สร้างธีมของตัวเอง** | 1 | เลือกสีหลัก/สีรอง + ตั้งชื่อ + ปุ่มสร้างและใช้ทันที |
+| **พื้นหลัง / เอฟเฟกต์** | 1 | เอฟเฟกต์ (petals/orbs/embers/rain/grid/ปิด/ตามธีม), คุณภาพ auto/low/high, คีย์ F6 = ธีมถัดไป, F5 = ก่อนหน้า |
+| **UI / ปุ่มลัด** | 2 | ปุ่มเปิด/ปิดเมนู (เปลี่ยนแล้วใช้ได้ทันที และตามเมื่อโหลด Config), ปุ่มเปิดค้นหา, คำอธิบายการใช้ |
+| **Interface** | 2 | สวิตช์ FPS / Ping (Watermark), สวิตช์รายการ Keybind, ตำแหน่งแจ้งเตือน, เวลาแจ้งเตือน (1–10 วิ), ปุ่มทดสอบแจ้งเตือน |
+| **Config** | 2 | ชื่อ, รายการ, บันทึก, โหลด, ลบ (ถามยืนยัน), บันทึกเป็น `auto`, คัดลอกไปคลิปบอร์ด, วางนำเข้า |
+| **Undo / Snapshot** | 2 | Undo, Redo, ดูค่าที่ถูกแก้, Snapshot A / กลับไป A, กดค้างเพื่อรีเซ็ตทั้งหมด |
+| **หน้าต่าง** | 1 (ท้ายสุด) | จัดกลางจอ + กระพริบ, ปิด UI ทั้งหมด (Unload, ถามยืนยัน) |
+
+ซ้าย = หน้าตา, ขวา = ระบบ ส่วนที่อันตรายอย่าง Unload อยู่ท้ายสุด · บนจอแคบ/มือถือที่เป็นคอลัมน์เดียว ส่วนต่างๆ เรียงตามลำดับในตารางนี้จากบนลงล่าง
 
 | ตัวเลือก | ค่าเริ่มต้น | ความหมาย |
 |---|---|---|
-| `Name`, `Icon` | `"THEME"`, `"T"` | ชื่อ / ไอคอนแท็บ |
-| `FlagPrefix` | `"ui_"` | คำนำหน้า Flag (`ui_bg_fx`, `ui_quality`, `ui_theme_next`, `ui_theme_prev`) |
+| `Name`, `Icon` | `"SETTINGS"`, `"lucide:settings"` | ชื่อ / ไอคอนแท็บ |
+| `FlagPrefix` | `"ui_"` | คำนำหน้า Flag: `ui_menu_key`, `ui_bg_fx`, `ui_quality`, `ui_theme_next`, `ui_theme_prev`, `ui_watermark`, `ui_keybind_list`, `ui_notify_pos`, `ui_notify_dur` |
+| `Sections` | ทุกส่วนเปิด | `{ Theme = false, Hotkeys = false, Interface = false, Config = false, Window = false, History = false }` ซ่อนทีละส่วน · `Theme = false` ซ่อนทั้งกลุ่มธีม (ธีมสี / Font / สร้างธีม / เอฟเฟกต์) |
 | `Manager` | `{}` | ส่งต่อให้ `CreateThemeManager` เช่น `{ Random = false, Delete = false, Remember = true }` |
 | `Maker` | `true` | `false` = ซ่อนส่วนสร้างธีม |
 | `MakerColors` | ฟ้า/คราม | `{ Accent = Color3, Accent2 = Color3 }` สีเริ่มต้นของตัวเลือกสี |
 | `Effects` | `true` | `false` = ซ่อนส่วนพื้นหลัง/คุณภาพ/คีย์ |
 | `Fonts` | `true` | `false` = ซ่อน Font / Text size |
-| `Keys` | F6 / F5 | `false` = ไม่สร้างคีย์ลัด หรือ `{ Next = Enum.KeyCode.X, Prev = Enum.KeyCode.Z }` |
+| `Keys` | F6 / F5 | `false` = ไม่สร้างคีย์ลัดเปลี่ยนธีม หรือ `{ Next = Enum.KeyCode.X, Prev = Enum.KeyCode.Z }` |
 | `Tip` | ข้อความเริ่มต้น | `false` = ซ่อน หรือใส่ข้อความเอง |
-| `Text` | `{}` | แปลข้อความ (ด้านล่าง) |
-| `Icons` | — | เปลี่ยน/เอาไอคอนออก (หัวข้อ 16) |
-
-`parts`: `Tab`, `Manager`, `ManagerSection`, `Maker` (`Accent`, `Accent2`, `Name`, `Section`), `Background`, `Quality`, `NextKey`, `PrevKey`, `EffectsSection`
-
-### SETTINGS — `Window:CreateSettingsTab(cfg)` → `tab, parts`
-
-| ส่วน | มีอะไร |
-|---|---|
-| **UI / ปุ่มลัด** | ปุ่มเปิด/ปิดเมนู (เปลี่ยนแล้วใช้ได้ทันที และตามเมื่อโหลด Config), ปุ่มเปิดค้นหา, คำอธิบายการใช้ |
-| **Config** | ชื่อ, รายการ, บันทึก, โหลด, ลบ (ถามยืนยัน), บันทึกเป็น `auto`, คัดลอกไปคลิปบอร์ด, วางนำเข้า |
-| **หน้าต่าง** | จัดกลางจอ + กระพริบ, ปิด UI ทั้งหมด (Unload, ถามยืนยัน) |
-| **Undo / Snapshot** | Undo, Redo, ดูค่าที่ถูกแก้, Snapshot A / กลับไป A, กดค้างเพื่อรีเซ็ตทั้งหมด |
-
-| ตัวเลือก | ค่าเริ่มต้น | ความหมาย |
-|---|---|---|
-| `Name`, `Icon` | `"SETTINGS"`, `"S"` | ชื่อ / ไอคอนแท็บ |
-| `FlagPrefix` | `"ui_"` | Flag ปุ่มเมนูคือ `ui_menu_key` |
-| `Sections` | ทุกส่วนเปิด | `{ Hotkeys = false, Config = false, Window = false, History = false }` ซ่อนทีละส่วน |
+| `Columns` | `{ Maker = 1, Fx = 1 }` | คอลัมน์ (`1` / `2`) ของส่วนสร้างธีม และส่วนเอฟเฟกต์ |
 | `DefaultConfig` | `"default"` | ชื่อเริ่มต้นในช่องชื่อ Config |
 | `AutoName` | `"auto"` | ชื่อไฟล์ของปุ่ม "บันทึกเป็น auto" |
-| `Text` / `Icons` | `{}` | แปลข้อความ / เปลี่ยนไอคอน |
+| `WatermarkText` | `"SpectreWare"` | ข้อความหน้าสุดของ Watermark ที่สวิตช์ FPS / Ping เปิด |
+| `Text` / `Icons` | `{}` | แปลข้อความ / เปลี่ยนไอคอน (หัวข้อ 16) |
 
-`parts`: `Tab`, `MenuKey`, `UISection`, `ConfigName`, `ConfigList`, `ConfigSection`, `WindowSection`, `HistorySection`
+`parts`: `Tab`, `Manager` (= `ThemePicker`), `ManagerSection` (= `ThemeSection`), `Font`, `FontSection`, `TextSize`, `Maker` (`Accent`, `Accent2`, `Name`, `Section`), `Background`, `Quality`, `NextKey`, `PrevKey`, `EffectsSection`, `MenuKey`, `UISection`, `WatermarkToggle`, `KeybindListToggle`, `NotifyPosition`, `NotifyDuration`, `InterfaceSection`, `ConfigName`, `ConfigList`, `ConfigSection`, `HistorySection`, `WindowSection`
+
+> สวิตช์ FPS / Ping และรายการ Keybind สร้าง HUD ตอนเปิดครั้งแรก ถ้าอยากตั้งค่า Watermark เองละเอียดกว่านี้ (เลือก Fields, ตำแหน่ง) ใช้ `Window:Watermark({ ... })` ตามหัวข้อ 13 แทน แล้วซ่อนส่วนนี้ด้วย `Sections = { Interface = false }`
 
 ### เพิ่มของเราเองลงในแท็บสำเร็จรูป
 
@@ -827,19 +825,20 @@ mine:CreateToggle({ Name = "โหมดพิเศษ", Flag = "my_mode" })
 
 ### แปลข้อความ (`Text`)
 
-ใส่เฉพาะคีย์ที่อยากเปลี่ยน คีย์ที่ไม่ใส่ใช้ภาษาอังกฤษเริ่มต้น ใช้ได้ทั้ง `CreateThemeTab`, `CreateSettingsTab`, `CreateDefaultTabs`
+ใส่เฉพาะคีย์ที่อยากเปลี่ยน คีย์ที่ไม่ใส่ใช้ภาษาอังกฤษเริ่มต้น ใช้ได้ทั้ง `CreateSettingsTab`, `CreateDefaultTabs` (และ `CreateThemeTab` ถ้าเรียกแยก)
 
-**THEME:** `ThemeSection` `Theme` `RenameLabel` `RenameButton` `DuplicateButton` `RandomButton` `DeleteButton` `TipTitle` `Tip` `MakerSection` `Accent` `Accent2` `NewName` `NewNameDefault` `NewNamePlaceholder` `CreateButton` `ThemeNotifyTitle` `Created` `FxSection` `FxName` `FxAuto` `FxOff` `Quality` `QualityTip` `NextTheme` `PrevTheme`
+**ธีม / Font / เอฟเฟกต์:** `ThemeSection` `Theme` `RenameLabel` `RenameButton` `DuplicateButton` `RandomButton` `DeleteButton` `TipTitle` `Tip` `FontSection` `Font` `TextSize` `MakerSection` `Accent` `Accent2` `NewName` `NewNameDefault` `NewNamePlaceholder` `CreateButton` `ThemeNotifyTitle` `Created` `FxSection` `FxName` `FxAuto` `FxOff` `Quality` `QualityTip` `NextTheme` `PrevTheme`
 
-**SETTINGS:** `UISection` `MenuKey` `Palette` `HowTitle` `HowText` `ConfigTitle` `ConfigName` `ConfigList` `Save` `Saved` `Load` `Loaded` `Delete` `Cancel` `PickFirst` `DeleteTitle` `CannotUndo` `Deleted` `SaveAuto` `SavedAuto` `Copy` `Copied` `NoClipboard` `Import` `ImportTitle` `Applied` `WindowSection` `Center` `Unload` `UnloadTitle` `UnloadText` `Yes` `HistorySection` `Undo` `Redo` `NothingUndo` `NothingRedo` `Modified` `ChangedCount` `AllDefault` `Snapshot` `SnapSaved` `Restore` `Restored` `ResetAll` `ResetDone`
+**ส่วนอื่นของ SETTINGS:** `UISection` `MenuKey` `Palette` `HowTitle` `HowText` `InterfaceSection` `Watermark` `KeybindList` `NotifyPosition` `NotifyDuration` `TestNotify` `TestTitle` `TestText` `ConfigTitle` `ConfigName` `ConfigList` `Save` `Saved` `Load` `Loaded` `Delete` `Cancel` `PickFirst` `DeleteTitle` `CannotUndo` `Deleted` `SaveAuto` `SavedAuto` `Copy` `Copied` `NoClipboard` `Import` `ImportTitle` `Applied` `WindowSection` `Center` `Unload` `UnloadTitle` `UnloadText` `Yes` `HistorySection` `Undo` `Redo` `NothingUndo` `NothingRedo` `Modified` `ChangedCount` `AllDefault` `Snapshot` `SnapSaved` `Restore` `Restored` `ResetAll` `ResetDone`
 
 ```lua
 local TEXT_TH = {
     ThemeSection = "ธีมสี", RandomButton = "สุ่ม", DeleteButton = "ลบ", CreateButton = "สร้างและใช้ทันที",
-    UISection = "UI / ปุ่มลัด", Save = "บันทึก", Load = "โหลด", Delete = "ลบ",
+    UISection = "UI / ปุ่มลัด", InterfaceSection = "หน้าจอ", Watermark = "แสดง FPS / Ping",
+    NotifyPosition = "ตำแหน่งแจ้งเตือน", TestNotify = "ทดสอบแจ้งเตือน",
+    Save = "บันทึก", Load = "โหลด", Delete = "ลบ",
     Cancel = "ยกเลิก", Yes = "ตกลง", Copy = "คัดลอก Config", Import = "วางนำเข้า",
 }
-Window:CreateThemeTab({ Text = TEXT_TH })
 Window:CreateSettingsTab({ Text = TEXT_TH })
 ```
 
@@ -940,7 +939,7 @@ Window:Tour({
 
 แต่ละขั้นสลับแท็บ เลื่อนไปที่ control กระพริบไฮไลต์ พร้อมการ์ดบอกขั้น (`1/4`) · แตะการ์ด = ถัดไป, กด X = หยุด
 
-| step | ความหมย |
+| step | ความหมาย |
 |---|---|
 | `Target` | `Flag` / ชื่อ control / ตัว control |
 | `Tab` | ชื่อแท็บที่จะสลับไป |
@@ -1061,11 +1060,10 @@ Window:Notify({ Title = "สวัสดี", Icon = "lucide:bell" })
 เปลี่ยน/เอาไอคอนออกในแท็บสำเร็จรูปด้วย `Icons = { ... }` (ใส่ `false` = ไม่มีไอคอน):
 
 ```lua
-Window:CreateSettingsTab({ Icons = { Theme = "solar:palette-bold", Save = "lucide:download", Delete = false } })
+Window:CreateSettingsTab({ Icons = { ThemeSection = "solar:palette-bold", Save = "lucide:download", Delete = false } })
 ```
 
-คีย์ SETTINGS: `ThemeSection UISection ConfigSection WindowSection HistorySection RandomButton Palette Save Load Delete SaveAuto Copy Import Center Unload Undo Redo Modified Snapshot Restore`
-คีย์ THEME: `ThemeSection MakerSection FxSection CreateButton`
+คีย์ใน SETTINGS: `ThemeSection FontSection MakerSection FxSection CreateButton UISection InterfaceSection ConfigSection HistorySection WindowSection Palette TestNotify Save Load Delete SaveAuto Copy Import Undo Redo Modified Snapshot Restore Center Unload`
 
 ---
 
@@ -1101,7 +1099,7 @@ Window:CreateSettingsTab({ Icons = { Theme = "solar:palette-bold", Save = "lucid
 | `FX` | `"petals"`/`"orbs"`/`"grid"`/`"embers"`/`"rain"` |
 | `Background = false` | ปิดพื้นหลัง |
 | `Resizable = false` | ห้ามปรับขนาด |
-| `OpenSnap = true` | ปุ่มลอก "เปิด" ไหลไปชิดขอบจอหลังปล่อย (ค่าเริ่มต้นอยู่ที่ที่วาง) |
+| `OpenSnap = true` | ปุ่มลอย "เปิด" ไหลไปชิดขอบจอหลังปล่อย (ค่าเริ่มต้นอยู่ที่ที่วาง) |
 | `Splash` | หน้าโหลด (หัวข้อ 5.2) |
 | `StagedLoad` | โหลดเป็นขั้น (หัวข้อ 5.1) |
 | `AutoCheck` | ตรวจ UI อัตโนมัติ (หัวข้อ 15) |
@@ -1129,7 +1127,7 @@ Window:CreateSettingsTab({ Icons = { Theme = "solar:palette-bold", Save = "lucid
 | `OnResize(fn)` | ดักตอนปรับขนาด |
 | `CloseDropdowns()` | ปิด dropdown ที่เปิดอยู่ |
 | `Destroy()` | ทำลายหน้าต่างนี้ |
-| `CreateThemeTab` / `CreateSettingsTab` / `CreateDefaultTabs` | แท็บสำเร็จรูป (หัวข้อ 11) |
+| `CreateSettingsTab` / `CreateDefaultTabs` (+ `CreateThemeTab` ถ้าอยากได้แท็บธีมแยก) | แท็บสำเร็จรูป (หัวข้อ 11) |
 
 ### Tab / Section
 
@@ -1166,7 +1164,7 @@ Window:CreateSettingsTab({ Icons = { Theme = "solar:palette-bold", Save = "lucid
 ถ้าใส่ `Theme = "..."` ใน `CreateWindow` จะบังคับธีมนั้นทุกครั้ง ลบออกเพื่อให้ธีมที่ผู้ใช้เลือกโหลดกลับเอง
 
 **มือถือกระตุก / เครื่องช้า**
-ตั้ง `Library.Perf.LowPower = true` หรือให้ผู้ใช้เลือกคุณภาพ `low` ในแท็บ THEME
+ตั้ง `Library.Perf.LowPower = true` หรือให้ผู้ใช้เลือกคุณภาพ `low` ในแท็บ SETTINGS (ส่วน พื้นหลัง / เอฟเฟกต์)
 
 **กด "คัดลอก Config" แล้วไม่ได้**
 executor ไม่รองรับคลิปบอร์ด ใช้การบันทึกเป็นไฟล์ Config แทน
@@ -1198,6 +1196,14 @@ print(Library.Splash, Library.StagedLoad, Library.CreateListBox == nil)
 ## 19. บันทึกการเปลี่ยนแปลง
 
 > หมายเหตุ: ตัวเลข `Library.Version` ในโค้ดตอนนี้ยังพิมพ์ `3.14.0` (ยังไม่ได้อัปเดต) เลขเวอร์ชันด้านล่างอ้างอิงตามหัวข้อฟีเจอร์ในไฟล์
+
+### ล่าสุด (ยังไม่ระบุเลขเวอร์ชัน)
+
+- **รวมแท็บ THEME เข้า SETTINGS:** `Window:CreateSettingsTab()` มีธีมสี / Font / สร้างธีม / เอฟเฟกต์ครบ ไม่ต้องเรียก `CreateThemeTab()` แยก (`CreateDefaultTabs` ไม่สร้างแท็บ THEME ให้แล้ว ใช้ `Theme = true` ถ้าต้องการ)
+- เพิ่มส่วน **Interface** ใน SETTINGS: สวิตช์ FPS / Ping, สวิตช์รายการ Keybind, ตำแหน่ง/เวลาแจ้งเตือน, ปุ่มทดสอบ · ตัวเลือกใหม่ `Sections.Interface`, `WatermarkText`, `Columns`
+- จัดเลย์เอาต์ใหม่: ซ้าย = หน้าตา, ขวา = ระบบ, ส่วน Window (Unload) ไว้ท้ายสุด
+- Dropdown ธีมเดิมของ SETTINGS (Flag `ui_settings_theme`) ถูกแทนด้วยตัวจัดการธีมเต็มรูปแบบ Config เก่าที่เก็บค่านี้จะข้ามไป · `parts.ThemePicker` / `parts.ThemeSection` ยังใช้ได้
+- **แก้คู่มือให้ตรงกับโค้ด:** ไอคอนเริ่มต้นของแท็บ (`lucide:settings` / `lucide:palette`), คีย์ `Icons` ใช้ `ThemeSection` ไม่ใช่ `Theme`, ค่าเริ่มต้น `Splash.Duration` เป็น `4` และเพิ่มตัวเลือก `WaitBuild` / `IdleTime` / `BuildTimeout` / `Theme` / `Panel` / `Block` / `Backdrop` กับ `HoldLoading` / `ReleaseLoading` / `FinishLoading`, แก้คำพิมพ์ผิด
 
 ### v3.17
 
