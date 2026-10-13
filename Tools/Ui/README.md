@@ -1,4 +1,4 @@
-# SpectreUI v3.17 — คู่มือใช้งาน
+# SpectreUI v3.17 beta — คู่มือใช้งาน
 
 SpectreUI คือไลบรารี UI สำหรับสคริปต์ Roblox (Lua) มีหน้าต่าง แท็บ ตัวควบคุมครบ (สวิตช์ สไลเดอร์ ดรอปดาวน์ คีย์บายด์ ตาราง ฯลฯ) ระบบธีม ระบบ Config และ Command Palette (`Ctrl+K`) ในตัว
 
@@ -1075,7 +1075,7 @@ Window:CreateSettingsTab({ Icons = { ThemeSection = "solar:palette-bold", Save =
 |---|---|
 | `Library:CreateWindow(cfg)` | สร้างหน้าต่าง |
 | `Library:Unload()` | ทำลายทุกหน้าต่าง ล้าง Flags และ Hotkey |
-| `Library.Flags` / `Library.Version` | ตาราง Flag / เวอร์ชัน |
+| `Library.Flags` / `Library.Version` / `Library.Stage` | ตาราง Flag / เวอร์ชัน / สถานะ (`"beta"`) |
 | `Library.Splash` / `Library.StagedLoad` | ค่ากลางของหน้าโหลด / โหลดเป็นขั้น (หัวข้อ 5) |
 | `Library:SetQuality("low"\|"high"\|"auto")` | ทางลัดของ `Perf.LowPower` |
 | `Library.Perf` | `LowPower`, `Adaptive`, `SlowFrame`, `SlowShare`, `Warmup`, `Backdrop` |
@@ -1195,7 +1195,7 @@ print(Library.Splash, Library.StagedLoad, Library.CreateListBox == nil)
 
 ## 19. บันทึกการเปลี่ยนแปลง
 
-> หมายเหตุ: ตัวเลข `Library.Version` ในโค้ดตอนนี้ยังพิมพ์ `3.14.0` (ยังไม่ได้อัปเดต) เลขเวอร์ชันด้านล่างอ้างอิงตามหัวข้อฟีเจอร์ในไฟล์
+> สถานะตอนนี้คือ **beta**: `Library.Version = "3.17"` และ `Library.Stage = "beta"` (หน้า Splash แสดงเป็น `v3.17 beta`) ตอนปล่อยเวอร์ชันเสถียรให้ตั้ง `Library.Stage = nil` ในโค้ด
 
 ### ล่าสุด (ยังไม่ระบุเลขเวอร์ชัน)
 
@@ -1203,6 +1203,7 @@ print(Library.Splash, Library.StagedLoad, Library.CreateListBox == nil)
 - เพิ่มส่วน **Interface** ใน SETTINGS: สวิตช์ FPS / Ping, สวิตช์รายการ Keybind, ตำแหน่ง/เวลาแจ้งเตือน, ปุ่มทดสอบ · ตัวเลือกใหม่ `Sections.Interface`, `WatermarkText`, `Columns`
 - จัดเลย์เอาต์ใหม่: ซ้าย = หน้าตา, ขวา = ระบบ, ส่วน Window (Unload) ไว้ท้ายสุด
 - Dropdown ธีมเดิมของ SETTINGS (Flag `ui_settings_theme`) ถูกแทนด้วยตัวจัดการธีมเต็มรูปแบบ Config เก่าที่เก็บค่านี้จะข้ามไป · `parts.ThemePicker` / `parts.ThemeSection` ยังใช้ได้
+- **ติดป้าย beta:** `Library.Stage = "beta"`, `Library.Version` ปรับเป็น `3.17` ให้ตรงกับคู่มือ (เดิมพิมพ์ `3.14.0`) หน้า Splash แสดง `v3.17 beta`
 - **แก้คู่มือให้ตรงกับโค้ด:** ไอคอนเริ่มต้นของแท็บ (`lucide:settings` / `lucide:palette`), คีย์ `Icons` ใช้ `ThemeSection` ไม่ใช่ `Theme`, ค่าเริ่มต้น `Splash.Duration` เป็น `4` และเพิ่มตัวเลือก `WaitBuild` / `IdleTime` / `BuildTimeout` / `Theme` / `Panel` / `Block` / `Backdrop` กับ `HoldLoading` / `ReleaseLoading` / `FinishLoading`, แก้คำพิมพ์ผิด
 
 ### v3.17

@@ -187,9 +187,9 @@
     - Section / Button:  Tab:CreateSection({ Name = "ESP", Icon = "lucide:eye" })   Section:CreateButton({ Name = "Save", Icon = "lucide:save" })
       (a section with an Icon shows it instead of the accent dot; the button icon sits on the left)
     - Ready-made tabs have icons on every section + button. Change or remove any of them:
-        Window:CreateSettingsTab({ Icons = { Theme = "solar:palette-bold", Save = "lucide:download", Delete = false } })
-        keys: ThemeSection UISection ConfigSection WindowSection HistorySection RandomButton Palette Save Load Delete SaveAuto Copy Import Center Unload Undo Redo Modified Snapshot Restore
-        theme tab keys: ThemeSection FontSection MakerSection FxSection CreateButton
+        Window:CreateSettingsTab({ Icons = { ThemeSection = "solar:palette-bold", Save = "lucide:download", Delete = false } })
+        keys: ThemeSection FontSection MakerSection FxSection CreateButton UISection InterfaceSection ConfigSection HistorySection WindowSection
+              Palette TestNotify Save Load Delete SaveAuto Copy Import Undo Redo Modified Snapshot Restore Center Unload
     - Built-in glyphs still work: "check" "cross" "spinner" "!" "i" "M" ...
 
     Load API (v3.9)
@@ -1195,7 +1195,7 @@ local function makeDraggable(gui, handle, target, state)
 				stopFollow() -- destroyed, or something else (Center / _Fit) moved it: let go
 				return
 			end
-			shown = shown:Lerp(state.Center, 1 - math.exp(-dt * 24))
+			shown = shown:Lerp(state.Center, 1 - math.exp(-dt * (state.FollowRate or 24)))   -- higher = tighter, lower = floatier
 			if (shown - state.Center).Magnitude < 0.25 then
 				shown = state.Center
 				if not state.Dragging then stopFollow() end
@@ -1260,10 +1260,13 @@ local function makeDraggable(gui, handle, target, state)
 			if not state.Moved then
 				if d.Magnitude <= thr then return end
 				state.Moved = true
-				-- start counting from the moment the drag really begins, so the element does not
-				-- jump by `thr` pixels on the first move
-				startPt = v2(m.Position)
-				d = Vector2.zero
+				if not state.CatchUp then
+					-- start counting from the moment the drag really begins, so the element does not
+					-- jump by `thr` pixels on the first move
+					startPt = v2(m.Position)
+					d = Vector2.zero
+				end
+				-- CatchUp: keep the full offset; the eased follow glides the last `thr` pixels instead of leaving the element behind the pointer
 			end
 			local c = clampCenter(vpSize, halfSize, startC + d)
 			if state.Clamp then c = state.Clamp(c, vpSize) end -- extra live limits (e.g. keep clear of the Roblox menu)
@@ -2478,12 +2481,13 @@ function Library:CreateWindow(cfg)
 		wake(true)
 	end
 	ob.MouseEnter:Connect(function()
-		if usingTouch() then return end
+		if usingTouch() or win._openDrag.Dragging then return end
 		hoverOpen = true
 		awake()
 		showTip(true)
 	end)
 	ob.MouseLeave:Connect(function()
+		if win._openDrag.Dragging then return end
 		hoverOpen = false
 		showTip(false)
 		scheduleIdle()
@@ -2514,7 +2518,12 @@ function Library:CreateWindow(cfg)
 	end
 
 	win._openDrag.Threshold = touchUI and 10 or 6
-	win._openDrag.Direct = true -- follow the pointer 1:1 (the eased follow made the small button feel laggy / floaty)
+	-- Drag feel (fixed, same on touch and mouse): Position is applied every rendered frame (RenderStepped) and eased toward the
+	-- pointer with a fast rate, so uneven input timing never shows as hopping. CatchUp = the button does not "stick" for the first
+	-- few pixels of a drag: it glides under the finger / cursor as soon as the tap threshold is passed.
+	win._openDrag.Smooth = true
+	win._openDrag.FollowRate = 50
+	win._openDrag.CatchUp = true
 	win._openDrag.Half = BS / 2
 	-- on phones keep the button off the Roblox menu / chat icons (top-left) while dragging, so it never has to be
 	-- pulled back after release
@@ -9487,7 +9496,7 @@ function Window:CreateSettingsTab(cfg)
 		tcfg._tab, tcfg._parts = tab, parts
 		tcfg.Columns = cfg.Columns or { Maker = 1, Fx = 1 }   -- left = look (theme / font / maker / effects), right = system
 		win:CreateThemeTab(tcfg)
-		parts.ThemePicker = parts.Manager
+		parts.ThemePicker, parts.ThemeSection = parts.Manager, parts.ManagerSection   -- old names kept
 	end
 
 	-- menu key / palette
@@ -12170,7 +12179,8 @@ else
 	end
 end
 
-Library.Version = "3.14.0"
+Library.Version = "3.17"   -- keep in step with the README
+Library.Stage = "beta"      -- shown next to the version on the splash; set to nil / "" for a stable release
 end
 
 ------------------------------------------------------------ Splash / launch screen (v3.16)
@@ -12327,7 +12337,7 @@ do
 			ColorSequenceKeypoint.new(1, acc2) }), Parent = fill })
 
 		local ver = lb({ AnchorPoint = V2(0.5, 1), Position = U2(0.5, 0, 1, -18), Size = U2(0, 200, 0, 16), TextSize = 12, TextColor3 = subc,
-			TextTransparency = 0.6, Text = "v" .. tostring(Library.Version), Parent = bg })
+			TextTransparency = 0.6, Text = "v" .. tostring(Library.Version) .. ((type(Library.Stage) == "string" and Library.Stage ~= "") and (" " .. Library.Stage) or ""), Parent = bg })
 
 		-- state
 		local t, shown, fin, skip, done = 0, 0, false, false, false
