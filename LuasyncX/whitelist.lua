@@ -570,31 +570,190 @@ local function safeGetTimeout(url, timeout, headers)
     return done and result or false, done and body or "timeout"
 end
 
--- ── Notification library (async) ─────────────────────────────────────────────
--- Integrity-checked against a hardcoded DJB2 hash of the pinned notiflib
--- source (mirrors the scriptHash/DJB2 check used later for the main script).
--- IMPORTANT: whenever CFG.notifLibUrl's content is intentionally changed,
--- this constant must be recomputed and updated, or every load will be
--- refused with a hash-mismatch warning.
-local EXPECTED_NOTIFLIB_HASH = "F9EF2AAC" -- DJB2 of current Tools/notiflib.lua content (GitHub) — refreshed 2026-09-24
+-- ── Notification library (built-in · compact) ────────────────────────────────
+-- ไม่ดึง notiflib จากภายนอกแล้ว (ไม่ต้องเช็ค hash) — สร้างการ์ดแจ้งเตือนในตัวเลย
+-- API เดิม: NotificationLibrary:SendNotification(kind, msg, duration)
+--   kind = "Info" | "Success" | "Warning" | "Error"
+--   msg  = ข้อความ; ถ้ามีหลายบรรทัด บรรทัดแรกจะเป็นหัวข้อ ที่เหลือเป็นเนื้อหา
+-- การ์ดเล็กกะทัดรัด มุมขวาบน · สไลด์เข้า · แถบเวลาบาง ๆ ด้านล่าง · แตะเพื่อปิด
+do
+    local built, lib = pcall(function()
+        local TS      = game:GetService("TweenService")
+        local Players = game:GetService("Players")
+        local cr      = cloneref or function(x) return x end
 
-task.spawn(function()
-    local _nlOk, _nlSrc = safeGet(CFG.notifLibUrl)
-    if not _nlOk or not _nlSrc or _nlSrc == "" then
-        warn("LuaSyncX: notiflib fetch failed"); return
+        local W = 264
+        local KIND = {
+            info    = { label = "INFO",    color = Color3.fromRGB(88, 160, 255), glyph = "i" },
+            success = { label = "SUCCESS", color = Color3.fromRGB(72, 210, 120), icon = "rbxassetid://10709790644" },
+            warning = { label = "WARNING", color = Color3.fromRGB(255, 184, 64), glyph = "!" },
+            error   = { label = "ERROR",   color = Color3.fromRGB(240, 84, 84),  icon = "rbxassetid://10747384394" },
+        }
+        local SUB = Color3.fromRGB(190, 190, 208)
+
+        local function mk(cls, props, parent)
+            local i = Instance.new(cls)
+            for k, v in pairs(props) do pcall(function() i[k] = v end) end
+            i.Parent = parent
+            return i
+        end
+
+        local gui = mk("ScreenGui", {
+            Name = "SW_NotifGui", ResetOnSpawn = false, IgnoreGuiInset = true,
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 999,
+        })
+        local holder = mk("Frame", {
+            Name = "Holder", AnchorPoint = Vector2.new(1, 0),
+            Position = UDim2.new(1, -12, 0, 48), Size = UDim2.new(0, W, 1, -60),
+            BackgroundTransparency = 1,
+        }, gui)
+        mk("UIListLayout", {
+            SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6),
+            HorizontalAlignment = Enum.HorizontalAlignment.Right,
+            VerticalAlignment = Enum.VerticalAlignment.Top,
+        }, holder)
+
+        local function attach()
+            pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
+            local parents = {}
+            local okH, hui = pcall(function() return gethui and gethui() end)
+            if okH and typeof(hui) == "Instance" then parents[#parents + 1] = hui end
+            local okC, cg = pcall(function() return cr(game:GetService("CoreGui")) end)
+            if okC and cg then parents[#parents + 1] = cg end
+            local lp = Players.LocalPlayer
+            local pg = lp and lp:FindFirstChildOfClass("PlayerGui")
+            if pg then parents[#parents + 1] = pg end
+            for _, par in ipairs(parents) do
+                local ok = pcall(function() gui.Parent = par end)
+                if ok and gui.Parent ~= nil then return true end
+            end
+            return false
+        end
+        if not attach() then error("no valid GUI parent") end
+
+        local active, order = {}, 0
+
+        local function dismiss(w)
+            if w.gone then return end
+            w.gone = true
+            for i, v in ipairs(active) do
+                if v == w then table.remove(active, i) break end
+            end
+            pcall(function()
+                TS:Create(w.card, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.In),
+                    { Position = UDim2.new(1, 24, 0, 0) }):Play()
+            end)
+            task.delay(0.26, function() pcall(function() w.wrap:Destroy() end) end)
+        end
+
+        local self_ = {}
+        function self_:SendNotification(kind, msg, dur)
+            local k = KIND[string.lower(tostring(kind or "info"))] or KIND.info
+            dur = tonumber(dur) or 4
+            msg = tostring(msg or "")
+
+            local title, body = k.label, msg
+            local first, rest = msg:match("^([^\n]*)\n(.*)$")
+            if first and first ~= "" then title, body = first, rest end
+            body = body:gsub("^%s+", ""):gsub("%s+$", "")
+
+            if not gui.Parent then attach() end
+            order = order + 1
+
+            local wrap = mk("Frame", {
+                Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+                BackgroundTransparency = 1, LayoutOrder = order,
+            }, holder)
+
+            local card = mk("Frame", {
+                Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+                Position = UDim2.new(1, 24, 0, 0),
+                BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
+            }, wrap)
+            mk("UICorner", { CornerRadius = UDim.new(0, 10) }, card)
+            mk("UISizeConstraint", { MinSize = Vector2.new(0, 42) }, card)
+            mk("UIGradient", {
+                Color = ColorSequence.new(Color3.fromRGB(24, 24, 33), Color3.fromRGB(13, 13, 18)),
+                Rotation = 90,
+            }, card)
+            mk("UIStroke", {
+                Color = k.color, Thickness = 1, Transparency = 0.6,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            }, card)
+
+            -- ไอคอนวงกลม
+            local badge = mk("Frame", {
+                Position = UDim2.fromOffset(11, 10), Size = UDim2.fromOffset(24, 24),
+                BackgroundColor3 = k.color, BackgroundTransparency = 0.8, BorderSizePixel = 0,
+            }, card)
+            mk("UICorner", { CornerRadius = UDim.new(1, 0) }, badge)
+            if k.icon then
+                mk("ImageLabel", {
+                    AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+                    Size = UDim2.fromOffset(14, 14), BackgroundTransparency = 1,
+                    Image = k.icon, ImageColor3 = k.color, ScaleType = Enum.ScaleType.Fit,
+                }, badge)
+            else
+                mk("TextLabel", {
+                    Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+                    Font = Enum.Font.GothamBlack, Text = k.glyph, TextSize = 14, TextColor3 = k.color,
+                }, badge)
+            end
+
+            -- ข้อความ
+            local content = mk("Frame", {
+                Position = UDim2.fromOffset(44, 0), Size = UDim2.new(1, -54, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
+            }, card)
+            mk("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2) }, content)
+            mk("UIPadding", { PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 12) }, content)
+            mk("TextLabel", {
+                LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
+                Font = Enum.Font.GothamBold, Text = title, TextSize = 12, TextColor3 = k.color,
+                TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+            }, content)
+            if body ~= "" then
+                mk("TextLabel", {
+                    LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+                    BackgroundTransparency = 1, Font = Enum.Font.Gotham, Text = body, TextSize = 12,
+                    TextColor3 = SUB, TextWrapped = true,
+                    TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
+                }, content)
+            end
+
+            -- แถบเวลาบาง ๆ ด้านล่าง
+            local bar = mk("Frame", {
+                AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 11, 1, -4),
+                Size = UDim2.new(1, -22, 0, 2), BackgroundColor3 = k.color,
+                BackgroundTransparency = 0.25, BorderSizePixel = 0,
+            }, card)
+            mk("UICorner", { CornerRadius = UDim.new(1, 0) }, bar)
+
+            local w = { wrap = wrap, card = card, gone = false }
+            active[#active + 1] = w
+            while #active > 4 do dismiss(active[1]) end
+
+            TS:Create(card, TweenInfo.new(0.32, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                { Position = UDim2.new(0, 0, 0, 0) }):Play()
+            TS:Create(bar, TweenInfo.new(dur, Enum.EasingStyle.Linear),
+                { Size = UDim2.new(0, 0, 0, 2) }):Play()
+
+            card.InputBegan:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseButton1
+                    or i.UserInputType == Enum.UserInputType.Touch then
+                    dismiss(w)
+                end
+            end)
+            task.delay(dur, function() dismiss(w) end)
+        end
+        return self_
+    end)
+    if built and lib then
+        NotificationLibrary = lib
+    else
+        warn("LuaSyncX: notification UI unavailable — " .. tostring(lib))
     end
-    local _nlHash = _djb2(_nlSrc)
-    if _nlHash ~= EXPECTED_NOTIFLIB_HASH then
-        warn(("LuaSyncX: notiflib hash mismatch — refusing to run untrusted code (expected %s, got %s)")
-            :format(EXPECTED_NOTIFLIB_HASH, _nlHash))
-        return
-    end
-    local _fn, _cerr = _native_loadstring(_nlSrc)
-    if not _fn then warn("LuaSyncX: notiflib compile error — " .. tostring(_cerr)); return end
-    local _runOk, _lib = _r_pcall(_fn)
-    NotificationLibrary = _runOk and _lib or nil
-    if not NotificationLibrary then warn("LuaSyncX: notiflib load failed") end
-end)
+end
 
 -- ── HWID ─────────────────────────────────────────────────────────────────────
 local _hwidSeedCache
