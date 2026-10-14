@@ -834,8 +834,8 @@ end
 local function _notifyWL(timeLeft, tier)
     local isPerm = timeLeft == "Permanent" or timeLeft == "∞  Developer" or timeLeft == "∞  Free"
     local msg = "LuaSyncX  ·  " .. (tier or "") .. "  —  " ..
-                (isPerm and "Whitelist ของคุณ: ตลอดกาล ∞"
-                         or "Whitelist ของคุณเหลือ: " .. timeLeft)
+                (isPerm and "Whitelist active · Lifetime ∞"
+                         or "Whitelist active · " .. timeLeft .. " left")
     local waited = 0
     while not NotificationLibrary and waited < 50 do
         task.wait(0.1); waited = waited + 1
@@ -849,9 +849,9 @@ local function _notifyHWID(reason)
     reason = reason or "mismatch"
     local msg
     if reason == "drift" then
-        msg = "HWID Drift Detected\nLuaSyncX  —  HWID เปลี่ยนระหว่าง session\nติดต่อ Discord เพื่อรีเซ็ต HWID"
+        msg = "HWID Drift Detected\nYour HWID changed during this session.\nContact us on Discord to reset it."
     else
-        msg = "HWID Mismatch\nLuaSyncX  —  Key นี้ผูกกับอุปกรณ์อื่น\nติดต่อ Discord เพื่อรีเซ็ต HWID"
+        msg = "HWID Mismatch\nThis key is linked to another device.\nContact us on Discord to reset your HWID."
     end
     local waited = 0
     while not NotificationLibrary and waited < 50 do
@@ -1308,7 +1308,7 @@ local function _showHWIDResetUI(currentHwid, kickDelay, onOk)
                                 pcall(function()
                                     game:GetService("StarterGui"):SetCore("SendNotification", {
                                         Title = "LuaSyncX",
-                                        Text = _hasRetry and "HWID reset สำเร็จ — กำลังเข้าสู่ระบบอีกครั้ง..." or "HWID reset สำเร็จ — กรุณารีจอยเซิร์ฟเวอร์",
+                                        Text = _hasRetry and "HWID reset successful — signing in again..." or "HWID reset successful — please rejoin the server",
                                         Duration = 6,
                                     })
                                 end)
@@ -1338,7 +1338,7 @@ end
 local _Maint = {}
 do
     local POLL_EVERY   = 15   -- วินาที (รวมกับ rateLimit 60/นาทีของ /api/status แล้วยังเหลือเยอะ)
-    local DEFAULT_TEXT = "กำลังปรับปรุงระบบ กรุณารอสักครู่แล้วลองใหม่อีกครั้ง"
+    local DEFAULT_TEXT = "The system is being updated. Please try again shortly."
     local _curReopen
 
     local function _fmtElapsed(s)
@@ -1400,7 +1400,7 @@ do
                 metaRow.Visible = false
                 pcall(function()
                     game:GetService("StarterGui"):SetCore("SendNotification", {
-                        Title = "LuaSyncX", Text = "สคริปต์เปิดใช้งานแล้ว — กรุณารันสคริปต์ใหม่", Duration = 6,
+                        Title = "LuaSyncX", Text = "Script is back online — please run it again", Duration = 6,
                     })
                 end)
                 task.delay(6, function() ctx.close() end)
@@ -1439,7 +1439,7 @@ do
             -- fallback: อย่างน้อยให้เห็นข้อความแจ้งเตือน
             if NotificationLibrary then
                 pcall(function()
-                    NotificationLibrary:SendNotification("Warning", "สคริปต์ปิดปรับปรุงชั่วคราว — " .. _reasonText(info.reason), 10)
+                    NotificationLibrary:SendNotification("Warning", "Script under maintenance — " .. _reasonText(info.reason), 10)
                 end)
             end
         end
@@ -1449,7 +1449,7 @@ do
         local shown = _curReopen and _curReopen()
         if not shown and NotificationLibrary then
             pcall(function()
-                NotificationLibrary:SendNotification("Success", "สคริปต์เปิดใช้งานแล้ว", 6)
+                NotificationLibrary:SendNotification("Success", "Script is back online", 6)
             end)
         end
     end
@@ -1923,7 +1923,7 @@ return xpcall(function()
         if NotificationLibrary then
             pcall(function()
                 NotificationLibrary:SendNotification("Info",
-                    "LuaSyncX  v" .. CFG.loaderVersion .. "  —  กำลังโหลด...", 4)
+                    "LuaSyncX  v" .. CFG.loaderVersion .. "  —  Loading...", 4)
             end)
         end
         local _label  = _isDev and "DEV ACCESS"  or "FREE ACCESS"
@@ -2081,7 +2081,7 @@ return xpcall(function()
     if NotificationLibrary then
         pcall(function()
             NotificationLibrary:SendNotification("Info",
-                "LuaSyncX  v" .. CFG.loaderVersion .. "  —  กำลังโหลด...", 4)
+                "LuaSyncX  v" .. CFG.loaderVersion .. "  —  Loading...", 4)
         end)
     end
     local timeLeft, expiresAt = "Permanent", data.expiresAt
