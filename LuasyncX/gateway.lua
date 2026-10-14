@@ -175,24 +175,28 @@ local LOADER = (function()
         local Players      = game:GetService("Players")
         local cr           = cloneref or function(x) return x end
 
-        -- ── พาเลตต์ ─────────────────────────────────────────────────────────────
-        -- พื้นผิวเป็นเทาอมม่วงจาง ๆ (ไม่ใช่ดำล้วน) ม่วงเป็น accent สีเดียวใช้เฉพาะ: มาร์ก, X, แถบ progress
         local C = {
-            surfTop = Color3.fromRGB(25, 24, 32),
-            surfBot = Color3.fromRGB(15, 15, 19),
-            edge    = Color3.fromRGB(48, 46, 60),
-            line    = Color3.fromRGB(38, 37, 47),
-            track   = Color3.fromRGB(30, 29, 38),
-            text    = Color3.fromRGB(236, 235, 242),
-            muted   = Color3.fromRGB(118, 116, 134),
-            accent  = Color3.fromRGB(124, 92, 224),
-            accentHi= Color3.fromRGB(152, 124, 240),
-            err     = Color3.fromRGB(222, 82, 82),
+            bg      = Color3.fromRGB(12, 12, 18),
+            inset   = Color3.fromRGB(20, 20, 30),
+            track   = Color3.fromRGB(30, 30, 42),
+            text    = Color3.fromRGB(232, 232, 242),
+            muted   = Color3.fromRGB(108, 108, 136),
+            accentA = Color3.fromRGB(140, 100, 255),
+            accentB = Color3.fromRGB(80, 150, 245),
+            ok      = Color3.fromRGB(72, 210, 120),
+            okB     = Color3.fromRGB(52, 180, 200),
+            err     = Color3.fromRGB(235, 75, 75),
+            errB    = Color3.fromRGB(245, 130, 50),
             white   = Color3.new(1, 1, 1),
-            black   = Color3.new(0, 0, 0),
         }
-        local MUTED_HEX  = "rgb(118,116,134)"
-        local ACCENT_HEX = "rgb(124,92,224)"
+
+        local ICON = {
+            wifi     = "rbxassetid://10747382504",
+            shield   = "rbxassetid://10734951847",
+            download = "rbxassetid://10723344270",
+            check    = "rbxassetid://10709790644",
+            x        = "rbxassetid://10747384394",
+        }
 
         local function mk(cls, props, parent)
             local i = Instance.new(cls)
@@ -201,9 +205,11 @@ local LOADER = (function()
             return i
         end
 
-        local function tw(obj, dur, props, style, dir)
+        local CSK, NSK = ColorSequenceKeypoint.new, NumberSequenceKeypoint.new
+        local function grad2(a, b) return ColorSequence.new(a, b) end
+        local function tw(obj, dur, props, style, dir, rep)
             local t = TweenService:Create(obj,
-                TweenInfo.new(dur, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out),
+                TweenInfo.new(dur, style or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out, rep or 0),
                 props)
             t:Play()
             return t
@@ -230,241 +236,244 @@ local LOADER = (function()
             return false
         end
 
-        -- ── Fade registry ──────────────────────────────────────────────────────
-        -- ไม่ใช้ CanvasGroup (บนมือถือ/บาง executor เรนเดอร์ไม่ขึ้น) จึงเฟดทีละ property
-        local fades = {}
-        local function reg(obj, prop, visible)
-            fades[#fades + 1] = { obj, prop, visible }
-            pcall(function() obj[prop] = 1 end)
-            return obj
-        end
-        local function fadeTo(show, dur, style, dir)
-            for _, f in ipairs(fades) do
-                tw(f[1], dur, { [f[2]] = show and f[3] or 1 }, style, dir)
-            end
-        end
-
-        -- ── Layout constants ───────────────────────────────────────────────────
-        local H, PAD = 132, 16
-        local HEADER_H = 60
-
+        -- ── Build ──────────────────────────────────────────────────────────────
+        local H = 136
         local gui = mk("ScreenGui", {
             Name = "SW_LoaderGui", ResetOnSpawn = false, IgnoreGuiInset = true,
             ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 998,
         })
 
-        -- root: กลางจอ กว้าง 88% ของจอ ล็อก 250–340px ไม่ล้นมือถือเล็ก ไม่ใหญ่เกินบน PC
-        local root = mk("Frame", {
-            Name = "Root", Size = UDim2.new(0.88, 0, 0, H), BackgroundTransparency = 1,
-            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 10),
+        -- ใช้ Frame ธรรมดา ไม่ใช้ CanvasGroup: บนมือถือ/บาง executor CanvasGroup เรนเดอร์ไม่ขึ้น
+        -- เห็นแต่ขอบ gradient ข้างในโปร่งใสหมด (ไม่มีพื้นหลัง ไม่มีข้อความ)
+        local card = mk("Frame", {
+            Name = "Card", Size = UDim2.new(0.86, 0, 0, H),
+            Position = UDim2.new(0.5, 0, 0.5, 0), AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundColor3 = C.bg, BackgroundTransparency = 0, BorderSizePixel = 0, ClipsDescendants = true,
         }, gui)
-        mk("UISizeConstraint", { MinSize = Vector2.new(250, H), MaxSize = Vector2.new(340, H) }, root)
+        mk("UISizeConstraint", { MaxSize = Vector2.new(360, H), MinSize = Vector2.new(250, H) }, card)
+        mk("UICorner", { CornerRadius = UDim.new(0, 14) }, card)
+        local uiScale = mk("UIScale", { Scale = 0.92 }, card)
 
-        -- เงา 2 ชั้น: ชั้นกว้างจาง (ระยะ) + ชั้นแคบเข้ม (contact) ให้การ์ดลอยจริง ไม่ใช่กล่องแปะ
-        local function shadow(grow, dy, transp)
-            local s = reg(mk("Frame", {
-                Position = UDim2.new(0, -grow, 0, dy - grow), Size = UDim2.new(1, grow * 2, 1, grow * 2),
-                BackgroundColor3 = C.black, BorderSizePixel = 0, ZIndex = 1,
-            }, root), "BackgroundTransparency", transp)
-            mk("UICorner", { CornerRadius = UDim.new(0, 8 + grow) }, s)
-        end
-        shadow(7, 7, 0.88)
-        shadow(2, 2, 0.6)
+        -- Static border with gradient (not animated)
+        local borderStroke = mk("UIStroke", { Color = C.white, Thickness = 1, Transparency = 0 }, card)
+        mk("UIGradient", { Color = grad2(C.accentA, C.accentB) }, borderStroke)
 
-        -- การ์ด: ไล่เฉดบน→ล่างเบามาก + เส้นขอบที่สว่างด้านบน + ไฮไลต์ 1px ด้านในขอบบน
-        local card = reg(mk("Frame", {
-            Size = UDim2.fromScale(1, 1), BackgroundColor3 = C.white, BorderSizePixel = 0, ZIndex = 2,
-        }, root), "BackgroundTransparency", 0)
-        mk("UICorner", { CornerRadius = UDim.new(0, 8) }, card)
-        mk("UIGradient", { Rotation = 90, Color = ColorSequence.new(C.surfTop, C.surfBot) }, card)
-        local edge = reg(mk("UIStroke", { Color = C.edge, Thickness = 1 }, card), "Transparency", 0)
-        mk("UIGradient", {
-            Rotation = 90,
-            Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0.55) }),
-        }, edge)
-        reg(mk("Frame", {
-            Position = UDim2.new(0, 10, 0, 1), Size = UDim2.new(1, -20, 0, 1),
-            BackgroundColor3 = C.white, BorderSizePixel = 0, ZIndex = 3,
-        }, card), "BackgroundTransparency", 0.93)
-
-        -- ── Brand mark ────────────────────────────────────────────────────────
-        -- วงแหวนครึ่งโค้ง + เพชรกลาง : "sync" (วงหมุน) + "spectre" (ดวงตา) ทำจาก Frame ล้วน ไม่พึ่ง asset
-        -- ตอนโหลดวงหมุน ตอนจบวงเต็มแล้วนิ่ง จึงเป็นทั้งโลโก้และตัวบอกสถานะในชิ้นเดียว
-        local MARK = 34
-        local mark = mk("Frame", {
-            Position = UDim2.fromOffset(PAD, 13), Size = UDim2.fromOffset(MARK, MARK),
-            BackgroundTransparency = 1, ZIndex = 3,
+        -- Left accent bar — deliberate design anchor
+        mk("Frame", {
+            Size = UDim2.new(0, 3, 0, 64), Position = UDim2.fromOffset(0, 24),
+            BackgroundColor3 = C.accentA, BorderSizePixel = 0, ZIndex = 3,
         }, card)
-        local ringTrack = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 3 }, mark)
+
+        -- ── Badge: spinner ring + stage icon ──
+        local badge = mk("Frame", {
+            Position = UDim2.fromOffset(18, 22), Size = UDim2.fromOffset(52, 52),
+            BackgroundTransparency = 1, ZIndex = 2,
+        }, card)
+        local ringTrack = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 2 }, badge)
         mk("UICorner", { CornerRadius = UDim.new(1, 0) }, ringTrack)
-        reg(mk("UIStroke", { Color = C.line, Thickness = 2 }, ringTrack), "Transparency", 0)
-        local ring = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 4 }, mark)
+        mk("UIStroke", { Color = C.track, Thickness = 3 }, ringTrack)
+        local ring = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 3 }, badge)
         mk("UICorner", { CornerRadius = UDim.new(1, 0) }, ring)
-        local ringStroke = reg(mk("UIStroke", { Color = C.accent, Thickness = 2 }, ring), "Transparency", 0)
-        local ARC = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0),
-            NumberSequenceKeypoint.new(0.501, 1), NumberSequenceKeypoint.new(1, 1),
-        })
-        local ringGrad = mk("UIGradient", { Transparency = ARC }, ringStroke)
-
-        local gem = reg(mk("Frame", {
+        local ringStroke = mk("UIStroke", { Color = C.white, Thickness = 3 }, ring)
+        local ringGrad = mk("UIGradient", {
+            Color       = grad2(C.accentA, C.accentB),
+            Transparency = NumberSequence.new({ NSK(0, 0), NSK(0.5, 0.2), NSK(0.75, 1), NSK(1, 1) }),
+        }, ringStroke)
+        local coreFrame = mk("Frame", {
             AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-            Size = UDim2.fromOffset(12, 12), Rotation = 45,
-            BackgroundColor3 = C.accent, BorderSizePixel = 0, ZIndex = 4,
-        }, mark), "BackgroundTransparency", 0)
-        mk("UICorner", { CornerRadius = UDim.new(0, 2) }, gem)
-        local gemCore = reg(mk("Frame", {
+            Size = UDim2.fromOffset(38, 38), BackgroundColor3 = C.inset, BorderSizePixel = 0, ZIndex = 3,
+        }, badge)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, coreFrame)
+        local stageIcon = mk("ImageLabel", {
             AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-            Size = UDim2.fromOffset(4, 4), BackgroundColor3 = C.surfTop, BorderSizePixel = 0, ZIndex = 5,
-        }, gem), "BackgroundTransparency", 0)
-        mk("UICorner", { CornerRadius = UDim.new(0, 1) }, gemCore)
+            Size = UDim2.fromOffset(20, 20), BackgroundTransparency = 1,
+            Image = ICON.wifi, ImageColor3 = C.accentB, ScaleType = Enum.ScaleType.Fit, ZIndex = 4,
+        }, coreFrame)
 
-        -- ── Header text ───────────────────────────────────────────────────────
-        local TEXT_X = PAD + MARK + 11
-        reg(mk("TextLabel", {
-            Position = UDim2.fromOffset(TEXT_X, 12), Size = UDim2.new(1, -(TEXT_X + 76), 0, 19),
-            BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 16, ZIndex = 3,
-            TextColor3 = C.text, RichText = true, TextXAlignment = Enum.TextXAlignment.Left,
-            Text = 'LuaSync<font color="' .. ACCENT_HEX .. '">X</font>',
-        }, card), "TextTransparency", 0)
+        -- ── Text ──
+        local title = mk("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(86, 20), Size = UDim2.new(1, -170, 0, 22),
+            Font = Enum.Font.GothamBlack, Text = "SPECTREWARE", TextSize = 17, ZIndex = 2,
+            TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left,
+        }, card)
+        mk("UIGradient", {
+            Color = ColorSequence.new({
+                CSK(0, C.accentA), CSK(0.45, Color3.fromRGB(200, 175, 255)),
+                CSK(0.55, Color3.fromRGB(170, 210, 255)), CSK(1, C.accentB),
+            }),
+        }, title)
 
-        -- ตัวอักษรเว้นระยะ (Roblox ไม่มี letter-spacing) ใช้เฉพาะบรรทัดย่อยนี้
-        local spaced = ("SPECTREWARE"):gsub(".", "%0 ")
-        spaced = spaced:match("^(.-)%s*$")
-        reg(mk("TextLabel", {
-            Position = UDim2.fromOffset(TEXT_X, 32), Size = UDim2.new(1, -(TEXT_X + 76), 0, 13),
-            BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 9, ZIndex = 3,
-            TextColor3 = C.muted, Text = spaced, TextXAlignment = Enum.TextXAlignment.Left,
-        }, card), "TextTransparency", 0)
+        mk("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(86, 42), Size = UDim2.new(1, -170, 0, 14),
+            Font = Enum.Font.GothamMedium, Text = "LuaSyncX", TextSize = 11, TextColor3 = C.muted, ZIndex = 2,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, card)
 
-        -- เปอร์เซ็นต์: ตัวเลขใหญ่ + เครื่องหมาย % เล็กและจาง
-        local pctLabel = reg(mk("TextLabel", {
-            AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -PAD, 0, 16), Size = UDim2.fromOffset(64, 26),
-            BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 20, ZIndex = 3,
-            TextColor3 = C.text, RichText = true, TextXAlignment = Enum.TextXAlignment.Right,
-            Text = '0<font size="11" color="' .. MUTED_HEX .. '">%</font>',
-        }, card), "TextTransparency", 0)
+        local pctLabel = mk("TextLabel", {
+            BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0),
+            Position = UDim2.new(1, -16, 0, 18), Size = UDim2.fromOffset(70, 28),
+            Font = Enum.Font.GothamBold, Text = "0%", TextSize = 21,
+            TextColor3 = C.text, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 2,
+        }, card)
 
-        -- เส้นแบ่ง header / body
-        reg(mk("Frame", {
-            Position = UDim2.fromOffset(0, HEADER_H), Size = UDim2.new(1, 0, 0, 1),
-            BackgroundColor3 = C.line, BorderSizePixel = 0, ZIndex = 3,
-        }, card), "BackgroundTransparency", 0)
+        local statusLabel = mk("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(86, 60),
+            Size = UDim2.new(1, -102, 0, 18), Font = Enum.Font.GothamMedium,
+            Text = "Starting...", TextSize = 12, TextColor3 = C.muted, ZIndex = 2,
+            TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        }, card)
 
-        -- ── Body ──────────────────────────────────────────────────────────────
-        local statusLabel = reg(mk("TextLabel", {
-            Position = UDim2.fromOffset(PAD, HEADER_H + 13), Size = UDim2.new(1, -PAD * 2, 0, 17),
-            BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 13, ZIndex = 3,
-            TextColor3 = C.text, Text = "Initializing...", TextXAlignment = Enum.TextXAlignment.Left,
-            TextTruncate = Enum.TextTruncate.AtEnd,
-        }, card), "TextTransparency", 0)
+        -- ── Progress bar ──
+        local trackFrame = mk("Frame", {
+            Position = UDim2.fromOffset(16, 94), Size = UDim2.new(1, -32, 0, 6),
+            BackgroundColor3 = C.track, BorderSizePixel = 0, ZIndex = 2,
+        }, card)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, trackFrame)
+        local fillFrame = mk("Frame", {
+            Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1),
+            BorderSizePixel = 0, ClipsDescendants = true, ZIndex = 3,
+        }, trackFrame)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, fillFrame)
+        local fillGrad = mk("UIGradient", { Color = grad2(C.accentA, C.accentB) }, fillFrame)
 
-        -- progress: บาง 4px มุมมน 2px พื้นรางเข้ม แถบเป็นม่วง 2 เฉดใกล้กัน (ไม่ใช่ม่วง→ฟ้า)
-        local track = reg(mk("Frame", {
-            Position = UDim2.new(0, PAD, 0, HEADER_H + 38), Size = UDim2.new(1, -PAD * 2, 0, 4),
-            BackgroundColor3 = C.track, BorderSizePixel = 0, ZIndex = 3,
-        }, card), "BackgroundTransparency", 0)
-        mk("UICorner", { CornerRadius = UDim.new(0, 2) }, track)
-        local fill = reg(mk("Frame", {
-            Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = C.white, BorderSizePixel = 0, ZIndex = 4,
-        }, track), "BackgroundTransparency", 0)
-        mk("UICorner", { CornerRadius = UDim.new(0, 2) }, fill)
-        local fillGrad = mk("UIGradient", { Color = ColorSequence.new(C.accentHi, C.accent) }, fill)
+        -- Shine sweep — TweenService loop, runs off heartbeat
+        local shineFrame = mk("Frame", {
+            Size = UDim2.new(0.32, 0, 1, 0), Position = UDim2.new(-0.32, 0, 0, 0),
+            BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, ZIndex = 4,
+        }, fillFrame)
+        mk("UIGradient", {
+            Transparency = NumberSequence.new({ NSK(0, 1), NSK(0.5, 0.48), NSK(1, 1) }),
+        }, shineFrame)
 
-        -- footer: ซ้าย = ข้อความรอง (ปกติทักทาย / ค้างนานเตือน / error บอกวิธีแก้) ขวา = เวลาที่ใช้ไป
+        -- Spark dot
+        local sparkDot = mk("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 0, 0.5, 0),
+            Size = UDim2.fromOffset(10, 10), BackgroundColor3 = C.accentB,
+            BackgroundTransparency = 0.15, BorderSizePixel = 0, ZIndex = 4, Visible = false,
+        }, trackFrame)
+        mk("UICorner", { CornerRadius = UDim.new(1, 0) }, sparkDot)
+
+        -- ── Footer ──
         local lp = Players.LocalPlayer
-        local footerDefault = lp and ("Welcome, " .. lp.DisplayName) or "Welcome"
-        local noteLabel = reg(mk("TextLabel", {
-            Position = UDim2.fromOffset(PAD, HEADER_H + 50), Size = UDim2.new(1, -(PAD * 2 + 50), 0, 14),
-            BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextSize = 11, ZIndex = 3,
-            TextColor3 = C.muted, Text = footerDefault, TextXAlignment = Enum.TextXAlignment.Left,
-            TextTruncate = Enum.TextTruncate.AtEnd,
-        }, card), "TextTransparency", 0)
-        local timeLabel = reg(mk("TextLabel", {
-            AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -PAD, 0, HEADER_H + 50), Size = UDim2.fromOffset(46, 14),
-            BackgroundTransparency = 1, Font = Enum.Font.Code, TextSize = 11, ZIndex = 3,
-            TextColor3 = C.muted, Text = "0:00", TextXAlignment = Enum.TextXAlignment.Right,
-        }, card), "TextTransparency", 0)
+        mk("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 110),
+            Size = UDim2.new(0.65, -16, 0, 16), Font = Enum.Font.Gotham, TextSize = 11,
+            TextColor3 = C.muted, ZIndex = 2,
+            Text = lp and ("Welcome, " .. lp.DisplayName) or "Welcome",
+            TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        }, card)
+        local timeLbl = mk("TextLabel", {
+            BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0),
+            Position = UDim2.new(1, -16, 0, 110), Size = UDim2.new(0.35, -16, 0, 16),
+            Font = Enum.Font.GothamMedium, Text = "0:00", TextSize = 11,
+            TextColor3 = C.muted, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 2,
+        }, card)
 
         if not attach(gui) then error("no valid GUI parent") end
 
-        -- วงแหวนหมุนช้า ๆ แบบ linear (เบา ไม่ผ่าน Heartbeat)
-        local spin = TweenService:Create(ringGrad,
-            TweenInfo.new(1.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
-            { Rotation = 360 })
-        spin:Play()
+        -- ── TweenService loops (off heartbeat, GPU-side on Roblox) ──
+        -- Ring rotation: smooth, no heartbeat cost
+        TweenService:Create(ringGrad,
+            TweenInfo.new(1.4, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+            { Rotation = 360 }):Play()
+        -- Shine sweep: slow back-and-forth
+        TweenService:Create(shineFrame,
+            TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+            { Position = UDim2.new(1, 0, 0, 0) }):Play()
 
-        -- เข้า: เฟด + เลื่อนขึ้น 10px ไม่มี overshoot
-        fadeTo(true, 0.22)
-        tw(root, 0.22, { Position = UDim2.new(0.5, 0, 0.5, 0) })
+        -- Card entrance: scale
+        tw(uiScale, 0.35, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
-        -- ── State ──────────────────────────────────────────────────────────────
-        -- progress ขยับตาม Set()/Log() ของ whitelist.lua จริงเท่านั้น (ไม่มี creep ปลอม)
-        local state, target, shown = "running", 0, 0
+        -- ── State ──
+        local state, target, creep, shown = "running", 0, 0, 0
         local closing, conn = false, nil
-        local bornC, lastSec = os.clock(), -1
-        local lastChange, lastNoteSec = os.clock(), -1
-        local lastPct = -1
-        local STALL_AFTER = 6
+        local lastSec = -1
+        local lastPct, lastFrac = -1, -1
+        local bornC = os.clock()
+        local curStage = "wifi"
+        local accentA, accentB = C.accentA, C.accentB
 
-        local function setPct(n)
-            if n == lastPct then return end
-            lastPct = n
-            pctLabel.Text = n .. '<font size="11" color="' .. MUTED_HEX .. '">%</font>'
+        local function setStage(name)
+            if curStage == name then return end
+            curStage = name
+            stageIcon.Image = ICON[name] or ICON.wifi
+            stageIcon.ImageColor3 = accentB
         end
 
+        local function paint(a, b)
+            accentA, accentB = a, b
+            fillGrad.Color = grad2(a, b)
+            ringGrad.Color = grad2(a, b)
+            sparkDot.BackgroundColor3 = b
+            stageIcon.ImageColor3 = b
+        end
+
+        -- ── Heartbeat: minimal updates only ──
         conn = RunService.Heartbeat:Connect(function(dt)
             dt = math.min(dt, 0.1)
-            local goal = (state == "done") and 100 or target
-            shown = shown + (goal - shown) * math.min(1, dt * 8)
-            if math.abs(goal - shown) < 0.05 then shown = goal end
-            local frac = math.clamp(shown / 100, 0, 1)
-            fill.Size = UDim2.new(frac, 0, 1, 0)
-            setPct(math.floor(shown + 0.5))
 
+            -- Progress lerp
+            local goal
             if state == "running" then
-                -- เวลาที่ใช้ไป (อัปเดตเมื่อเปลี่ยนวินาที)
-                local sec = math.floor(os.clock() - bornC)
-                if sec ~= lastSec then
-                    lastSec = sec
-                    timeLabel.Text = string.format("%d:%02d", math.floor(sec / 60), sec % 60)
-                end
-                -- ค้างนานเกิน STALL_AFTER วิ → บรรทัดรองแจ้งว่ายังรอเซิร์ฟเวอร์อยู่
-                local idle = os.clock() - lastChange
-                local nsec = idle >= STALL_AFTER and math.floor(idle) or -1
-                if nsec ~= lastNoteSec then
-                    lastNoteSec = nsec
-                    noteLabel.Text = nsec >= 0 and ("Waiting for response · " .. nsec .. "s") or footerDefault
-                end
+                creep = math.min(creep + dt * 0.6, 5)
+                goal = math.min(97, target + creep)
+            elseif state == "done" then
+                goal = 100
+            else
+                goal = shown
+            end
+            shown = shown + (goal - shown) * math.min(1, dt * 7)
+            local frac = math.clamp(shown / 100, 0, 1)
+            -- อัปเดตเฉพาะตอนค่าเปลี่ยนจริง (เดิมเซ็ต Text/Size ทุกเฟรม → text re-layout ทุกเฟรม)
+            local pct = math.floor(shown + 0.5)
+            if pct ~= lastPct then
+                lastPct = pct
+                pctLabel.Text = pct .. "%"
+            end
+            if math.abs(frac - lastFrac) > 0.001 then
+                lastFrac = frac
+                fillFrame.Size = UDim2.new(frac, 0, 1, 0)
+                sparkDot.Position = UDim2.new(frac, 0, 0.5, 0)
+            end
+            local sv = (state == "running" and shown > 1) or state == "done"
+            if sv ~= sparkDot.Visible then sparkDot.Visible = sv end
+
+            -- Stage icon (no tween, instant swap)
+            if state == "running" then
+                setStage(shown < 28 and "wifi" or shown < 62 and "shield" or "download")
+            end
+
+            -- Timer (only on second boundary)
+            local sec = math.floor(os.clock() - bornC)
+            if sec ~= lastSec then
+                lastSec = sec
+                timeLbl.Text = string.format("%d:%02d", math.floor(sec / 60), sec % 60)
             end
         end)
 
         local function setStatus(text)
             text = (tostring(text or ""):gsub("[\r\n]+", " ")):match("^%s*(.-)%s*$") or ""
             if text == "" then return end
+            -- strip emoji tokens silently
             text = text:gsub("[\u{2714}\u{2713}\u{2705}\u{2718}\u{274C}\u{26A1}\u{26A0}\u{23F3}\u{1F511}]", "")
                        :gsub("\u{FE0F}", ""):match("^%s*(.-)%s*$") or text
-            if statusLabel.Text ~= text then statusLabel.Text = text end
-        end
-
-        local function settle(col)
-            -- จบงาน: วงแหวนเต็มและนิ่ง, มาร์ก/แถบเปลี่ยนเป็นสีผลลัพธ์
-            pcall(function() spin:Cancel() end)
-            ringGrad.Rotation = 0
-            ringGrad.Transparency = NumberSequence.new(0)
-            ringStroke.Color = col
-            gem.BackgroundColor3 = col
+            if statusLabel.Text == text then return end
+            statusLabel.Text = text
+            statusLabel.TextTransparency = 0.75
+            tw(statusLabel, 0.18, { TextTransparency = 0 })
         end
 
         local function close()
             if closing then return end
             closing = true
             state = "closed"
-            fadeTo(false, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-            tw(root, 0.2, { Position = UDim2.new(0.5, 0, 0.5, 6) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-            task.delay(0.26, function()
+            -- ทุก property ออกพร้อมกัน: duration + easing เหมือนกันหมด
+            local DUR = 0.28
+            local STYLE = Enum.EasingStyle.Quart
+            local DIR   = Enum.EasingDirection.In
+            tw(uiScale, DUR, { Scale = 0.84 }, STYLE, DIR)
+            task.delay(DUR + 0.04, function()
                 pcall(function() conn:Disconnect() end)
-                pcall(function() spin:Cancel() end)
                 pcall(function() gui:Destroy() end)
             end)
         end
@@ -474,28 +483,26 @@ local LOADER = (function()
 
         function A.Set(p, text)
             if state ~= "running" then return end
-            if type(p) == "number" then target = math.clamp(p, target, 99) end
-            lastChange = os.clock()
+            if type(p) == "number" then target = math.clamp(p, target, 99); creep = 0 end
             setStatus(text)
         end
 
-        -- Log ไม่มีเปอร์เซ็นต์ → แต่ละขั้นตอนที่ผ่านจริงดันแถบเข้าใกล้ 92% ทีละขั้น
         function A.Log(text, kind)
             if kind == "error" then return A.Fail(text) end
             if kind == "done"  then return A.Done(text) end
             if state ~= "running" then return end
-            target = target + (92 - target) * 0.18
-            lastChange = os.clock()
+            target = target + (92 - target) * 0.18; creep = 0
             setStatus(text)
         end
 
         function A.Done(text)
             if state ~= "running" then return end
             state = "done"
-            noteLabel.Text = footerDefault
             setStatus(text or "Loaded")
-            settle(C.accent)
-            task.delay(0.8, close)
+            paint(C.ok, C.okB)
+            ringGrad.Transparency = NumberSequence.new(0)
+            curStage = "check"; stageIcon.Image = ICON.check; stageIcon.ImageColor3 = C.ok
+            task.delay(0.9, close)  -- รอให้เห็น done state แล้วลบในครั้งเดียว
         end
 
         function A.Fail(text)
@@ -503,15 +510,16 @@ local LOADER = (function()
             state = "error"
             setStatus(text or "Failed")
             statusLabel.TextColor3 = C.err
-            fill.BackgroundColor3 = C.err
-            fillGrad.Enabled = false
-            settle(C.err)
-            noteLabel.Text = "Run the script again to retry"
-            local function x(px, d) tw(root, d, { Position = UDim2.new(0.5, px, 0.5, 0) }) end
-            x(-5, 0.05)
-            task.delay(0.05, function()
-                x(5, 0.05)
-                task.delay(0.05, function() x(0, 0.07) end)
+            paint(C.err, C.errB)
+            ringGrad.Transparency = NumberSequence.new(0)
+            curStage = "x"; stageIcon.Image = ICON.x; stageIcon.ImageColor3 = C.err
+            -- 3-step tween shake (no heartbeat needed)
+            tw(card, 0.055, { Position = UDim2.new(0.5, -9, 0.5, 0) }, Enum.EasingStyle.Quad)
+            task.delay(0.055, function()
+                tw(card, 0.055, { Position = UDim2.new(0.5, 9, 0.5, 0) }, Enum.EasingStyle.Quad)
+                task.delay(0.055, function()
+                    tw(card, 0.08, { Position = UDim2.new(0.5, 0, 0.5, 0) }, Enum.EasingStyle.Quad)
+                end)
             end)
             task.delay(4, close)
         end
@@ -525,7 +533,7 @@ local LOADER = (function()
             return state == "running" and gui.Parent ~= nil and (os.time() - born) < 65
         end
 
-        task.delay(60, close) -- fail-safe: ไม่ให้ค้างบนจอ
+        task.delay(60, close) -- fail-safe
         return A
     end)
 
