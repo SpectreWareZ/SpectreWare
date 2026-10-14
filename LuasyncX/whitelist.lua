@@ -513,7 +513,10 @@ local function _normalizeRes(res)
     local body = res.Body or res.body
     local code = res.StatusCode or res.statusCode
     if type(body) == "table" then body = tostring(body) end
-    if not body or body == "" then return nil end
+    if not body or body == "" then
+        -- 2xx ที่ body ว่าง (เช่น long-poll หมดเวลา/204) = คำตอบที่ถูกต้อง ไม่ต้องไล่ยิงซ้ำทุก executor function
+        if _r_type(code) == "number" and code >= 200 and code < 300 then body = "" else return nil end
+    end
     res.Body = body; res.body = body
     res.StatusCode = code; res.statusCode = code
     return res
@@ -735,8 +738,20 @@ do
 
             TS:Create(card, TweenInfo.new(0.32, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                 { Position = UDim2.new(0, 0, 0, 0) }):Play()
-            TS:Create(bar, TweenInfo.new(dur, Enum.EasingStyle.Linear),
-                { Size = UDim2.new(0, 0, 0, 2) }):Play()
+            -- ล็อกความสูงการ์ดหลัง layout เสร็จ: ไม่งั้น AutomaticSize + UIListLayout จะคำนวณใหม่ทุกเฟรมที่แถบเวลาหด
+            task.spawn(function()
+                task.wait()
+                if w.gone then return end
+                local h = card.AbsoluteSize.Y
+                if h > 0 then
+                    card.AutomaticSize = Enum.AutomaticSize.None
+                    card.Size = UDim2.new(1, 0, 0, h)
+                    wrap.AutomaticSize = Enum.AutomaticSize.None
+                    wrap.Size = UDim2.new(1, 0, 0, h)
+                end
+                TS:Create(bar, TweenInfo.new(dur, Enum.EasingStyle.Linear),
+                    { Size = UDim2.new(0, 0, 0, 2) }):Play()
+            end)
 
             card.InputBegan:Connect(function(i)
                 if i.UserInputType == Enum.UserInputType.MouseButton1
@@ -2206,6 +2221,7 @@ end)
 
 -- ── Post-launch: session integrity heartbeat ──────────────────────────────────
 task.spawn(function()
+    local _hwidTick = 0
     while _sessionActive do
         local _jit = _r_random(-CFG.sessionCheckJitter * 10, CFG.sessionCheckJitter * 10) / 10
         local _wait = CFG.sessionCheckEvery + _jit
@@ -2239,7 +2255,9 @@ task.spawn(function()
             integrityFail("stime_tamper"); break
         end
 
-        local curHwid = getHWID()
+        _hwidTick = _hwidTick + 1
+        local curHwid = hwid
+        if _hwidTick >= 6 then _hwidTick = 0; curHwid = getHWID() end
         if curHwid ~= hwid and curHwid ~= "UNKNOWN" then
             _sessionActive = false; warn("LuaSyncX: HWID drift")
             pcall(function() sendWebhook("mismatch", { key = _getKey(), hwid = curHwid, timeLeft = "DRIFT" }) end)
