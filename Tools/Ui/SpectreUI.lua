@@ -1,5 +1,7 @@
 --[[
     SpectreUI - dark/violet Roblox UI library  (beautified build)
+    smooth pass: ripple capped at 3 per button and cleaned up by its own tween (was a fixed delay that ignored Anim.Speed);
+                 slider drag applies one update per rendered frame and glides between notches on coarse sliders
     Window / Sidebar tabs / Search / Sections / Toggle / Dropdown (+Multi) / Slider / Button / Label / Divider / Textbox / Keybind / ColorPicker / Paragraph / Notify / Toast / Dialog / Loading / Config
 
     local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Tools/Ui/SpectreUI.lua"))()   -- or require(module)
@@ -200,6 +202,7 @@
 
     Auto UI check (v3.10)
     - Runs by itself after the window is built / a tab switch / a resize. Reports only NEW problems (console + one card), silent when clean.
+    - Section:CreateDiscord({ Invite = "code" | url, Title, Button, Open = true, Refresh = 300, Icon, Banner, Description, Details, OnUpdate })   server card: logo, name, online/members, description, banner + Join button   :Refresh :SetInvite :Copy :Destroy :GetInfo
     - Window:Audit({ Print, Notify, Visual, Fix, Skip }) -> issues     Library:Audit(opts)     Palette command: "Run UI check"
     - Library.AutoCheck = { Enabled, Delay, Notify, Print, Visual, Fix, Skip }     CreateWindow({ AutoCheck = false | { ... } })
     - Rules: Library.AuditCodes (DupFlag, DefaultName, BadCallback, BadDefault, BadRange, EmptyTab, EmptySection, LowContrast, Overflow, TextClip, Offscreen ...)
@@ -244,6 +247,11 @@
     - Window:SetToggleKey(Enum.KeyCode | "F4") / GetToggleKey()      Window:Open() / Close() / IsOpen()
     - Library:Copy(text, title)   clipboard + "Copied" card
     - The new controls get the usual extras too (ShowIf / SetVisible / Lock / Tooltip / Destroy / right-click menu).
+
+    Mobile (v3.18)
+    - On-screen keyboard: the window slides up so the TextBox you are typing in stays visible (CreateWindow({ KeyboardAvoid = false }) = off).
+    - Bigger touch targets on phones: Keybind / KeybindToggle chips, Console "Clear", CodeBlock "Copy".
+    - Section:CreateDivider() now returns a control table ({ Frame = ... }) like every other control.
 
     v2 notes
     - Window is draggable by its header (mouse + touch), clamped to the screen, position kept on resize / rotation.
@@ -367,6 +375,11 @@ Library.Themes = {
 		Border = rgb(58, 58, 68),      Accent = rgb(228, 228, 237), Accent2 = rgb(161, 161, 178), AccentSoft = rgb(44, 44, 54),
 		Sheen = rgb(255, 255, 255),    Text = rgb(244, 244, 248), SubText = rgb(150, 150, 164),
 		FX = "orbs",
+	},
+	Minimal = {   -- calm slate, low contrast, one soft blue accent, no backdrop effects
+		Background = rgb(15, 16, 19),  Panel = rgb(21, 22, 26),   Card = rgb(27, 28, 33),   Control = rgb(35, 37, 43),
+		Border = rgb(54, 57, 66),      Accent = rgb(126, 150, 196), Accent2 = rgb(150, 171, 210), AccentSoft = rgb(36, 42, 56),
+		Sheen = rgb(222, 229, 244),    Text = rgb(230, 233, 240), SubText = rgb(138, 144, 158),
 	},
 	-- ===== new presets (v3.5) =====
 	Aurora = {   -- mint -> violet northern lights
@@ -683,7 +696,7 @@ local AY = Enum.AutomaticSize.Y
 local AX = Enum.AutomaticSize.X
 local ANONE = Enum.AutomaticSize.None
 local LEFT = Enum.TextXAlignment.Left
-local HEADER_H, SEARCH_H, FOOT_H = 64, 44, 54
+local HEADER_H, FOOT_H = 64, 54
 
 local QUINT, QUAD, BACK = Enum.EasingStyle.Quint, Enum.EasingStyle.Quad, Enum.EasingStyle.Back
 local SINE, LINEAR = Enum.EasingStyle.Sine, Enum.EasingStyle.Linear
@@ -698,14 +711,25 @@ local IS_MOBILE = UserInputService.TouchEnabled
 
 -- Library.Anim.Speed: global duration multiplier (1.25 = 25% slower / softer, 0.8 = snappier)
 -- Library.Anim.Intro = false (or CreateWindow({ Intro = false })) skips the launch animation
-Library.Anim = { Speed = 1, Intro = true }
+Library.Anim = { Speed = 1, Intro = true, Spin = false }  -- Spin: the window spins in when it opens (Library.Anim.Spin = false / CreateWindow({ Spin = false }) to turn it off)
 
 Library.Perf = {
 	-- nil = auto (mobile -> low power), true/false = force. Change at runtime:
 	--   Library.Perf.LowPower = false   -- force the pretty path anywhere
 	LowPower = nil,
 	-- frame-rate governor (see Window:_StartGovernor): steps the visuals down when the window stutters
-	Adaptive = true, SlowFrame = 1 / 18, SlowShare = 0.25, Warmup = 3,
+	Adaptive = true, SlowFrame = 1 / 24, SlowShare = 0.25, Warmup = 2,
+	-- backdrop cost knobs (PC). The old defaults ran ~25 looping tweens + a full-window animated gradient, which costs
+	-- several FPS for as long as the window is open. Lean defaults: a few particles, no aurora sweep, no twinkle/spin tweens.
+	--   Library.Perf.Aurora = true     -- bring back the sliding aurora wash (most expensive effect)
+	--   Library.Perf.Particles = 12    -- max particles per style (default 5)
+	--   Library.Perf.Twinkle = true    -- bring back the secondary twinkle / tumble tween on every particle
+	Aurora = false, Particles = 5, Twinkle = false,
+	-- time-sliced building: while the staged loader builds a tab, control creation yields to the renderer whenever
+	-- more than SliceBudget seconds were spent in the current frame, so hundreds of controls never freeze one frame.
+	Slice = true, SliceBudget = 0.008,
+	-- sections with more controls than this collapse / expand instantly (tweening a big clipped body re-draws every row each frame)
+	CollapseAnimMax = 24,
 }
 
 local function lowPower()
@@ -808,7 +832,7 @@ local function nextFrame(fn)
 	end)
 end
 
-local function corner(r) return new("UICorner", { CornerRadius = UDim.new(0, r) }) end
+local function corner(r) return new("UICorner", { CornerRadius = UDim.new(0, math.min(r, 3)) }) end   -- classic: nothing is rounder than 3px
 
 ------------------------------------------------------------------ icon packs (Footagesus/Icons Main-v2)
 -- Lazy: the pack module (lucide / solar / craft / geist / sfsymbols / gravity) is only downloaded the
@@ -912,10 +936,16 @@ function Library:MakeIcon(desc, color)
 end
 
 local function stroke(color, thickness, transparency)
-	return new("UIStroke", {
+	local st = new("UIStroke", {
 		Color = color, Thickness = thickness or 1, Transparency = math.max(0, (transparency or 0) - 0.15),
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 	})
+	-- phones: every card / control / row carries a faint 1px border = one extra draw pass each. Those hairlines are
+	-- switched off in low power (the strong 2px window border stays).  Library.Perf.Strokes = true brings them back.
+	if lowPower() and Library.Perf.Strokes ~= true and (thickness or 1) <= 1 and (transparency or 0) >= 0.3 then
+		st.Enabled = false
+	end
+	return st
 end
 
 -- gradient helper: gradient(seq, rotation) or gradient(c1, c2, rotation)
@@ -968,7 +998,11 @@ end
 local function safe(cb, ...)
 	if not cb then return end
 	local ok, err = pcall(cb, ...)
-	if not ok then warn("[SpectreUI] callback error: " .. tostring(err)) end
+	if not ok then
+		warn("[SpectreUI] callback error: " .. tostring(err))
+		local hook = Library._onCbError   -- set by the webhook section further down
+		if hook then pcall(hook, err) end
+	end
 end
 
 local function isPress(i)
@@ -1061,8 +1095,17 @@ end
 
 -- expanding tap ripple. One tween, self-destructs, so it costs a frame for ~0.5s
 -- and nothing at all while idle. Skipped in low power.
+local rippleLive = setmetatable({}, { __mode = "k" })
+local RIPPLE_MAX = 3
 local function ripple(btn, pos)
 	if lowPower() then return end
+	-- mashing a button must not stack dozens of expanding frames: at most RIPPLE_MAX stay alive per button
+	local live = rippleLive[btn]
+	if not live then live = {} rippleLive[btn] = live end
+	if #live >= RIPPLE_MAX then
+		local oldest = table.remove(live, 1)
+		if oldest.Parent then oldest:Destroy() end
+	end
 	local ap, sz = btn.AbsolutePosition, btn.AbsoluteSize
 	local base = math.max(sz.X, sz.Y)
 	local r = new("Frame", {
@@ -1072,8 +1115,14 @@ local function ripple(btn, pos)
 		BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.85,
 		BorderSizePixel = 0, ZIndex = 0, Parent = btn,
 	}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
-	tween(r, 0.55, { Size = UDim2.fromOffset(base * 2.6, base * 2.6), BackgroundTransparency = 1 }, QUAD, OUT)
-	task.delay(0.55, function() r:Destroy() end)
+	table.insert(live, r)
+	-- cleanup follows the tween itself: the old fixed task.delay(0.55) ignored Library.Anim.Speed, so on a slowed UI
+	-- the ripple was destroyed before it finished and visibly popped out
+	tween(r, 0.55, { Size = UDim2.fromOffset(base * 2.6, base * 2.6), BackgroundTransparency = 1 }, QUAD, OUT).Completed:Connect(function()
+		local at = table.find(live, r)
+		if at then table.remove(live, at) end
+		r:Destroy()
+	end)
 end
 
 -- ripple only on a real tap: MouseButton1Click does not fire when the finger
@@ -1134,21 +1183,6 @@ local function clampCenter(vp, half, c)
 	local x = (loX > hiX) and vp.X / 2 or math.clamp(c.X, loX, hiX)
 	local y = (loY > hiY) and vp.Y / 2 or math.clamp(c.Y, loY, hiY)
 	return Vector2.new(x, y)
-end
-
--- self-chaining sheen sweep across a frame (no per-frame loop).
--- Skipped entirely in low-power: a perpetual tween keeps the renderer awake and
--- burns battery / frame time on phones for a cosmetic detail.
--- One repeating tween (no Completed -> re-create chain, so no hitch at the loop point),
--- registered in `reg` so the window can pause it while closed.
-local function sheen(f, dur, tint, reg)
-	if lowPower() then f.Visible = false return end
-	f.BackgroundColor3 = tint or Color3.new(1, 1, 1)
-	f.Position = UDim2.new(-0.25, 0, 0, 0)
-	local tw = TweenService:Create(f, TweenInfo.new(dur, LINEAR, OUT, -1, false, 1.2), { Position = UDim2.new(1.25, 0, 0, 0) })
-	tw:Play()
-	if reg then table.insert(reg, tw) end
-	return tw
 end
 
 --[[
@@ -1402,7 +1436,8 @@ end
 local FX_KINDS = {}
 
 -- lite mode (phones): same look, ~1/3 of the particles and a single aurora band
-local function cnt(fx, n) return fx.Lite and 0 or math.max(3, n // 2) end
+local function cnt(fx, n) return fx.Lite and 0 or math.min(Library.Perf.Particles or 5, math.max(3, n // 2)) end
+local function twinkle() return Library.Perf.Twinkle == true end
 
 -- sakura petals: tumbling, drifting down and sideways
 FX_KINDS.petals = function(fx, layer, T)
@@ -1412,7 +1447,7 @@ FX_KINDS.petals = function(fx, layer, T)
 		local x = rnd(0.05, 0.95)
 		local x2 = math.clamp(x + rnd(-0.14, 0.14), 0.03, 0.97)
 		travel(fx, o, UDim2.fromScale(x, -0.06), UDim2.fromScale(x2, 1.06), rnd(12, 19))
-		loopTween(fx, o, rnd(3.5, 6.5), { Rotation = o.Rotation + (math.random() < 0.5 and 360 or -360) })
+		if twinkle() then loopTween(fx, o, rnd(3.5, 6.5), { Rotation = o.Rotation + (math.random() < 0.5 and 360 or -360) }) end
 	end
 end
 
@@ -1423,7 +1458,7 @@ FX_KINDS.orbs = function(fx, layer, T)
 		local o = dot(layer, math.random(4, 8), cols[(i % 3) + 1], rnd(0.3, 0.5), true)
 		local x = rnd(0.05, 0.95)
 		travel(fx, o, UDim2.fromScale(x, 1.06), UDim2.fromScale(math.clamp(x + rnd(-0.06, 0.06), 0.03, 0.97), -0.06), rnd(15, 26))
-		loopTween(fx, o, rnd(1.8, 3.6), { BackgroundTransparency = rnd(0.75, 0.88) }, SINE, true)
+		if twinkle() then loopTween(fx, o, rnd(1.8, 3.6), { BackgroundTransparency = rnd(0.75, 0.88) }, SINE, true) end
 	end
 end
 
@@ -1433,7 +1468,7 @@ FX_KINDS.embers = function(fx, layer, T)
 		local o = dot(layer, math.random(3, 5), (i % 4 == 0) and T.Sheen or T.Accent2, rnd(0.2, 0.4), true)
 		local x = rnd(0.05, 0.95)
 		travel(fx, o, UDim2.fromScale(x, 1.06), UDim2.fromScale(math.clamp(x + rnd(-0.07, 0.07), 0.03, 0.97), -0.06), rnd(6, 11))
-		loopTween(fx, o, rnd(0.6, 1.4), { BackgroundTransparency = rnd(0.7, 0.85) }, SINE, true)
+		if twinkle() then loopTween(fx, o, rnd(0.6, 1.4), { BackgroundTransparency = rnd(0.7, 0.85) }, SINE, true) end
 	end
 end
 
@@ -1473,7 +1508,7 @@ FX_KINDS.grid = function(fx, layer, T)
 	for i = 1, cnt(fx, 6) do
 		local o = dot(layer, 5, (i % 2 == 0) and T.Accent2 or T.Accent, 0.6, true)
 		o.Position = UDim2.fromScale(math.random(1, 7) / 8, math.random(1, 4) / 5)
-		loopTween(fx, o, rnd(1.2, 2.6), { BackgroundTransparency = 0.95 }, SINE, true)
+		if twinkle() then loopTween(fx, o, rnd(1.2, 2.6), { BackgroundTransparency = 0.95 }, SINE, true) end
 	end
 end
 
@@ -1560,11 +1595,11 @@ function Window:SetBackground(kind, quiet)
 	self.FXOn = true
 
 	local r = self.Radius or 12
-	scene(layer, r, T, (self._qual or 0) >= 2)
+	scene(layer, r, T, (self._qual or 0) >= 2 or lowPower())   -- low power: single base layer (the 3 extra full-window overdraw layers are skipped)
 	if fx.Lite then return end   -- static only: nothing animated, nothing to pause
 
 	-- PC only: ONE slow aurora sweep + a few particles (half of the old amount)
-	aurora(fx, layer, r, T.Accent, T.Accent2, 28, 0.9, rnd(18, 24), -0.55, 0.55)
+	if Library.Perf.Aurora == true then aurora(fx, layer, r, T.Accent, T.Accent2, 28, 0.9, rnd(18, 24), -0.55, 0.55) end
 	local build = FX_KINDS[kind] or FX_KINDS.orbs
 	build(fx, layer, T)
 
@@ -1675,6 +1710,16 @@ function Window:_Degrade()
 		self:SetBackground(nil, true)   -- 1 = lite particles, 2 = off (see SetBackground)
 	else
 		self:_GlowVisible(false)
+		-- level 3: flat cards. The per-card gradient wash is pure fill cost, and the halo (level 3 before) no longer exists
+		self._flat = true
+		local mg = self.Main and self.Main:FindFirstChildOfClass("UIGradient")
+		if mg then mg.Enabled = false end
+		for _, t in ipairs(self.Tabs) do
+			for _, sec in ipairs(t.Sections) do
+				local g = sec.Frame and sec.Frame:FindFirstChildOfClass("UIGradient")
+				if g then g.Enabled = false end
+			end
+		end
 		if self._gov then self._gov:Disconnect() self._gov = nil end
 	end
 	if self._govReset then self._govReset() end
@@ -1699,8 +1744,7 @@ function Library:CreateWindow(cfg)
 		local fr, fb, fn = Library._fontPair(cfg.Font)
 		if fr then T.Font, T.FontBold, fontName = fr, fb, fn end
 	end
-	local GLOW = false -- halo rings around the window removed (PC and mobile now look the same)
-	local RADIUS = 24
+	local RADIUS = 4   -- classic: near-square window
 	-- cfg.Transparency: 0 = default look ... 1 = fully see-through (backgrounds only, text/controls stay visible)
 	local GLASS = math.clamp(tonumber(cfg.Transparency) or 0, 0, 1)
 	local function glass(base) return base + (1 - base) * GLASS end
@@ -1738,7 +1782,7 @@ function Library:CreateWindow(cfg)
 		Parent = gui,
 	}, {
 		corner(RADIUS),
-		stroke(T.Border, 1, 0.1),
+		stroke(T.Border, 2, 0.05),
 		wash(cseq({ 0, T.Top }, { 1, T.Background }), 90),
 	})
 	win.Main = main
@@ -1747,33 +1791,6 @@ function Library:CreateWindow(cfg)
 	win.Radius = RADIUS
 	win.FX = { Tweens = {} }
 	win:SetBackground(cfg.Background ~= false and (cfg.FX or T.FX) or false, true)
-
-	-- soft accent halo behind the window: two rings that track the window's position / size.
-	-- Skipped in low power — repositioning two large rounded strokes every drag frame
-	-- is pure re-rasterization cost for a cosmetic glow.
-	if GLOW and not lowPower() then
-		win.Glow = {}
-		for i = 1, 2 do
-			local pad = 6 + (i - 1) * 9
-			local base = 0.88 + (i - 1) * 0.05
-			local ring = new("Frame", {
-				Name = "Glow" .. i, AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1,
-				ZIndex = 0, Parent = gui,
-			}, { corner(RADIUS + 6), stroke(T.Accent, 2 + (2 - i), base) })
-			win.Glow[i] = { frame = ring, pad = pad, stroke = ring:FindFirstChildOfClass("UIStroke"), base = base }
-		end
-		local function sync()
-			if win._glowHidden then return end   -- hidden rings are not repositioned (no work while moving)
-			for _, g in ipairs(win.Glow) do
-				g.frame.Position = main.Position
-				g.frame.Size = main.Size + UDim2.fromOffset(g.pad, g.pad)
-			end
-		end
-		main:GetPropertyChangedSignal("Position"):Connect(sync)
-		main:GetPropertyChangedSignal("Size"):Connect(sync)
-		win._glowSync = sync
-		sync()
-	end
 
 	-- cheap "fade": a window-colored veil on top of the content, only visible while animating
 	win.Veil = new("Frame", {
@@ -1787,17 +1804,18 @@ function Library:CreateWindow(cfg)
 	})
 	-- floating rounded header card (inset from the window edge, concentric with the window radius)
 	local hcard = new("Frame", {
-		Name = "HeaderCard", Position = UDim2.fromOffset(10, 8), Size = UDim2.new(1, -20, 0, HEADER_H - 14),
-		BackgroundColor3 = T.Control, BackgroundTransparency = glass(0.4), BorderSizePixel = 0, Parent = header,
+		Name = "HeaderCard", Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 0, HEADER_H - 12),
+		BackgroundColor3 = T.Control, BackgroundTransparency = glass(0.1), BorderSizePixel = 0, Parent = header,
 	}, {
-		corner(18), stroke(T.Accent, 1, 0.65),
+		corner(2), stroke(T.Border, 2, 0.1),
 		new("Frame", {
 			Name = "Tint", Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Accent, BackgroundTransparency = 0,
 			BorderSizePixel = 0,
 		}, {
-			corner(18),
+			corner(2),
+			-- classic title-bar gradient: strong accent on the left fading to the panel colour on the right
 			new("UIGradient", { Transparency = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0.72), NumberSequenceKeypoint.new(0.6, 0.93), NumberSequenceKeypoint.new(1, 0.98),
+				NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(0.55, 0.62), NumberSequenceKeypoint.new(1, 0.9),
 			}) }),
 		}),
 	})
@@ -1837,7 +1855,7 @@ function Library:CreateWindow(cfg)
 			LayoutOrder = 1, Size = UDim2.fromOffset(34, 34), BackgroundColor3 = Color3.new(1, 1, 1),
 			BorderSizePixel = 0, Parent = left,
 		}, {
-			corner(13), gradient(T.Accent, T.Accent2, 45), stroke(T.Sheen, 1, 0.65),
+			corner(2), gradient(T.Accent, T.Accent2, 45), stroke(T.Border, 2, 0.1),
 			Library._oa(new("TextLabel", {
 				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = brand:sub(1, 2),
 				Font = Enum.Font.GothamBlack, TextSize = 15, TextColor3 = Library.OnAccent(T),
@@ -1846,24 +1864,25 @@ function Library:CreateWindow(cfg)
 	end
 	win.BrandLabel = new("TextLabel", {
 		LayoutOrder = 2, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, BackgroundTransparency = 1,
-		Text = brand, Font = T.FontBold, TextSize = 17, TextColor3 = T.Text, Parent = left,
+		Text = brand, Font = Enum.Font.Code, TextSize = 18, TextColor3 = Color3.new(1, 1, 1), Parent = left,
 	})
 	if sub then
 		win.SubSep = new("Frame", {   -- the pill (kept under the old name so compact mode still hides it)
 			LayoutOrder = 3, Size = UDim2.fromOffset(0, 24), AutomaticSize = AX, BackgroundColor3 = T.Accent,
-			BackgroundTransparency = 0.86, BorderSizePixel = 0, Parent = left,
-		}, { corner(12), stroke(T.Accent, 1, 0.6), padding(11, 0, 11, 0) })
+			BackgroundTransparency = 0.7, BorderSizePixel = 0, Parent = left,
+		}, { corner(2), stroke(T.Accent, 1, 0.2), padding(9, 0, 9, 0) })
 		win.SubLabel = new("TextLabel", {
 			Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, BackgroundTransparency = 1,
-			Text = sub, Font = T.FontBold, TextSize = 12, TextColor3 = T.Accent, Parent = win.SubSep,
+			Text = sub, Font = Enum.Font.Code, TextSize = 12, TextColor3 = T.Text, Parent = win.SubSep,
 		})
 	end
 
 	local close = new("TextButton", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(closeW, closeW),
-		BackgroundColor3 = T.Control, BackgroundTransparency = 1, Text = "×", Font = T.FontBold, TextSize = 28, TextColor3 = T.SubText,
+		BackgroundColor3 = T.Control, BackgroundTransparency = 1, Text = "×", Font = Enum.Font.Code, TextSize = 26, TextColor3 = T.Text,
 		AutoButtonColor = false, Parent = hcard,
-	}, { corner(20) })
+	}, { corner(2) })
+	Library._bevel(close, T.Control)
 	close.MouseEnter:Connect(function()
 		if not usingTouch() then
 			tween(close, 0.14, { TextColor3 = Color3.fromRGB(255, 120, 120), BackgroundTransparency = 0.4 })
@@ -1909,7 +1928,8 @@ function Library:CreateWindow(cfg)
 			Position = UDim2.new(1, -(8 + (closeW + 4) * (canResize and 2 or 1)), 0.5, 0),
 			Size = UDim2.fromOffset(closeW, closeW), BackgroundColor3 = T.Control, BackgroundTransparency = 1,
 			Text = "", AutoButtonColor = false, Parent = hcard,
-		}, { corner(20) })
+		}, { corner(2) })
+		Library._bevel(hideB, T.Control)
 		local bar = new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(12, 2),
 			BackgroundColor3 = T.SubText, BorderSizePixel = 0, Parent = hideB,
@@ -1938,7 +1958,8 @@ function Library:CreateWindow(cfg)
 			Name = "Maximize", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -(8 + closeW + 4), 0.5, 0),
 			Size = UDim2.fromOffset(closeW, closeW), BackgroundColor3 = T.Control, BackgroundTransparency = 1,
 			Text = "", AutoButtonColor = false, Parent = hcard,
-		}, { corner(20) })
+		}, { corner(2) })
+		Library._bevel(mxb, T.Control)
 		local function sq(size)
 			return new("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(size, size),
@@ -2016,8 +2037,8 @@ function Library:CreateWindow(cfg)
 	local sidebar = new("Frame", { Size = UDim2.new(0, 164, 1, 0), BackgroundTransparency = 1, Parent = body })
 	win.SidePanel = new("Frame", {
 		Name = "SidePanel", Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -19, 1, -10),
-		BackgroundColor3 = T.Control, BackgroundTransparency = glass(0.55), BorderSizePixel = 0, Parent = sidebar,
-	}, { corner(18), stroke(T.Border, 1, 0.5) })
+		BackgroundColor3 = T.Control, BackgroundTransparency = glass(0.2), BorderSizePixel = 0, Parent = sidebar,
+	}, { corner(3), stroke(T.Border, 2, 0.2) })   -- classic: near-square corners, flat fill, 2px frame
 	win.Sidebar = sidebar
 	win.TabList = new("ScrollingFrame", {
 		Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -19, 1, -FOOT_H - 10), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
@@ -2036,7 +2057,7 @@ function Library:CreateWindow(cfg)
 	win.ProfileButton = new("TextButton", {
 		Name = "ProfileButton", Position = UDim2.fromOffset(-12, 3), Size = UDim2.new(1, 20, 1, -6),
 		BackgroundColor3 = T.Accent, BackgroundTransparency = 1, Text = "", AutoButtonColor = false, BorderSizePixel = 0, Parent = footer,
-	}, { corner(12) })
+	}, { corner(3) })
 	feedback(win.ProfileButton, win.ProfileButton, "BackgroundTransparency", 1, 0.88, 0.78, true)
 	-- profile card: player avatar + display name + @username (replaces the old brand/sub footer)
 	local lpl = Players.LocalPlayer
@@ -2080,7 +2101,7 @@ function Library:CreateWindow(cfg)
 		Name = "SearchBar", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -(8 + btnArea + 10), 0.5, 0),
 		Size = UDim2.fromOffset(SEARCH_BAR_H, SEARCH_BAR_H), BackgroundColor3 = T.Control,
 		BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = true, Parent = hcard,
-	}, { corner(20), stroke(T.Border, 1, 1) })   -- collapsed: transparent like the other header buttons
+	}, { corner(2), stroke(T.Border, 1, 1) })   -- collapsed: transparent like the other header buttons
 	win.SearchBar = searchBar
 	local searchStroke = searchBar:FindFirstChildOfClass("UIStroke")
 	searchStroke.Transparency = 1   -- stroke() lightens by 0.15; start fully hidden while collapsed
@@ -2502,21 +2523,6 @@ function Library:CreateWindow(cfg)
 		end
 	end)
 
-	-- glow ring around the floating button — skipped in low power (a rounded stroke
-	-- that would re-rasterize on every drag frame)
-	if false and not lowPower() then -- glow ring around the floating button disabled
-		win.OpenGlow = new("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5), Position = ob.Position, Size = UDim2.fromOffset(BS + 14, BS + 14),
-			BackgroundTransparency = 1, ZIndex = 0, Visible = false, Parent = gui,
-		}, { new("UICorner", { CornerRadius = UDim.new(0, math.floor(BS * 0.3) + 7) }), stroke(T.Accent, 2, 0.85) })
-		ob:GetPropertyChangedSignal("Position"):Connect(function()
-			win.OpenGlow.Position = ob.Position
-		end)
-		ob:GetPropertyChangedSignal("Visible"):Connect(function()
-			win.OpenGlow.Visible = ob.Visible
-		end)
-	end
-
 	win._openDrag.Threshold = touchUI and 10 or 6
 	-- Drag feel (fixed, same on touch and mouse): Position is applied every rendered frame (RenderStepped) and eased toward the
 	-- pointer with a fast rate, so uneven input timing never shows as hopping. CatchUp = the button does not "stick" for the first
@@ -2682,7 +2688,7 @@ end
 -- open / close animation: scale + slide + fade (veil). Runs on every platform; on low power it
 -- skips the UIScale (that is the expensive part: it re-rasterizes every stroke) and uses
 -- slide + fade only, which is cheap.
-local SLIDE = 16
+local SLIDE = 8
 
 -- Where the window rests when it is not animating: the saved (dragged) position, clamped to the screen the
 -- same way _Fit does. nil until the window has been placed once, then the live Position is used instead.
@@ -2711,7 +2717,53 @@ function Window:_AnimDone()
 	local home = self:_HomePos() or self._animBase
 	if home then self.Main.Position = home end
 	self._animBase = nil
+	if not self._spinning then self.Scale.Scale = 1 end -- the spin finishes (and resets) the scale itself
+end
+
+-- Spin-in: the window turns one full revolution (and, on PC, grows from half size) while it opens.
+-- _SpinPrep puts it at the start pose and returns a token, _SpinGo (one frame later) plays it.
+function Window:_SpinPrep()
+	if Library.Anim.Spin == false or self.Cfg.Spin == false then return nil end
+	if (self._qual or 0) >= 2 then return nil end -- the frame-rate governor already had to cut visuals: don't add a heavy effect
+	self._spinSeq = (self._spinSeq or 0) + 1
+	self._spinning = true
+	self.Main.Rotation = -360
+	if self:_SpinZoom() then self.Scale.Scale = 0.5 end
+	-- Roblox ignores ClipsDescendants on a rotated frame, so the backdrop art would bleed outside the window
+	-- while it turns: hide it for the spin and bring it back when the window has landed
+	local fxl = self.Main:FindFirstChild("FX")
+	if fxl then fxl.Visible = false end
+	return self._spinSeq
+end
+
+-- optional zoom-in (Library.Anim.SpinZoom = true, PC only). Off by default: scaling the whole window makes every
+-- UIStroke re-rasterize each frame, which shows up as flicker / stutter.
+function Window:_SpinZoom()
+	return Library.Anim.SpinZoom == true and not lowPower()
+end
+
+-- bring the backdrop back (called while the veil is still opaque, so it never pops in)
+function Window:_SpinShowFX()
+	local fxl = self.Main:FindFirstChild("FX")
+	if fxl then fxl.Visible = true end
+end
+
+function Window:_SpinEnd()
+	self._spinning = false
+	self.Main.Rotation = 0
 	self.Scale.Scale = 1
+	local fxl = self.Main:FindFirstChild("FX")
+	if fxl then fxl.Visible = true end
+end
+
+function Window:_SpinGo(tok)
+	if not tok then return end
+	if self._spinSeq ~= tok or self._destroyed then return end
+	tween(self.Main, 0.7, { Rotation = 0 }, QUINT, OUT).Completed:Connect(function(st)
+		if self._spinSeq ~= tok or st ~= Enum.PlaybackState.Completed then return end
+		self:_SpinEnd()
+	end)
+	if self:_SpinZoom() then tween(self.Scale, 0.7, { Scale = 1 }, QUINT, OUT) end
 end
 
 function Window:_PlayOpen(fresh)
@@ -2720,30 +2772,35 @@ function Window:_PlayOpen(fresh)
 	local veil = self.Veil
 	local pop = Library.Anim.Pop == true and not lowPower()
 	local base = self:_AnimBase()
-	self:_MotionBegin(0.5)
+	local spin = fresh and self:_SpinPrep() or nil
+	self:_MotionBegin(spin and 1.0 or 0.5)
 	if fresh then
 		self.Main.Position = base + UDim2.fromOffset(0, SLIDE)
-		if pop then self.Scale.Scale = 0.92 end
+		if pop and not spin then self.Scale.Scale = 0.92 end
 		veil.BackgroundTransparency = 0
 	end
 	veil.Visible = true
 	local function run()
 		if self._vseq ~= seq or self._destroyed then return end
-		if pop then tween(self.Scale, 0.42, { Scale = 1 }, QUINT, OUT) end
-		tween(self.Main, 0.42, { Position = base }, QUINT, OUT)
-		tween(veil, 0.3, { BackgroundTransparency = 1 }, SINE, OUT).Completed:Connect(function(st)
-			if self._vseq ~= seq or st ~= Enum.PlaybackState.Completed then return end
-			veil.Visible = false
-			self:_AnimDone()
-		end)
+		if spin then self:_SpinGo(spin) elseif pop then tween(self.Scale, 0.42, { Scale = 1 }, QUINT, OUT) end
+		tween(self.Main, 0.3, { Position = base }, QUINT, OUT)
+		local function fade()
+			if self._vseq ~= seq or self._destroyed then return end
+			if spin then self:_SpinShowFX() end
+			tween(veil, 0.22, { BackgroundTransparency = 1 }, SINE, OUT).Completed:Connect(function(st)
+				if self._vseq ~= seq or st ~= Enum.PlaybackState.Completed then return end
+				veil.Visible = false
+				self:_AnimDone()
+			end)
+		end
+		if spin then task.delay(0.55, fade) else fade() end -- spinning: the content stays hidden under the veil until it has landed
 	end
 	-- a fresh open makes the whole window visible for the first time: let that heavy frame pass, then animate
 	if fresh then nextFrame(run) else run() end
 end
 
--- Launch animation (first show only): the window rises into place while the window-colored veil dissolves, a
--- soft band of light sweeps across it, the border pulses, then the sidebar icons pop in one after another
--- (Window:_IntroTab) and the first page rises last. Everything is a one-shot tween (no loops, no per-frame
+-- Launch animation (first show only): the window rises into place while the window-colored veil dissolves, then
+-- the sidebar icons pop in one after another (Window:_IntroTab) and the first page rises last. Everything is a one-shot tween (no loops, no per-frame
 -- Lua) and starts one frame late so the heavy first frame cannot eat the beginning of it.
 -- Skipped (plain open) on low power or with Library.Anim.Intro = false / CreateWindow({ Intro = false }).
 function Window:_PlayIntro()
@@ -2758,40 +2815,26 @@ function Window:_PlayIntro()
 	end
 	self._vseq = (self._vseq or 0) + 1
 	local seq = self._vseq
-	local T = self.Theme
 	local veil, main = self.Veil, self.Main
 	local base = self:_AnimBase()
 	self._introT = os.clock()
+	local spin = self:_SpinPrep()
 	self:_MotionBegin(1.1)
-	main.Position = base + UDim2.fromOffset(0, 34)
+	main.Position = base + UDim2.fromOffset(0, 12)
 	veil.BackgroundTransparency = 0
 	veil.Visible = true
-	-- the light band is a gradient offset sliding inside a rounded frame, so it is clipped to the window shape
-	local band = new("UIGradient", {
-		Rotation = 20, Offset = Vector2.new(-1, 0),
-		Color = cseq({ 0, T.Accent }, { 0.5, Color3.new(1, 1, 1) }, { 1, T.Accent2 }),
-		Transparency = NumberSequence.new({ nsk(0, 1), nsk(0.38, 1), nsk(0.5, 0.8), nsk(0.62, 1), nsk(1, 1) }),
-	})
-	local lite = lowPower()   -- phones: same rise + veil fade + tab pop-in, but no light sweep / flash
-	local shine = new("Frame", {
-		Name = "IntroShine", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
-		ZIndex = 52, Active = false, Parent = main,
-	}, { new("UICorner", { CornerRadius = UDim.new(0, self.Radius or 24) }), band })
 	nextFrame(function()
-		if self._vseq ~= seq or self._destroyed then shine:Destroy() return end
-		tween(main, 0.7, { Position = base }, QUINT, OUT)
-		tween(veil, 0.55, { BackgroundTransparency = 1 }, SINE, OUT).Completed:Connect(function(st)
-			if self._vseq ~= seq or st ~= Enum.PlaybackState.Completed then return end
-			veil.Visible = false
-			self:_AnimDone()
-		end)
-		if lite then shine:Destroy() end
-		task.delay(0.25, function()
-			if lite or not shine.Parent then return end
-			tween(band, 0.95, { Offset = Vector2.new(1, 0) }, SINE, OUT).Completed:Connect(function() shine:Destroy() end)
-		end)
-		task.delay(0.5, function()
-			if not lite and not self._destroyed and self._vseq == seq then self:Flash(T.Accent) end
+		if self._vseq ~= seq or self._destroyed then return end
+		tween(main, 0.45, { Position = base }, QUINT, OUT)
+		self:_SpinGo(spin)
+		task.delay(spin and 0.5 or 0, function()
+			if self._vseq ~= seq or self._destroyed then return end
+			if spin then self:_SpinShowFX() end
+			tween(veil, 0.4, { BackgroundTransparency = 1 }, SINE, OUT).Completed:Connect(function(st)
+				if self._vseq ~= seq or st ~= Enum.PlaybackState.Completed then return end
+				veil.Visible = false
+				self:_AnimDone()
+			end)
 		end)
 	end)
 end
@@ -2807,22 +2850,22 @@ function Window:_IntroTab(tab)
 		scale.Scale = 0
 		tween(scale, 0.05, { Scale = 0 })   -- also cancels the select-pop tween the first tab already started
 	end
-	task.delay(0.3 + (order - 1) * 0.07, function()
+	task.delay(0.2 + (order - 1) * 0.035, function()
 		if self._destroyed or not label.Parent then return end
-		tween(label, 0.3, { TextTransparency = 0 }, SINE, OUT)
-		if scale then tween(scale, 0.45, { Scale = 1 }, BACK, OUT) end
+		tween(label, 0.25, { TextTransparency = 0 }, SINE, OUT)
+		if scale then tween(scale, 0.3, { Scale = 1 }, QUINT, OUT) end
 	end)
 	if order == 1 then
 		-- the first page rises in last, from under the window-colored page veil
 		local page, pv = tab.Page, self.PageVeil
 		local pseq = self._pseq or 0
-		page.Position = UDim2.fromOffset(0, 22)
+		page.Position = UDim2.fromOffset(0, 8)
 		pv.BackgroundTransparency = 0
 		pv.Visible = true
-		task.delay(0.3, function()
+		task.delay(0.2, function()
 			if self._destroyed or (self._pseq or 0) ~= pseq then return end   -- the user already switched tab
-			tween(page, 0.6, { Position = UDim2.new() }, QUINT, OUT)
-			tween(pv, 0.5, { BackgroundTransparency = 1 }, SINE, OUT).Completed:Connect(function()
+			tween(page, 0.4, { Position = UDim2.new() }, QUINT, OUT)
+			tween(pv, 0.35, { BackgroundTransparency = 1 }, SINE, OUT).Completed:Connect(function()
 				if (self._pseq or 0) == pseq then pv.Visible = false end
 			end)
 		end)
@@ -2836,6 +2879,10 @@ function Window:_PlayClose()
 	local veil = self.Veil
 	local pop = Library.Anim.Pop == true and not lowPower()
 	local base = self:_AnimBase()
+	if self._spinning then   -- closed in the middle of the spin-in: stop it and straighten the window
+		self._spinSeq = (self._spinSeq or 0) + 1
+		self:_SpinEnd()
+	end
 	self:_MotionBegin(0.3)
 	if not veil.Visible then
 		veil.BackgroundTransparency = 1
@@ -2843,7 +2890,10 @@ function Window:_PlayClose()
 	end
 	if pop then tween(self.Scale, 0.22, { Scale = 0.94 }, QUAD, IN) end
 	tween(self.Main, 0.22, { Position = base + UDim2.fromOffset(0, SLIDE) }, QUAD, IN)
-	tween(veil, 0.22, { BackgroundTransparency = 0 }, SINE, IN).Completed:Connect(function()
+	-- Quad-OUT, not Sine-IN: an ease-in veil stays almost transparent for most of the slide, so the window text stayed
+	-- crisp and visible while it moved and then vanished in the last frames. Ease-out covers the content within the
+	-- first part of the slide; what slides away afterwards is just the flat window color.
+	tween(veil, 0.22, { BackgroundTransparency = 0 }, QUAD, OUT).Completed:Connect(function()
 		if self._vseq ~= seq or self.Visible then return end
 		veil.Visible = false
 		self.Main.Visible = false
@@ -2851,8 +2901,8 @@ function Window:_PlayClose()
 		self:_FXPause() -- nothing is on screen: stop the looping backdrop tweens
 		self:_GlowVisible(false)
 		if self:_OpenBtnAllowed() then self.OpenBtn.Visible = true end
-		self.OpenScale.Scale = 0.6
-		tween(self.OpenScale, 0.4, { Scale = 1 }, BACK, OUT)
+		self.OpenScale.Scale = 0.85
+		tween(self.OpenScale, 0.25, { Scale = 1 }, QUINT, OUT)
 	end)
 end
 
@@ -3894,7 +3944,7 @@ local function buildIcon(parent, icon, color, T, size, bag)
 	-- tinted badge behind the glyph
 	new("Frame", {
 		Size = UDim2.fromScale(1, 1), BackgroundColor3 = color, BackgroundTransparency = 0.82, BorderSizePixel = 0, Parent = holder,
-	}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	}, { new("UICorner", { CornerRadius = UDim.new(0, 2) }) })
 	if icon == "check" then
 		seg(holder, 6.2 * u, 11.6 * u, 9.6 * u, 15 * u, 2 * u, color)
 		seg(holder, 9.6 * u, 15 * u, 16.2 * u, 7.6 * u, 2 * u, color)
@@ -4702,9 +4752,9 @@ function NM:Dialog(cfg)
 			pcall(function() overlay:Destroy() end)
 		end
 		if anim then
-			tw(overlay, 0.18, { BackgroundTransparency = 1 }, SINE, IN)
-			Anim.Hide(card, { To = "Bottom", Distance = 14, Time = 0.16, Scale = 0.97 })
-			task.delay(0.22, cleanup)
+			tw(overlay, 0.14, { BackgroundTransparency = 1 }, SINE, IN)
+			tw(card, 0.12, { GroupTransparency = 1 }, SINE, IN)
+			task.delay(0.16, cleanup)
 		else
 			cleanup()
 		end
@@ -4840,8 +4890,19 @@ function NM:Dialog(cfg)
 	table.insert(self.Dialogs, dlg)
 	-- open animation
 	if NotifyCfg.Animate ~= false then
-		tw(overlay, 0.22, { BackgroundTransparency = 0.5 }, SINE, OUT)
-		Anim.Show(card, { From = "Bottom", Distance = 16, Time = 0.28, Scale = 0.96 })
+		tw(overlay, 0.15, { BackgroundTransparency = 0.5 }, SINE, OUT)
+		-- classic: pure fade, no slide / no scale (moving a CanvasGroup re-rasterizes its text = the wobble).
+		-- the card is laid out and sized while still invisible, then it fades in already settled.
+		card.GroupTransparency = 1
+		card.Visible = true
+		nextFrame(function()
+			if not dlg.open or not card.Parent then return end
+			fit()
+			nextFrame(function()
+				if not dlg.open or not card.Parent then return end
+				tw(card, 0.15, { GroupTransparency = 0 }, SINE, OUT)
+			end)
+		end)
 	else
 		overlay.BackgroundTransparency = 0.5
 		card.Visible = true
@@ -5078,16 +5139,16 @@ function Window:CreateTab(cfg)
 	local btn = new("TextButton", {
 		LayoutOrder = #self.Tabs + 1, Size = UDim2.new(1, 0, 0, tabH),
 		BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 1, AutoButtonColor = false, Text = "", ClipsDescendants = true, Parent = self.TabList,
-	}, { corner(16), stroke(T.Accent, 1, 1), gradient(T.AccentSoft, T.AccentSoft, 0) })
+	}, { corner(2), stroke(T.Accent, 1, 1), gradient(T.AccentSoft, T.AccentSoft, 0) })   -- classic: square, flat
 	tab.Button = btn
 	tab.BtnStroke = btn:FindFirstChildOfClass("UIStroke")
 	-- stroke() lowers transparency by 0.15, so stroke(.., 1, 1) was 0.85 (a faint outline on never-selected tabs): force it fully hidden
 	tab.BtnStroke.Transparency = 1
 	tab.BtnGrad = btn:FindFirstChildOfClass("UIGradient")
 	tab.Indicator = new("Frame", {
-		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 4, 0.5, 0), Size = UDim2.new(0, 3, 0, 0),
+		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.new(0, 4, 0, 0),
 		BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = btn,
-	}, { corner(2), gradient(T.Accent, T.Accent2, 90) })
+	}, { gradient(T.Accent, T.Accent, 90) })
 
 	local ic = cfg.Icon
 	local function wrapIcon(el)
@@ -5112,9 +5173,10 @@ function Window:CreateTab(cfg)
 	end
 	tab.IconWrap = wrapIcon(tab.Icon)
 	tab.IconScale = tab.IconWrap:FindFirstChild("IS")
+	tab._lblX = lblX
 	tab.Label = new("TextLabel", {
 		Position = UDim2.fromOffset(lblX, 0), Size = UDim2.new(1, -(lblX + 6), 1, 0), BackgroundTransparency = 1, Text = tab.Name,
-		Font = T.Font, TextSize = touchTab and 13 or 14, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
+		Font = Enum.Font.Code, TextSize = touchTab and 13 or 14, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 	})
 	-- padlock (drawn from frames, no asset): shown only while the tab is locked
 	tab._locked = false
@@ -5200,7 +5262,7 @@ function Tab:SetLocked(v, reason)
 	for _, part in ipairs(self.Icon:GetChildren()) do
 		if part:IsA("ImageLabel") then tween(part, 0.2, { ImageTransparency = dim }) end
 	end
-	self.Label.Size = v and UDim2.new(1, -74, 1, 0) or UDim2.new(1, -52, 1, 0)
+	self:_FitLabel()
 	if v and win.Active == self then
 		-- never leave a locked page open: move to the first tab that is not locked
 		for _, t in ipairs(win.Tabs) do
@@ -5267,8 +5329,8 @@ end
 function Tab:_SetSelected(sel)
 	local T = self.Window.Theme
 	tween(self.Button, 0.22, { BackgroundTransparency = sel and 0 or 1 })
-	tween(self.BtnStroke, 0.22, { Transparency = sel and 0.3 or 1 })
-	tween(self.Indicator, 0.26, { Size = UDim2.new(0, 3, sel and 0.55 or 0, 0) })
+	tween(self.BtnStroke, 0.22, { Transparency = sel and 0.2 or 1 })
+	tween(self.Indicator, 0.12, { Size = UDim2.new(0, 4, sel and 1 or 0, 0) })
 	tween(self.Label, 0.22, { TextColor3 = sel and T.Text or T.SubText })
 	local prop = self.Icon:IsA("ImageLabel") and "ImageColor3" or "TextColor3"
 	local icol = sel and T.Accent or T.SubText
@@ -5278,14 +5340,11 @@ function Tab:_SetSelected(sel)
 	end
 	-- gentle icon pop when a tab becomes active (one tween, no loop)
 	if sel and self.IconScale then
-		self.IconScale.Scale = 0.7
-		tween(self.IconScale, 0.32, { Scale = 1 }, BACK, OUT)
+		self.IconScale.Scale = 1
 	end
 	if self.BtnGrad then
 		-- active tab gets a soft violet wash, idle stays flat
-		self.BtnGrad.Color = sel
-			and cseq({ 0, T.AccentSoft }, { 1, T.Wash })
-			or cseq({ 0, T.AccentSoft }, { 1, T.AccentSoft })
+		self.BtnGrad.Color = cseq({ 0, T.AccentSoft }, { 1, T.AccentSoft })   -- classic: flat, no wash
 	end
 end
 
@@ -5339,6 +5398,10 @@ function Tab:CreateSection(cfg)
 	}, { corner(18), stroke(T.Border, 1, 0.55), list(0, { HorizontalAlignment = Enum.HorizontalAlignment.Center }),
 		wash(cseq({ 0, T.Top }, { 1, T.Card }), 90) })
 
+	if self.Window._flat then
+		local g = s.Frame:FindFirstChildOfClass("UIGradient")
+		if g then g.Enabled = false end
+	end
 	local collapsible = cfg.Collapsible ~= false
 	local head = new("TextButton", {
 		LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 38), BackgroundColor3 = T.Control, BackgroundTransparency = 1,
@@ -5390,8 +5453,19 @@ function Tab:CreateSection(cfg)
 	-- Every run starts from the height the body has RIGHT NOW (so clicking again mid-animation reverses
 	-- smoothly instead of jumping), and the natural height (_bodyH) is only ever read while the body is
 	-- auto-sized, never from a half-way value (that used to make the next expand end short and then snap).
+	-- On collapse the rows are hidden at once (see below); they come back here, on the next expand.
+	local function restoreRows()
+		local hid = s._hidRows
+		if not hid then return end
+		s._hidRows = nil
+		for _, k in ipairs(hid) do
+			if k.Parent == s.Body then k.Visible = true end
+		end
+	end
+
 	function s:SetCollapsed(c, instant)
 		c = c and true or false
+		if not instant and #self.Controls > (Library.Perf.CollapseAnimMax or 24) then instant = true end
 		local cur = self.Collapsed and true or false
 		self.Collapsed = c
 		tween(arrow, 0.22, { Rotation = c and -90 or 0 })
@@ -5424,13 +5498,27 @@ function Tab:CreateSection(cfg)
 			b.ClipsDescendants = true
 			b.AutomaticSize = ANONE
 			b.Size = UDim2.new(1, 0, 0, curH)
-			tween(b, 0.24, { Size = UDim2.new(1, 0, 0, 0) }, QUINT, OUT).Completed:Connect(function()
+			-- A clipped, shrinking body keeps showing the top rows (and their text) until the very last frames, which read as
+			-- text "lingering" after pressing hide. So the rows are hidden right away and only the empty body animates its height.
+			restoreRows()
+			local hid = {}
+			for _, k in ipairs(b:GetChildren()) do
+				if k:IsA("GuiObject") and k.Visible then
+					k.Visible = false
+					hid[#hid + 1] = k
+				end
+			end
+			self._hidRows = hid
+			-- Quad in-out instead of Quint-out: Quint-out has a long, slow tail, so the last ~20 px of the clipped body (where the
+			-- first row's text sits) lingered for ~0.1 s as a thin sliver of text under the header. In-out has no such tail.
+			tween(b, 0.2, { Size = UDim2.new(1, 0, 0, 0) }, QUAD, Enum.EasingDirection.InOut).Completed:Connect(function()
 				if self._cseq ~= seq then return end
 				b.Visible = false
 				settle()
 			end)
 		else
 			b.Visible = true
+			restoreRows()
 			if instant or not full or full <= 0 then
 				settle()
 				return
@@ -5460,6 +5548,15 @@ function Tab:CreateSection(cfg)
 end
 
 function Section:_Register(frame, name, est)
+	-- frame-budget slicing: only for the staged loader's own build thread (never changes timing for user threads)
+	local win = self.Window
+	local P = Library.Perf
+	if win._slThread and P.Slice ~= false and coroutine.running() == win._slThread
+		and os.clock() - (win._sliceT or 0) > (P.SliceBudget or 0.008) then
+		task.wait()
+		if win._destroyed then error("window destroyed while loading", 0) end   -- unwinds the build quietly (runFn ignores it)
+		win._sliceT = os.clock()
+	end
 	table.insert(self.Controls, { Frame = frame, Name = (name or ""):lower() })
 	frame.LayoutOrder = #self.Controls
 	self.Est += est + 6
@@ -5511,10 +5608,37 @@ function Section:CreateDivider()
 		NumberSequenceKeypoint.new(1, 0.5),
 	})
 	self:_Register(d, "", 1)
+	return { Frame = d }
 end
 
 -- CreateButton({ Name, Callback, Color, Gradient, TextColor })
 -- Color makes a solid accent button; Gradient = {a, b} makes a gradient one.
+-- classic 3D bevel (Win95 style): light top/left edge, dark bottom/right edge, inverts while pressed.
+-- (a Library field, not a new top-level local: the chunk is close to Lua's local limit)
+function Library._bevel(btn, base, sunken)
+	base = base or Color3.fromRGB(70, 74, 96)
+	local hi, lo = base:Lerp(Color3.new(1, 1, 1), 0.45), base:Lerp(Color3.new(0, 0, 0), 0.6)
+	if sunken then hi, lo = lo, hi end   -- inset: dark top/left, light bottom/right
+	local function edge(pos, size, anchor)
+		return new("Frame", { Position = pos, Size = size, AnchorPoint = anchor or Vector2.new(0, 0), BorderSizePixel = 0, ZIndex = 5, Parent = btn })
+	end
+	local top   = edge(UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 2))
+	local left  = edge(UDim2.fromOffset(0, 0), UDim2.new(0, 2, 1, 0))
+	local bot   = edge(UDim2.fromScale(0, 1), UDim2.new(1, 0, 0, 2), Vector2.new(0, 1))
+	local right = edge(UDim2.fromScale(1, 0), UDim2.new(0, 2, 1, 0), Vector2.new(1, 0))
+	local function set(pressed)
+		top.BackgroundColor3, left.BackgroundColor3 = pressed and lo or hi, pressed and lo or hi
+		bot.BackgroundColor3, right.BackgroundColor3 = pressed and hi or lo, pressed and hi or lo
+	end
+	set(false)
+	if not sunken then
+		btn.MouseButton1Down:Connect(function() set(true) end)
+		btn.MouseButton1Up:Connect(function() set(false) end)
+		btn.MouseLeave:Connect(function() set(false) end)
+	end
+	return set
+end
+
 function Section:CreateButton(cfg)
 	local T = self.Window.Theme
 	local accent = cfg.Color
@@ -5526,9 +5650,9 @@ function Section:CreateButton(cfg)
 	local b = new("TextButton", {
 		Size = UDim2.new(1, 0, 0, rowH()), BackgroundColor3 = grad and Color3.new(1, 1, 1) or (accent or T.Control),
 		BackgroundTransparency = 0.1, AutoButtonColor = false,
-		Text = cfg.Name or "Button", Font = cfg.Bold and T.FontBold or T.Font, TextSize = 13,
+		Text = cfg.Name or "Button", Font = Enum.Font.Code, TextSize = 13,
 		TextColor3 = cfg.TextColor or (accent and Library.OnAccent(accent)) or T.Text, TextTruncate = Enum.TextTruncate.AtEnd, ClipsDescendants = true, Parent = self.Body,
-	}, { corner(14), stroke(grad and (grad[2] or T.Accent2) or (accent and accent:Lerp(Color3.new(1, 1, 1), 0.3) or T.Border), 1, grad and 0.5 or 0.35) })
+	}, { corner(2), stroke(grad and (grad[2] or T.Accent2) or (accent and accent:Lerp(Color3.new(1, 1, 1), 0.3) or T.Border), 1, grad and 0.5 or 0.35) })
 	if grad then
 		-- gradient needs the frame background visible (transparency stays low, not 1)
 		b.BackgroundColor3 = Color3.new(1, 1, 1)
@@ -5552,8 +5676,9 @@ function Section:CreateButton(cfg)
 		im.ZIndex = b.ZIndex + 1
 		im.Parent = b
 	end
-	-- top highlight for depth
-	if not grad then
+	Library._bevel(b, grad and grad[1] or accent or T.Control)
+	-- top highlight for depth (off: classic bevel replaces it)
+	if false then
 		new("Frame", {
 			Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.Sheen, BackgroundTransparency = 0.85, BorderSizePixel = 0, Parent = b,
 		}, { corner(1) })
@@ -5569,7 +5694,7 @@ function Section:CreateButton(cfg)
 	-- covers the buttons next to it) + a click sound.  Works on PC and mobile.
 	--   cfg.Spin = false  turns the spin off      cfg.SpinTime = 0.5  seconds      cfg.Turns = 1  (2 = double, -1 = other way)
 	--   cfg.Sound = false | id                    cfg.Feedback = "Saved"  also shows a toast
-	local spinOn = cfg.Spin ~= false
+	local spinOn = cfg.Spin == true   -- classic: no spin unless asked
 	local spinScale = new("UIScale", { Scale = 1, Parent = b })
 	local spinSeq = 0
 	local function spin()
@@ -5616,7 +5741,7 @@ function Section:CreateToggle(cfg)
 	local row = new("TextButton", {
 		Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = T.Control, BackgroundTransparency = 1, Text = "",
 		AutoButtonColor = false, Parent = self.Body,
-	}, { corner(13) })
+	}, { corner(2) })
 	feedback(row, row, "BackgroundTransparency", 1, 0.82, 0.62, true)
 	new("TextLabel", {
 		Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -62, 1, 0), BackgroundTransparency = 1, Text = cfg.Name or "Toggle",
@@ -5625,16 +5750,17 @@ function Section:CreateToggle(cfg)
 	local track = new("Frame", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(42, 22),
 		BackgroundColor3 = value and T.Accent or T.Control, BorderSizePixel = 0, Parent = row,
-	}, { corner(11), stroke(T.Border, 1, 0.6) })
+	}, { corner(2), stroke(T.Border, 1, 0.6) })
+	Library._bevel(track, T.Control, true)
 	-- gradient fill lives on its own frame so its fade can be tweened (UIGradient.Transparency snaps instantly)
 	local trackFill = new("Frame", {
 		Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = value and 0 or 1,
 		BorderSizePixel = 0, ZIndex = 1, Parent = track,
-	}, { corner(11), gradient(T.Accent, T.Accent2, 0) })
+	}, { corner(2), gradient(T.Accent, T.Accent2, 0) })
 	local knob = new("Frame", {
 		AnchorPoint = Vector2.new(0, 0.5), Position = value and ON_POS or OFF_POS, ZIndex = 2,
 		Size = UDim2.fromOffset(16, 16), BackgroundColor3 = T.Knob, BorderSizePixel = 0, Parent = track,
-	}, { corner(8), stroke(T.Accent, 1.5, 0.4) })
+	}, { corner(2), stroke(T.Accent, 1.5, 0.4) })
 	local knobStroke = knob:FindFirstChildOfClass("UIStroke")
 
 	local obj = {}
@@ -5686,19 +5812,21 @@ function Section:CreateSlider(cfg)
 	local knob = new("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(knobS, knobS),
 		BackgroundColor3 = T.Knob, BorderSizePixel = 0, ZIndex = 2, Parent = track,
-	}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), stroke(T.Accent, 2, 0) })
+	}, { new("UICorner", { CornerRadius = UDim.new(0, 2) }), stroke(T.Accent, 2, 0) })
 
 	local obj = {}
-	local function render(v, animate)
+	local tgtA, visA, lastPut   -- drag visuals (see the pump below): target / displayed fill fraction, last whole-pixel write
+	local function render(v, animate, dur)
 		local a = (max == min) and 0 or (v - min) / (max - min)
 		valLabel.Text = tostring(v) .. suffix
 		if animate then
-			tween(fill, 0.18, { Size = UDim2.fromScale(a, 1) })
-			tween(knob, 0.18, { Position = UDim2.fromScale(a, 0.5) })
+			tween(fill, dur or 0.18, { Size = UDim2.fromScale(a, 1) })
+			tween(knob, dur or 0.18, { Position = UDim2.fromScale(a, 0.5) })
 		else
 			fill.Size = UDim2.fromScale(a, 1)
 			knob.Position = UDim2.fromScale(a, 0.5)
 		end
+		tgtA, visA, lastPut = a, a, nil
 	end
 	function obj:Set(v, silent)
 		v = snap(v, min, max, inc)
@@ -5712,26 +5840,82 @@ function Section:CreateSlider(cfg)
 	render(value, false)
 	setFlag(cfg, value)
 
-	-- dragging updates instantly (no tween) so the knob never lags behind the pointer
+	-- Coarse sliders (few steps, wide notches) glide between notches; fine sliders (steps under ~2.5 px) follow the
+	-- pointer instantly.
+	local function coarse()
+		local n = (max - min) / math.max(inc, 1e-9)
+		return n > 0 and (track.AbsoluteSize.X / n) > 2.5
+	end
+	local function aOf(v) return (max == min) and 0 or (v - min) / (max - min) end
+
+	-- While dragging, the pointer only decides the TARGET (value, label, callback). The fill / knob are moved by the
+	-- per-frame pump below, in whole pixels. This replaces the old "new Quint tween on every notch": each tween restarted
+	-- at full speed and slowed to a stop within 0.09 s, which looked stop-and-go and lagged behind the finger.
+	local function put(a)
+		local w = math.max(track.AbsoluteSize.X, 1)
+		a = math.floor(a * w + 0.5) / w   -- whole pixels: no sub-pixel shimmer, no redundant property writes
+		if a == lastPut then return end
+		lastPut = a
+		fill.Size = UDim2.fromScale(a, 1)
+		knob.Position = UDim2.fromScale(a, 0.5)
+	end
 	local function fromX(x)
 		local a = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
 		local v = snap(min + (max - min) * a, min, max, inc)
 		if v ~= value then
 			value = v
-			render(v, false)
+			valLabel.Text = tostring(v) .. suffix
+			tgtA = aOf(v)
+			if visA == nil then visA = tgtA end
 			setFlag(cfg, v)
 			safe(cfg.Callback, v)
 		end
 	end
 
+	-- Pointer events can arrive several times per frame (high-polling mice). Only the latest position is kept and
+	-- applied once per rendered frame, so the user's Callback and the label / fill writes run at most once a frame.
+	-- After release the pump stays alive only until a coarse glide has settled, then disconnects itself.
+	local pendingX, pumpC, dragging
+	local function pump(dt)
+		local x = pendingX
+		if x then
+			pendingX = nil
+			fromX(x)
+		end
+		local settled = true
+		if tgtA then
+			if visA == nil or not coarse() then
+				visA = tgtA
+			else
+				local d = tgtA - visA
+				if math.abs(d) < 0.0008 then
+					visA = tgtA
+				else
+					visA += d * (1 - math.exp(-(dt or 1 / 60) * 26))   -- frame-rate independent ease toward the notch
+					settled = false
+				end
+			end
+			put(visA)
+		end
+		if settled and not dragging and pumpC then
+			pumpC:Disconnect()
+			pumpC = nil
+		end
+	end
 	local function release()
+		dragging = false
+		pump(1 / 60) -- flush the last position so the final value is never lost
 		tab:SetScrollEnabled(true)
 		tween(knob, 0.16, { Size = UDim2.fromOffset(knobS, knobS) })
 	end
 	hit.InputBegan:Connect(function(i)
 		if not isPress(i) then return end
-		-- starts this drag and releases any other slider that was still following an input
-		Library._drag(i, function(m) fromX(m.Position.X) end, release)
+		pendingX = nil
+		-- starts this drag and releases any other drag that was still following an input (maybe this very slider)
+		Library._drag(i, function(m) pendingX = m.Position.X end, release)
+		if pumpC then pumpC:Disconnect() pumpC = nil end
+		dragging = true
+		pumpC = RunService.RenderStepped:Connect(pump)
 		tab:SetScrollEnabled(false) -- the page must not scroll while a slider is held
 		tween(knob, 0.12, { Size = UDim2.fromOffset(knobBig, knobBig) })
 		fromX(i.Position.X)
@@ -5841,7 +6025,8 @@ function Section:CreateDropdown(cfg)
 	local btn = new("TextButton", {
 		LayoutOrder = 2, Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1,
 		AutoButtonColor = false, Text = "", Parent = frame,
-	}, { corner(14), stroke(T.Border, 1, 0.35) })
+	}, { corner(2), stroke(T.Border, 1, 0.35) })
+	Library._bevel(btn, T.Control)
 	local btnStroke = btn:FindFirstChildOfClass("UIStroke")
 	feedback(btn, btn, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
 	local txt = new("TextLabel", {
@@ -5856,7 +6041,7 @@ function Section:CreateDropdown(cfg)
 	local badge = new("Frame", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -28, 0.5, 0), Size = UDim2.fromOffset(22, 18),
 		BackgroundColor3 = T.AccentSoft, BorderSizePixel = 0, Visible = false, Parent = btn,
-	}, { corner(9), gradient(T.Accent, T.Accent2, 0) })
+	}, { corner(2), gradient(T.Accent, T.Accent2, 0) })
 	local badgeLbl = Library._oa(new("TextLabel", {
 		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "0", Font = T.FontBold, TextSize = 13,
 		TextColor3 = Library.OnAccent(T), Parent = badge,
@@ -6049,7 +6234,7 @@ function Section:CreateDropdown(cfg)
 		popup = new("Frame", {
 			Visible = false, ZIndex = 61, BackgroundColor3 = T.Panel, BorderSizePixel = 0, ClipsDescendants = true,
 			Active = true, Parent = win.Gui,
-		}, { corner(9), stroke(T.Accent, 1, 0.35),
+		}, { corner(2), stroke(T.Accent, 1, 0.35),
 			wash(cseq({ 0, T.Top }, { 1, T.Panel }), 90) })
 		popupStroke = popup:FindFirstChildOfClass("UIStroke")
 
@@ -6058,7 +6243,7 @@ function Section:CreateDropdown(cfg)
 			Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Control, Text = "", PlaceholderText = "Search...",
 			PlaceholderColor3 = T.SubText, TextColor3 = T.Text, Font = T.Font, TextSize = 13, TextXAlignment = LEFT,
 			ClearTextOnFocus = false, Parent = searchHolder,
-		}, { corner(6), stroke(T.Border, 1, 0.4), padding(10, 0, 10, 0) })
+		}, { corner(2), stroke(T.Border, 1, 0.4), padding(10, 0, 10, 0) })
 
 		scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
 			Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = touch and 4 or 3,
@@ -6086,7 +6271,7 @@ function Section:CreateDropdown(cfg)
 				selAll = new("TextButton", {
 					Size = UDim2.new(0.34, -4, 1, 0), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = cfg.SelectAllText or "Select All",
 					Font = T.FontBold, TextSize = 13, TextColor3 = T.Accent, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer,
-				}, { corner(14), stroke(T.Accent, 1, 0.5) })
+				}, { corner(2), stroke(T.Accent, 1, 0.5) })
 				feedback(selAll, selAll, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
 				strokeFeedback(selAll, selAll:FindFirstChildOfClass("UIStroke"), 0.5, 0.15)
 			end
@@ -6095,14 +6280,14 @@ function Section:CreateDropdown(cfg)
 				Size = withAll and UDim2.new(0.26, -4, 1, 0) or UDim2.new(0.38, -3, 1, 0),
 				BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "Clear",
 				Font = T.Font, TextSize = 13, TextColor3 = T.Text, Parent = footer,
-			}, { corner(14), stroke(T.Border, 1, 0.35) })
+			}, { corner(2), stroke(T.Border, 1, 0.35) })
 			feedback(clear, clear, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
 			strokeFeedback(clear, clear:FindFirstChildOfClass("UIStroke"), 0.35, 0.05)
 			local done = new("TextButton", {
 				Position = withAll and UDim2.new(0.60, 2, 0, 0) or UDim2.new(0.38, 3, 0, 0),
 				Size = withAll and UDim2.new(0.40, -2, 1, 0) or UDim2.new(0.62, -3, 1, 0),
 				BackgroundColor3 = Color3.new(1, 1, 1), AutoButtonColor = false, Text = "", Parent = footer,
-			}, { corner(14), gradient(T.Accent, T.Accent2, 0), stroke(T.Accent2, 1, 0.5) })
+			}, { corner(2), gradient(T.Accent, T.Accent2, 0), stroke(T.Accent2, 1, 0.5) })
 			-- UIGradient tints the parent's own text too (it made "Done" vanish), so the label is a separate child
 			Library._oa(new("TextLabel", {
 				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "Done", Font = T.FontBold, TextSize = 13,
@@ -6347,7 +6532,8 @@ function Section:CreateTextbox(cfg)
 	end
 	local boxFrame = new("Frame", {
 		LayoutOrder = 2, Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, Parent = frame,
-	}, { corner(14), stroke(T.Border, 1, 0.35) })
+	}, { corner(2), stroke(T.Border, 1, 0.35) })
+	Library._bevel(boxFrame, T.Control, true)
 	local bStroke = boxFrame:FindFirstChildOfClass("UIStroke")
 	local box = new("TextBox", {
 		Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -20, 1, 0), BackgroundTransparency = 1, Text = tostring(value),
@@ -6462,10 +6648,10 @@ function Section:CreateKeybind(cfg)
 		Font = T.Font, TextSize = 14, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = row,
 	})
 	local btn = new("TextButton", {
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(80, math.min(h - 6, 24)),
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(UserInputService.TouchEnabled and 88 or 80, math.min(h - 4, UserInputService.TouchEnabled and 30 or 24)),
 		BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "", Font = T.Font, TextSize = 12,
 		TextColor3 = T.Text, TextTruncate = Enum.TextTruncate.AtEnd, Parent = row,
-	}, { corner(12), stroke(T.Border, 1, 0.35), padding(4, 0, 4, 0) })
+	}, { corner(2), stroke(T.Border, 1, 0.35), padding(4, 0, 4, 0) })
 	feedback(btn, btn, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
 
 	local function setListening(v)
@@ -6622,7 +6808,7 @@ function Section:CreateColorPicker(cfg)
 		}, { corner(6), new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(1, 0) }) })
 		svKnob = new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(12, 12), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 3, Parent = svBox,
-		}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), stroke(Color3.new(1, 1, 1), 2, 0) })
+		}, { new("UICorner", { CornerRadius = UDim.new(0, 2) }), stroke(Color3.new(1, 1, 1), 2, 0) })
 		local svHit = new("TextButton", {
 			Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 4, Parent = svBox,
 		})
@@ -6777,7 +6963,7 @@ function Section:CreateProgress(cfg)
 	local suffix = cfg.Suffix or ""
 	local total = UserInputService.TouchEnabled and 50 or 42
 	local frame = new("Frame", { Size = UDim2.new(1, 0, 0, total), BackgroundTransparency = 1, Parent = self.Body })
-	local nameLbl = new("TextLabel", {
+	new("TextLabel", {
 		Size = UDim2.new(1, -70, 0, 18), BackgroundTransparency = 1, Text = cfg.Name or "Progress", Font = T.Font, TextSize = 14,
 		TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
 	})
@@ -6857,7 +7043,7 @@ function Section:CreateKeybindToggle(cfg)
 
 	local row = new("TextButton", {
 		Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = T.Control, BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Parent = self.Body,
-	}, { corner(13) })
+	}, { corner(2) })
 	feedback(row, row, "BackgroundTransparency", 1, 0.82, 0.62, true)
 	new("TextLabel", {
 		Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -140, 1, 0), BackgroundTransparency = 1, Text = cfg.Name or "Toggle Key",
@@ -6865,23 +7051,23 @@ function Section:CreateKeybindToggle(cfg)
 	})
 	-- clickable key chip
 	local keyBtn = new("TextButton", {
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -54, 0.5, 0), Size = UDim2.fromOffset(46, math.min(h - 8, 22)),
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -54, 0.5, 0), Size = UDim2.fromOffset(UserInputService.TouchEnabled and 50 or 46, math.min(h - 6, UserInputService.TouchEnabled and 28 or 22)),
 		BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "", Font = T.FontBold, TextSize = 13,
 		TextColor3 = T.Accent, Parent = row,
-	}, { corner(11), stroke(T.Border, 1, 0.35) })
+	}, { corner(2), stroke(T.Border, 1, 0.35) })
 	local keyStroke = keyBtn:FindFirstChildOfClass("UIStroke")
 	local track = new("Frame", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(38, 20),
 		BackgroundColor3 = value and T.Accent or T.Control, BorderSizePixel = 0, Parent = row,
-	}, { corner(10) })
+	}, { corner(2) })
 	local trackFill = new("Frame", {
 		Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = value and 0 or 1,
 		BorderSizePixel = 0, ZIndex = 1, Parent = track,
-	}, { corner(10), gradient(T.Accent, T.Accent2, 0) })
+	}, { corner(2), gradient(T.Accent, T.Accent2, 0) })
 	local knob = new("Frame", {
 		AnchorPoint = Vector2.new(0, 0.5), Position = value and UDim2.new(1, -17, 0.5, 0) or UDim2.new(0, 3, 0.5, 0), ZIndex = 2,
 		Size = UDim2.fromOffset(14, 14), BackgroundColor3 = T.Knob, BorderSizePixel = 0, Parent = track,
-	}, { corner(7), stroke(T.Accent, 1.5, 0.4) })
+	}, { corner(2), stroke(T.Accent, 1.5, 0.4) })
 
 	local listening = false
 	local token = {}
@@ -6999,28 +7185,85 @@ function Window:Tooltip(target, text)
 end
 
 ------------------------------------------------------------------ tab badge
+-- keep the tab label readable next to the badge / padlock.
+-- Roomy sidebar: the badge sits inline on the right and the label gets whatever is left.
+-- Narrow sidebar (phones): the label wins, and the badge shrinks into a small pill on the button's top-right corner.
+local _twCache, _twCount = {}, 0
+function Tab._textW(text, size, font) -- (a field, not a new top-level local: the chunk is close to Lua's local limit)
+	-- cached: _FitLabel runs on every tab at each resize, and the same few strings repeat
+	local key = tostring(font) .. "|" .. size .. "|" .. text
+	local w = _twCache[key]
+	if w then return w end
+	local ok, v = pcall(function()
+		return game:GetService("TextService"):GetTextSize(text, size, font, Vector2.new(10000, 10000))
+	end)
+	w = ok and v.X or 0
+	if _twCount > 400 then _twCache, _twCount = {}, 0 end
+	_twCache[key] = w
+	_twCount += 1
+	return w
+end
+
+function Tab:_FitLabel()
+	local lbl = self.Label
+	if not lbl then return end
+	local lx = self._lblX or 46
+	local right = self._locked and 34 or 6
+	local badge = self.Badge
+	local corner = false
+	if badge and badge.Visible and self.BadgeLabel then
+		local btnW = self.Button.AbsoluteSize.X / math.max(self.Window.Scale.Scale, 0.01) -- undo the window's UIScale (spin-in zoom)
+		local bw = Tab._textW(self.BadgeLabel.Text, 12, self.BadgeLabel.Font) + 12 -- inline pill width (text + padding)
+		local need = lx + Tab._textW(lbl.Text, lbl.TextSize, lbl.Font) + 8 + bw + 10
+		if self._locked then need = need + 18 end
+		if btnW > 0 and need > btnW then
+			corner = true
+		else
+			right = math.max(right, bw + 18 + (self._locked and 18 or 0))
+		end
+	end
+	if badge then
+		if corner then
+			badge.AnchorPoint = Vector2.new(1, 0)
+			badge.Position = UDim2.new(1, -5, 0, 1)
+			badge.Size = UDim2.fromOffset(14, 12)
+			if self.BadgeLabel then self.BadgeLabel.TextSize = 9 end
+		else
+			badge.AnchorPoint = Vector2.new(1, 0.5)
+			badge.Position = UDim2.new(1, -8, 0.5, 0)
+			badge.Size = UDim2.fromOffset(18, 16)
+			if self.BadgeLabel then self.BadgeLabel.TextSize = 12 end
+		end
+	end
+	lbl.Size = UDim2.new(1, -(lx + right), 1, 0)
+end
+
+------------------------------------------------------------------ tab badge
 function Tab:SetBadge(v)
 	local T = self.Window.Theme
 	if v == nil or v == false or v == "" then
 		if self.Badge then self.Badge.Visible = false end
+		self:_FitLabel()
 		return
 	end
 	if not self.Badge then
 		self.Badge = new("Frame", {
 			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(18, 16),
-			AutomaticSize = AX, BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Visible = false, Parent = self.Button,
+			AutomaticSize = AX, BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Visible = false, ZIndex = 3, Parent = self.Button,
 		}, { corner(8), gradient(T.Accent, T.Accent2, 0), padding(6, 0, 6, 0) })
 		self.BadgeLabel = Library._oa(new("TextLabel", {
 			Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, BackgroundTransparency = 1, Text = "", Font = T.FontBold, TextSize = 12,
 			TextColor3 = Library.OnAccent(T), Parent = self.Badge,
 		}))
+		-- refit whenever the pill grows or shrinks (text changed, font loaded, window resized)
+		-- refit on window / sidebar resize too
+		self.Button:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			if not self.Window._spinning then self:_FitLabel() end -- (text measuring every frame of the spin would stutter)
+		end)
 	end
 	self.BadgeLabel.Text = tostring(v)
 	self.Badge.Visible = true
-	-- compact mode hides labels, so make room for the badge on the icon
-	if self.Label.Visible then
-		self.Label.Size = UDim2.new(1, -74, 1, 0)
-	end
+	self:_FitLabel()
 end
 
 ------------------------------------------------------------------ config / misc API
@@ -7979,46 +8222,11 @@ local function ensureInput()
 	end)
 end
 
--- PC only: grab the corner glyph and drag to resize (Window option Resizable = false to disable)
-local function attachResize(win)
-	local main, T = win.Main, win.Theme
-	local grip = new("TextButton", {
-		Name = "ResizeGrip", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -3, 1, -3), Size = UDim2.fromOffset(18, 18),
-		BackgroundTransparency = 1, Text = "\u{25E2}", Font = T.FontBold, TextSize = 12, TextColor3 = T.SubText, TextTransparency = 0.2,
-		AutoButtonColor = false, ZIndex = 40, Parent = main,
-	})
-	grip.MouseEnter:Connect(function() tween(grip, 0.12, { TextTransparency = 0, TextColor3 = T.Accent }) end)
-	grip.MouseLeave:Connect(function() tween(grip, 0.16, { TextTransparency = 0.2, TextColor3 = T.SubText }) end)
-	grip.InputBegan:Connect(function(i)
-		if i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-		local vp = win.Gui.AbsoluteSize
-		local start = i.Position
-		local w0, h0 = main.Size.X.Offset, main.Size.Y.Offset
-		local tl = main.AbsolutePosition
-		local conn
-		conn = UserInputService.InputChanged:Connect(function(m)
-			if m.UserInputType ~= Enum.UserInputType.MouseMovement then return end
-			local d = m.Position - start
-			local w = math.max(420, math.min(w0 + d.X, vp.X - 16))
-			local h = math.max(300, math.min(h0 + d.Y, vp.Y - 16))
-			win.Cfg.Width, win.Cfg.Height = w, h
-			-- keep the top-left corner where it is: store the new centre relative to the screen
-			win._drag.Rel = Vector2.new((tl.X + w / 2) / vp.X, (tl.Y + h / 2) / vp.Y)
-			win:_Fit()
-		end)
-		onEnd(i, function() conn:Disconnect() end)
-	end)
-end
-
 local origCreateWindow = Library.CreateWindow
 function Library:CreateWindow(cfg)
 	ensureInput()
 	local win = origCreateWindow(self, cfg)
 	win._index = win._index or {}
-	if false and not UserInputService.TouchEnabled and (cfg == nil or cfg.Resizable ~= false) then -- legacy duplicate grip disabled (CreateWindow already has the corner grip)
-		local ok, err = pcall(attachResize, win)
-		if not ok then warn("[SpectreUI] resize grip failed: " .. tostring(err)) end
-	end
 	return win
 end
 
@@ -8060,7 +8268,7 @@ function Section:CreateSegmented(cfg)
 	local bar = new("Frame", {
 		Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, barH), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1,
 		BorderSizePixel = 0, Parent = frame,
-	}, { corner(14), stroke(T.Border, 1, 0.4), padding(3, 3, 3, 3) })
+	}, { corner(2), stroke(T.Border, 1, 0.4), padding(3, 3, 3, 3) })
 	local holder = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Parent = bar },
 		{ list(3, { FillDirection = Enum.FillDirection.Horizontal }) })
 
@@ -8082,7 +8290,7 @@ function Section:CreateSegmented(cfg)
 			local b = new("TextButton", {
 				LayoutOrder = idx, Size = UDim2.new(1 / n, -(3 * (n - 1)) / n, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1),
 				BackgroundTransparency = 1, AutoButtonColor = false, Text = "", Parent = holder,
-			}, { corner(11), gradient(T.Accent, T.Accent2, 0) })
+			}, { corner(2), gradient(T.Accent, T.Accent2, 0) })
 			local lbl = new("TextLabel", {
 				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = tostring(opt), Font = T.Font, TextSize = 13,
 				TextColor3 = T.SubText, TextTruncate = Enum.TextTruncate.AtEnd, Parent = b,
@@ -8152,7 +8360,7 @@ function Section:CreateRangeSlider(cfg)
 		return new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(knobS, knobS),
 			BackgroundColor3 = T.Knob, BorderSizePixel = 0, ZIndex = 2, Parent = track,
-		}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), stroke(T.Accent, 2, 0) })
+		}, { new("UICorner", { CornerRadius = UDim.new(0, 2) }), stroke(T.Accent, 2, 0) })
 	end
 	local knobLo, knobHi = mkKnob(), mkKnob()
 
@@ -8261,11 +8469,11 @@ function Section:CreateTagInput(cfg)
 		Size = UDim2.new(1, -40, 1, 0), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, BorderSizePixel = 0, Text = "",
 		PlaceholderText = cfg.Placeholder or "Add and press Enter", PlaceholderColor3 = T.SubText, TextColor3 = T.Text, Font = T.Font,
 		TextSize = 13, TextXAlignment = LEFT, ClearTextOnFocus = false, Parent = inputRow,
-	}, { corner(14), stroke(T.Border, 1, 0.4), padding(10, 0, 10, 0) })
+	}, { corner(2), stroke(T.Border, 1, 0.4), padding(10, 0, 10, 0) })
 	local addBtn = new("TextButton", {
 		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0, 34, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1),
 		AutoButtonColor = false, Text = "", Parent = inputRow,
-	}, { corner(14), gradient(T.Accent, T.Accent2, 0) })
+	}, { corner(2), gradient(T.Accent, T.Accent2, 0) })
 	Library._oa(new("TextLabel", {
 		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "+", Font = T.FontBold, TextSize = 18,
 		TextColor3 = Library.OnAccent(T), Parent = addBtn,
@@ -8280,7 +8488,7 @@ function Section:CreateTagInput(cfg)
 		for idx, tag in ipairs(tags) do
 			local chip = new("Frame", {
 				LayoutOrder = idx, Size = UDim2.new(0, 0, 0, touch and 30 or 24), AutomaticSize = AX, BackgroundColor3 = T.AccentSoft, BorderSizePixel = 0, Parent = chips,
-			}, { corner(12), stroke(T.Accent, 1, 0.6),
+			}, { corner(2), stroke(T.Accent, 1, 0.6),
 				list(0, { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center }),
 				padding(10, 0, 4, 0) })
 			new("TextLabel", {
@@ -8352,9 +8560,9 @@ function Section:CreateHoldButton(cfg)
 	local b = new("TextButton", {
 		Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "",
 		ClipsDescendants = true, Parent = self.Body,
-	}, { corner(14), stroke(accent, 1, 0.5) })
+	}, { corner(2), stroke(accent, 1, 0.5) })
 	local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = b },
-		{ corner(14), gradient(accent, accent:Lerp(Color3.new(1, 1, 1), 0.3), 0) })
+		{ corner(2), gradient(accent, accent:Lerp(Color3.new(1, 1, 1), 0.3), 0) })
 	local label = new("TextLabel", {
 		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = cfg.Name or "Hold to confirm", Font = T.Font, TextSize = 13,
 		TextColor3 = T.Text, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2, Parent = b,
@@ -8491,7 +8699,7 @@ function Section:CreateConsole(cfg)
 		TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
 	})
 	local clearBtn = new("TextButton", {
-		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(52, 20), BackgroundColor3 = T.Control,
+		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(UserInputService.TouchEnabled and 62 or 52, UserInputService.TouchEnabled and 24 or 20), BackgroundColor3 = T.Control,
 		BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "Clear", Font = T.Font, TextSize = 13, TextColor3 = T.SubText, Parent = frame,
 	}, { corner(10), stroke(T.Border, 1, 0.4) })
 	local view = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
@@ -8633,7 +8841,8 @@ local function decorate(sec, kind, cfg, obj)
 	obj.Kind = obj.Kind or kind
 
 	local ctl
-	for _, c in ipairs(sec.Controls) do
+	for i = #sec.Controls, 1, -1 do   -- the control was registered last: search from the end (was O(n) per control, O(n^2) per section)
+		local c = sec.Controls[i]
 		if c.Frame == frame then ctl = c break end
 	end
 	local entry = {
@@ -9257,17 +9466,21 @@ function Section:CreateThemeManager(cfg)
 			end
 		end,
 	})
-	tb = self:CreateTextbox({
-		Name = cfg.RenameLabel or "Theme name", Default = win.ThemeName, Placeholder = "new theme name", MaxLength = 28,
-		Callback = function(v) pending = v end,
-	})
+	-- classic: only the theme dropdown + Random theme by default.
+	-- CreateThemeManager({ Rename = true, Duplicate = true, Delete = true }) brings the extra tools back.
+	if cfg.Rename == true then
+		tb = self:CreateTextbox({
+			Name = cfg.RenameLabel or "Theme name", Default = win.ThemeName, Placeholder = "new theme name", MaxLength = 28,
+			Callback = function(v) pending = v end,
+		})
+	end
 	local function sync()
 		dd:Refresh(Library:ListThemes(), true)
 		dd:Set(win.ThemeName, true)
-		tb:Set(win.ThemeName, true)
+		if tb then tb:Set(win.ThemeName, true) end
 		pending = win.ThemeName
 	end
-	self:CreateButton({
+	if cfg.Rename == true then self:CreateButton({
 		Name = cfg.RenameButton or "Rename theme", Gradient = { win.Theme.Accent, win.Theme.Accent2 }, Bold = true,
 		Callback = function()
 			local old = win.ThemeName
@@ -9280,8 +9493,8 @@ function Section:CreateThemeManager(cfg)
 				toast(tostring(res), "Error")
 			end
 		end,
-	})
-	self:CreateButton({
+	}) end
+	if cfg.Duplicate == true then self:CreateButton({
 		Name = cfg.DuplicateButton or "Duplicate theme",
 		Callback = function()
 			local base = win.ThemeName
@@ -9301,7 +9514,7 @@ function Section:CreateThemeManager(cfg)
 				toast(tostring(res), "Error")
 			end
 		end,
-	})
+	}) end
 
 	if cfg.Random ~= false then
 		self:CreateButton({
@@ -9312,7 +9525,7 @@ function Section:CreateThemeManager(cfg)
 			end,
 		})
 	end
-	if cfg.Delete ~= false then
+	if cfg.Delete == true then
 		self:CreateButton({
 			Name = cfg.DeleteButton or "Delete theme", Color = Color3.fromRGB(248, 113, 113),
 			Callback = function()
@@ -9429,7 +9642,7 @@ function Window:CreateThemeTab(cfg)
 	end
 
 	-- build a theme from two picked colours
-	if cfg.Maker ~= false then
+	if cfg.Maker == true then   -- removed by default; CreateThemeTab / CreateSettingsTab({ Maker = true }) brings it back
 		local mk = tab:CreateSection({ Icon = ico("MakerSection", "lucide:pipette"), Name = tx(L, "MakerSection", "Create your own theme"), Column = (cfg.Columns or {}).Maker or 2 })
 		local mc = cfg.MakerColors or {}
 		local c1 = mk:CreateColorPicker({ Name = tx(L, "Accent", "Accent color"), Default = mc.Accent or Color3.fromRGB(56, 189, 248) })
@@ -9453,24 +9666,36 @@ function Window:CreateThemeTab(cfg)
 
 	-- backdrop effect / quality / quick-switch keys
 	if cfg.Effects ~= false then
+		-- THEME tab + SETTINGS tab (or two calls) can both build this section: the later copy gets its own flag
+		-- (ui_bg_fx -> ui_bg_fx_2) so two controls never share one Flag
+		local function uniqFlag(flag)
+			local taken = {}
+			for _, e in ipairs(win._index or {}) do
+				if e.Flag ~= nil then taken[e.Flag] = true end
+			end
+			if not taken[flag] then return flag end
+			local n = 2
+			while taken[flag .. "_" .. n] do n += 1 end
+			return flag .. "_" .. n
+		end
 		local fx = tab:CreateSection({ Icon = ico("FxSection", "lucide:sparkles"), Name = tx(L, "FxSection", "Background / effects"), Column = (cfg.Columns or {}).Fx or 2 })
 		local AUTO, OFF = tx(L, "FxAuto", "Follow theme"), tx(L, "FxOff", "Off")
 		parts.Background = fx:CreateDropdown({ Name = tx(L, "FxName", "Background effect"),
-			Options = { AUTO, "petals", "orbs", "embers", "rain", "grid", OFF }, Default = AUTO, Flag = P .. "bg_fx",
+			Options = { AUTO, "petals", "orbs", "embers", "rain", "grid", OFF }, Default = AUTO, Flag = uniqFlag(P .. "bg_fx"),
 			Callback = function(v)
 				if v == OFF then win:SetBackground(false)
 				elseif v == AUTO then win:SetBackground(nil)
 				elseif v then win:SetBackground(v) end
 			end })
-		parts.Quality = fx:CreateSegmented({ Name = tx(L, "Quality", "Quality"), Options = { "auto", "low", "high" }, Default = "auto", Flag = P .. "quality",
+		parts.Quality = fx:CreateSegmented({ Name = tx(L, "Quality", "Quality"), Options = { "auto", "low", "high" }, Default = "auto", Flag = uniqFlag(P .. "quality"),
 			Tooltip = tx(L, "QualityTip", "low = no gradients / effects, best for phones"),
 			Callback = function(q) Library:SetQuality(q) end })
 		if cfg.Keys ~= false then
 			local k = type(cfg.Keys) == "table" and cfg.Keys or {}
 			parts.NextKey = fx:CreateKeybind({ Name = tx(L, "NextTheme", "Next theme"), Default = k.Next or Enum.KeyCode.F6, Mode = "Press",
-				Flag = P .. "theme_next", Callback = function() win:CycleTheme(1) end })
+				Flag = uniqFlag(P .. "theme_next"), Callback = function() win:CycleTheme(1) end })
 			parts.PrevKey = fx:CreateKeybind({ Name = tx(L, "PrevTheme", "Previous theme"), Default = k.Prev or Enum.KeyCode.F5, Mode = "Press",
-				Flag = P .. "theme_prev", Callback = function() win:CycleTheme(-1) end })
+				Flag = uniqFlag(P .. "theme_prev"), Callback = function() win:CycleTheme(-1) end })
 		end
 		parts.EffectsSection = fx
 	end
@@ -9515,7 +9740,7 @@ function Window:CreateSettingsTab(cfg)
 	end
 
 	-- HUD + notifications
-	if S.Interface ~= false then
+	if S.Interface == true then   -- removed by default; CreateSettingsTab({ Interface = true }) brings it back
 		local ifs = tab:CreateSection({ Icon = ico("InterfaceSection", "lucide:layout-dashboard"), Name = tx(L, "InterfaceSection", "Interface"), Column = 2 })
 		local wm, kl
 		parts.WatermarkToggle = ifs:CreateToggle({ Name = tx(L, "Watermark", "Show FPS / Ping"), Default = false, Flag = P .. "watermark",
@@ -9550,8 +9775,8 @@ function Window:CreateSettingsTab(cfg)
 	-- save / load / delete configs
 	if S.Config ~= false then
 		local cs = tab:CreateSection({ Icon = ico("ConfigSection", "lucide:save"), Name = CFG_T, Column = 2 })
-		local name = cs:CreateTextbox({ Name = tx(L, "ConfigName", "Config name"), Default = cfg.DefaultConfig or "default", EnterOnly = false })
-		local list = cs:CreateDropdown({ Name = tx(L, "ConfigList", "Saved configs"), Options = Library:ListConfigs() })
+		local name = cs:CreateTextbox({ Name = tx(L, "ConfigName", "Name"), Default = cfg.DefaultConfig or "default", EnterOnly = false })
+		local list = cs:CreateDropdown({ Name = tx(L, "ConfigList", "Configs"), Options = Library:ListConfigs() })
 		local function refresh(keep) list:Refresh(Library:ListConfigs(), keep) end
 		local function pick() return list:Get() or name:Get() end
 		cs:CreateButton({ Icon = ico("Save", "lucide:save"), Name = tx(L, "Save", "Save"), Gradient = { win.Theme.Accent, win.Theme.Accent2 }, Bold = true, Callback = function()
@@ -9565,8 +9790,8 @@ function Window:CreateSettingsTab(cfg)
 		end })
 		cs:CreateButton({ Icon = ico("Delete", "lucide:trash-2"), Name = tx(L, "Delete", "Delete"), Color = Color3.fromRGB(248, 113, 113), Callback = function()
 			local n = list:Get()
-			if not n then return win:Warning(CFG_T, tx(L, "PickFirst", "Pick a config from the list first"), 3) end
-			win:Confirm({ Title = tx(L, "DeleteTitle", "Delete config"), Content = "\"" .. n .. "\" - " .. tx(L, "CannotUndo", "this cannot be undone"),
+			if not n then return win:Warning(CFG_T, tx(L, "PickFirst", "Select a config first"), 3) end
+			win:Confirm({ Title = tx(L, "DeleteTitle", "Delete config"), Content = "\"" .. n .. "\" - " .. tx(L, "CannotUndo", "can't be undone"),
 				Yes = tx(L, "Delete", "Delete"), No = tx(L, "Cancel", "Cancel"), Danger = true,
 				OnYes = function()
 					local ok, res = Library:DeleteConfig(n)
@@ -9574,18 +9799,18 @@ function Window:CreateSettingsTab(cfg)
 					refresh()
 				end })
 		end })
-		cs:CreateButton({ Icon = ico("SaveAuto", "lucide:zap"), Name = tx(L, "SaveAuto", "Save as \"auto\" (autoload)"), Callback = function()
+		cs:CreateButton({ Icon = ico("SaveAuto", "lucide:zap"), Name = tx(L, "SaveAuto", "Auto save"), Callback = function()
 			local ok, res = Library:SaveAuto(cfg.AutoName or "auto")
-			if ok then win:Success(CFG_T, tx(L, "SavedAuto", "Saved as auto"), 3) else win:Error(CFG_T, tostring(res), 3) end
+			if ok then win:Success(CFG_T, tx(L, "SavedAuto", "Saved"), 3) else win:Error(CFG_T, tostring(res), 3) end
 			refresh(true)
 		end })
-		cs:CreateButton({ Icon = ico("Copy", "lucide:copy"), Name = tx(L, "Copy", "Copy config (clipboard)"), Callback = function()
+		cs:CreateButton({ Icon = ico("Copy", "lucide:copy"), Name = tx(L, "Copy", "Copy"), Callback = function()
 			if type(setclipboard) ~= "function" then return win:Warning(CFG_T, tx(L, "NoClipboard", "Clipboard not supported"), 3) end
 			pcall(setclipboard, Library:ExportConfig())
 			win:Success(CFG_T, tx(L, "Copied", "Copied"), 2)
 		end })
-		cs:CreateButton({ Icon = ico("Import", "lucide:clipboard-paste"), Name = tx(L, "Import", "Paste config (import)"), Callback = function()
-			win:Prompt({ Title = tx(L, "ImportTitle", "Import config"), Placeholder = "{ ... }",
+		cs:CreateButton({ Icon = ico("Import", "lucide:clipboard-paste"), Name = tx(L, "Import", "Import"), Callback = function()
+			win:Prompt({ Title = tx(L, "ImportTitle", "Import"), Placeholder = "{ ... }",
 				OnSubmit = function(text)
 					local ok, res = Library:ImportConfig(text)
 					if ok then win:Success(CFG_T, tx(L, "Applied", "Applied") .. " " .. tostring(res), 3) else win:Error(CFG_T, tostring(res), 3) end
@@ -9595,7 +9820,7 @@ function Window:CreateSettingsTab(cfg)
 	end
 
 	-- undo / redo / snapshot / reset
-	if S.History ~= false then
+	if S.History == true then   -- removed by default; CreateSettingsTab({ History = true }) brings it back
 		local hs = tab:CreateSection({ Icon = ico("HistorySection", "lucide:history"), Name = tx(L, "HistorySection", "Undo / Snapshot"), Column = 2 })
 		hs:CreateButton({ Icon = ico("Undo", "lucide:undo-2"), Name = tx(L, "Undo", "Undo (Ctrl+Z)"), Callback = function()
 			if not Library:Undo() then win:Warning("Undo", tx(L, "NothingUndo", "Nothing to undo"), 2) end
@@ -9620,7 +9845,7 @@ function Window:CreateSettingsTab(cfg)
 		parts.HistorySection = hs
 	end
 	-- window helpers
-	if S.Window ~= false then
+	if S.Window == true then   -- removed by default; CreateSettingsTab({ Window = true }) brings it back
 		local ws = tab:CreateSection({ Icon = ico("WindowSection", "lucide:app-window"), Name = tx(L, "WindowSection", "Window"), Column = 1 })
 		ws:CreateButton({ Icon = ico("Center", "lucide:locate-fixed"), Name = tx(L, "Center", "Center window"), Callback = function() win:Center() win:Flash() end })
 		ws:CreateButton({ Icon = ico("Unload", "lucide:power"), Name = tx(L, "Unload", "Close UI completely (Unload)"), Color = Color3.fromRGB(248, 113, 113), Callback = function()
@@ -9820,7 +10045,7 @@ local function _hasOpt(list, v)
 	return false
 end
 
-local _NOCHECKNAME = { Label = true, Paragraph = true, Separator = true, Badge = true, Progress = true, Graph = true, Console = true, Button = true, HoldButton = true, Textbox = true }
+local _NOCHECKNAME = { Label = true, Paragraph = true, Separator = true, Badge = true, Progress = true, Graph = true, Console = true, Button = true, HoldButton = true, Textbox = true, ButtonRow = true, InputButton = true }
 
 local function _audit(win, o)
 	o = o or {}
@@ -9842,8 +10067,19 @@ local function _audit(win, o)
 	local mp, ms
 	if visual then mp, ms = win.Main.AbsolutePosition, win.Main.AbsoluteSize end
 	local seenFlag = {}
+	local sliceT, sliceN = os.clock(), 0
 
 	for _, e in ipairs(win._index or {}) do
+		-- background audits (o.Slice) hand the frame back every ~6 ms: the TextFits / GetDescendants walk over a big tab
+		-- used to run in a single frame
+		if o.Slice then
+			sliceN += 1
+			if sliceN % 8 == 0 and os.clock() - sliceT > 0.006 then
+				task.wait()
+				if win._destroyed then return issues end
+				sliceT = os.clock()
+			end
+		end
 		local cfg = e.Cfg or {}
 		local frame = e.Frame
 		if e.Flag ~= nil then
@@ -10025,6 +10261,24 @@ local function _webhookSend(win, fresh, wh)
 	end)
 end
 
+-- Lua errors thrown inside control callbacks (safe()) go to the same webhook as AutoCheck problems.
+-- Same rules: once per unique error per window, batched, rate-limited. Message is flattened, cut to 200 chars, and @ is defused.
+-- Opt out:  Library.AutoCheck.ForwardLuaErrors = false   (or turn AutoCheck off entirely)
+Library._onCbError = function(err)
+	local ac = Library.AutoCheck
+	if ac and (ac.Enabled == false or ac.ForwardLuaErrors == false) then return end
+	local win = Library.Windows[#Library.Windows]
+	if not win or win._destroyed then return end
+	local msg = (tostring(err):gsub("[\r\n]+", " "))
+	msg = (msg:gsub("@", "@\u{200B}"))
+	if #msg > 200 then msg = msg:sub(1, 200) .. "..." end
+	task.spawn(function()
+		pcall(_webhookSend, win, {
+			{ Level = "error", Code = "LuaError", Message = msg, Key = "lua:" .. msg:sub(1, 120) },
+		}, _DEV_WEBHOOK)
+	end)
+end
+
 local function _emit(win, issues, o, onlyNew)
 	win._auditSeen = win._auditSeen or {}
 	local fresh = {}
@@ -10086,7 +10340,7 @@ function Window:_QueueCheck(delay)
 	local seq = self._checkSeq
 	task.delay(delay or cfg.Delay or 1.5, function()
 		if self._destroyed or seq ~= self._checkSeq or cfg.Enabled == false then return end
-		local ok, issues = pcall(_audit, self, cfg)
+		local ok, issues = pcall(_audit, self, setmetatable({ Slice = true }, { __index = cfg }))
 		if ok then _emit(self, issues, cfg, true) end
 	end)
 end
@@ -10127,6 +10381,405 @@ Library:AddCommand({
 		if #issues == 0 then pcall(function() w:Toast("UI check: all good", "Success") end) end
 	end,
 })
+
+------------------------------------------------------------ Discord card
+-- Section:CreateDiscord({ Invite = "code" | "https://discord.gg/code", Title, Button = "Join Discord", Open = true, Refresh = 300,
+--                         Icon = true, Banner = true, Description = true, Details = true, Color, OnUpdate = function(info) end })
+--   A card with the server logo, name (+ verified tick), online / member counts, description, #channel / inviter / boosts and an optional
+--   banner, all read from Discord's public invite API (needs request or HttpGet). Images are downloaded once, cached in ./SpectreUI_cache
+--   and shown through getcustomasset (no writefile / getcustomasset -> text only). The Join button asks the local Discord app to open
+--   the invite (RPC 127.0.0.1:6463-6466) and falls back to copying the link.
+--   Stability: failed requests retry with back-off (honours Discord's rate-limit), the last good data stays on screen, results are shared
+--   between cards with the same invite (45 s cache), nothing runs after the card / window is destroyed, and every step is pcall-guarded.
+--   Smoothness / CPU: no per-frame work at all (no Heartbeat / RenderStepped), first fetch waits until the window is built and open, images
+--   are small (icon 128 px PNG, banner 320 px JPEG), downloaded ONE AT A TIME through a shared queue, disk checks are done once per file,
+--   a refresh that brings the same data touches no UI property, and nothing is fetched while the window is hidden.
+--   Refresh = seconds between automatic updates (minimum 60, 0 = once).
+--   Handle: :Refresh()  :SetInvite(code|url)  :Copy()  :Destroy()  :GetInfo() -> { Id, Name, Description, Online, Members, Channel,
+--           Inviter, Boosts, Verified, Partnered, Community, IconUrl, BannerUrl, ExpiresAt, Code, Url }
+Library._discordParse = function(inv)
+	inv = tostring(inv or "")
+	return inv:match("discord%.gg/([%w%-_]+)") or inv:match("discord%.com/invite/([%w%-_]+)")
+		or inv:match("discordapp%.com/invite/([%w%-_]+)") or inv:match("^([%w%-_]+)$")
+end
+
+-- GET -> body | nil, status, errorBody
+Library._httpBytes = function(url)
+	local req = (syn and syn.request) or request or http_request or (http and http.request) or (fluxus and fluxus.request)
+	local status, errBody
+	if req then
+		local ok, res = pcall(req, { Url = url, Method = "GET" })
+		if ok and type(res) == "table" then
+			status = tonumber(res.StatusCode)
+			if status == 200 and type(res.Body) == "string" and #res.Body > 0 then return res.Body, 200 end
+			if type(res.Body) == "string" then errBody = res.Body end
+			if status == 404 or status == 429 then return nil, status, errBody end   -- definitive answers: do not retry through HttpGet
+		end
+	end
+	local ok, b = pcall(function() return game:HttpGet(url) end)
+	if ok and type(b) == "string" and #b > 0 then return b, 200 end
+	return nil, status, errBody
+end
+
+-- download an image url once (PNG / JPEG only), cache it on disk and return a Roblox asset string, or nil.
+-- A file already checked in this session is not read again; the steps are spread over several frames with task.wait().
+Library._imgOK = {}
+Library._remoteImage = function(url, name)
+	local ok, asset = pcall(function()
+		local gca = getcustomasset or getsynasset
+		if type(gca) ~= "function" or type(writefile) ~= "function" then return nil end
+		local function valid(b) return type(b) == "string" and (b:sub(1, 4) == "\137PNG" or b:sub(1, 2) == "\255\216") end
+		local folder, path = "SpectreUI_cache", "SpectreUI_cache/" .. name
+		if not Library._imgOK[path] then
+			pcall(function() if type(isfolder) == "function" and not isfolder(folder) then makefolder(folder) end end)
+			local have = false
+			if type(isfile) == "function" and type(readfile) == "function" then
+				local okf, f = pcall(isfile, path)
+				if okf and f == true then
+					task.wait()
+					local okr, data = pcall(readfile, path)
+					have = okr and valid(data)   -- a truncated / corrupt cache file is downloaded again
+				end
+			end
+			if not have then
+				local body = Library._httpBytes(url)
+				if not valid(body) then return nil end
+				task.wait()
+				if not pcall(writefile, path, body) then return nil end
+				task.wait(0.05)   -- some executors need a moment before the new file can be turned into an asset
+			end
+			Library._imgOK[path] = true
+		end
+		task.wait()
+		local okg, a = pcall(gca, path)
+		if okg and type(a) == "string" and a ~= "" then return a end
+		return nil
+	end)
+	return ok and asset or nil
+end
+
+-- shared image queue: one download at a time, spaced out, so several cards never cause a burst of disk / network work
+Library._dcJobs, Library._dcBusy = {}, false
+Library._dcQueue = function(job)
+	table.insert(Library._dcJobs, job)
+	if Library._dcBusy then return end
+	Library._dcBusy = true
+	task.spawn(function()
+		while #Library._dcJobs > 0 do
+			pcall(table.remove(Library._dcJobs, 1))
+			task.wait(0.15)
+		end
+		Library._dcBusy = false
+	end)
+end
+
+Library._discordCache = {}
+-- -> data | nil, reason, retryAfterSeconds
+Library._discordFetch = function(code, useCache)
+	local c = Library._discordCache[code]
+	if useCache and c and os.clock() - c.t < 45 then return c.data end
+	local HS = game:GetService("HttpService")
+	local body, status, errBody = Library._httpBytes("https://discord.com/api/v9/invites/" .. code .. "?with_counts=true&with_expiration=true")
+	if not body then
+		if status == 404 then return nil, "invite not found or expired" end
+		if status == 429 then
+			local retry = 30
+			pcall(function() retry = tonumber(HS:JSONDecode(errBody).retry_after) or retry end)
+			return nil, "rate limited", math.clamp(retry, 5, 300)
+		end
+		return nil, "request failed"
+	end
+	local ok, data = pcall(function() return HS:JSONDecode(body) end)
+	if not ok or type(data) ~= "table" or type(data.guild) ~= "table" then return nil, "invalid invite" end
+	local g, ch, inv = data.guild, type(data.channel) == "table" and data.channel or {}, type(data.inviter) == "table" and data.inviter or {}
+	local feat = {}
+	for _, x in ipairs(type(g.features) == "table" and g.features or {}) do feat[x] = true end
+	local function cdn(kind, hash, size, ext)
+		if type(hash) ~= "string" or hash == "" or not g.id then return nil end
+		return ("https://cdn.discordapp.com/%s/%s/%s.%s?size=%d"):format(kind, tostring(g.id), hash, ext, size)
+	end
+	local bHash = (type(g.banner) == "string" and g.banner) or (type(g.splash) == "string" and g.splash) or nil
+	local d = {
+		Id = tostring(g.id), Name = tostring(g.name or "Discord"),
+		Description = type(g.description) == "string" and g.description ~= "" and g.description or nil,
+		Online = tonumber(data.approximate_presence_count), Members = tonumber(data.approximate_member_count),
+		Channel = type(ch.name) == "string" and ch.name or nil,
+		Inviter = type(inv.global_name) == "string" and inv.global_name or (type(inv.username) == "string" and inv.username or nil),
+		Boosts = tonumber(g.premium_subscription_count),
+		Verified = feat.VERIFIED == true, Partnered = feat.PARTNERED == true, Community = feat.COMMUNITY == true,
+		IconHash = type(g.icon) == "string" and g.icon or nil, IconUrl = cdn("icons", g.icon, 128, "png"),
+		BannerHash = bHash, BannerUrl = bHash and (type(g.banner) == "string" and cdn("banners", bHash, 320, "jpg") or cdn("splashes", bHash, 320, "jpg")) or nil,
+		ExpiresAt = type(data.expires_at) == "string" and data.expires_at or nil,
+		Code = code, Url = "https://discord.gg/" .. code,
+	}
+	Library._discordCache[code] = { t = os.clock(), data = d }
+	return d
+end
+
+function Section:CreateDiscord(cfg)
+	if type(cfg) == "string" then cfg = { Invite = cfg } end
+	cfg = cfg or {}
+	local code = Library._discordParse(cfg.Invite)
+	local win = self.Window
+	local T = win.Theme
+	local info = { Code = code, Url = code and ("https://discord.gg/" .. code) or nil }
+	local obj = {}
+	local gen, busy, lastTry, loopGen, destroyed, lastSig = 0, false, 0, 0, false, nil
+	local shown, loading, tries = {}, {}, {}
+
+	local function esc(t) return (tostring(t):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")) end
+	local function num(n)
+		local s, k = tostring(math.floor((tonumber(n) or 0) + 0.5)), nil
+		repeat s, k = s:gsub("^(-?%d+)(%d%d%d)", "%1,%2") until k == 0
+		return s
+	end
+	-- only touch a property when the value really changes: an unchanged refresh costs no layout / render work
+	local function setText(l, t) if l.Text ~= t then l.Text = t end end
+	local function setVis(g, v) if g.Visible ~= v then g.Visible = v end end
+	local function lbl(parent, order, font, size, color)
+		return new("TextLabel", {
+			LayoutOrder = order, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Text = "",
+			Font = font, TextSize = size, TextColor3 = color, TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, RichText = true, Parent = parent,
+		})
+	end
+
+	local card = new("Frame", {
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = T.Control, BackgroundTransparency = 0.35,
+		BorderSizePixel = 0, Parent = self.Body,
+	}, {
+		corner(3), stroke(T.Border, 1, 0.5), list(8),
+		new("UIPadding", { PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8), PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }),
+	})
+	local banner = new("ImageLabel", {
+		LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 72), BackgroundColor3 = T.Control, BorderSizePixel = 0, Visible = false,
+		ScaleType = Enum.ScaleType.Crop, Image = "", Parent = card,
+	}, { corner(3) })
+	local row = new("Frame", {
+		LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = card,
+	}, { new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }) })
+	local icon = new("ImageLabel", {
+		LayoutOrder = 1, Size = UDim2.fromOffset(48, 48), BackgroundColor3 = T.Control, BorderSizePixel = 0, Visible = false,
+		ScaleType = Enum.ScaleType.Crop, Image = "", Parent = row,
+	}, { corner(3), stroke(T.Border, 1, 0.5) })
+	local col = new("Frame", {
+		LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = row,
+	}, { list(2) })
+	local nameL = lbl(col, 1, T.FontBold, 15, T.Text)
+	local statL = lbl(col, 2, T.FontBold, 13, T.SubText)
+	local descL = lbl(col, 3, T.Font, 12, T.SubText)
+	local metaL = lbl(col, 4, T.Font, 12, T.SubText)
+	obj.Frame = card
+	self:_Register(card, cfg.Title or "Discord", 70)
+
+	local function alive() return not destroyed and not win._destroyed and card.Parent ~= nil end
+	local function hidden() return win.Visible == false end
+	local function toast(t, kind) pcall(function() win:Toast(t, kind or "Success") end) end
+
+	local function resetView()
+		lastSig = nil
+		setText(nameL, esc(cfg.Title or "Discord"))
+		setText(statL, code and "Loading..." or "Invalid invite")
+		setVis(descL, false) setVis(metaL, false) setVis(icon, false) setVis(banner, false)
+		col.Size = UDim2.new(1, 0, 0, 0)
+	end
+	resetView()
+
+	-- image jobs go through the shared queue (one at a time); a failed download is retried once, 4 s later
+	local function loadImage(label, url, hash, tag, onOk)
+		local key = tag .. hash
+		if loading[key] or (tries[key] or 0) >= 2 then return end
+		loading[key] = true
+		tries[key] = (tries[key] or 0) + 1
+		local mine = gen
+		Library._dcQueue(function()
+			local asset
+			if alive() and mine == gen then
+				asset = Library._remoteImage(url, ("dc_%s_%s.%s"):format(tag, hash, url:match("%.(%a+)%?") or "png"))
+			end
+			loading[key] = nil
+			if asset and alive() and mine == gen then
+				label.Image, shown[tag] = asset, hash
+				setVis(label, true)
+				if onOk then onOk() end
+			elseif alive() and mine == gen and tries[key] < 2 then
+				task.delay(4, function() if alive() and mine == gen then loadImage(label, url, hash, tag, onOk) end end)
+			end
+		end)
+	end
+
+	local function sigOf(d)
+		return table.concat({ tostring(d.Name), tostring(d.Online), tostring(d.Members), tostring(d.Description), tostring(d.Channel),
+			tostring(d.Inviter), tostring(d.Boosts), tostring(d.Verified), tostring(d.Partnered), tostring(d.Community) }, "|")
+	end
+
+	local function apply(d)
+		local sig = sigOf(d)
+		if sig ~= lastSig then   -- same data as last time -> no text / layout work at all
+			lastSig = sig
+			local mark = (d.Verified or d.Partnered) and ' <font color="#5865F2">\226\156\147</font>' or ""
+			setText(nameL, esc(cfg.Title or d.Name) .. mark)
+			local parts = {}
+			if d.Online then parts[#parts + 1] = ('<font color="#3BA55C">\226\151\143</font> %s online'):format(num(d.Online)) end
+			if d.Members then parts[#parts + 1] = ('<font color="#9AA0AA">\226\151\143</font> %s members'):format(num(d.Members)) end
+			setText(statL, #parts > 0 and table.concat(parts, "   ") or "Online info hidden")
+			if cfg.Description ~= false and d.Description then setText(descL, esc(d.Description)) setVis(descL, true) else setVis(descL, false) end
+			if cfg.Details ~= false then
+				local m = {}
+				if d.Channel then m[#m + 1] = "#" .. d.Channel end
+				if d.Inviter then m[#m + 1] = "invited by " .. d.Inviter end
+				if d.Boosts and d.Boosts > 0 then m[#m + 1] = num(d.Boosts) .. " boosts" end
+				if d.Partnered then m[#m + 1] = "Partnered" elseif d.Community then m[#m + 1] = "Community" end
+				setText(metaL, esc(table.concat(m, "  -  ")))
+				setVis(metaL, #m > 0)
+			else
+				setVis(metaL, false)
+			end
+		end
+		-- images are checked every time (cheap) so one that failed earlier gets another chance
+		if cfg.Icon ~= false then
+			if d.IconUrl then
+				if shown.icon ~= d.IconHash then
+					loadImage(icon, d.IconUrl, d.IconHash, "icon", function() col.Size = UDim2.new(1, -58, 0, 0) end)
+				end
+			elseif shown.icon then
+				shown.icon = nil
+				setVis(icon, false)
+				col.Size = UDim2.new(1, 0, 0, 0)
+			end
+		end
+		if cfg.Banner ~= false then
+			if d.BannerUrl then
+				if shown.banner ~= d.BannerHash then loadImage(banner, d.BannerUrl, d.BannerHash, "banner") end
+			elseif shown.banner then
+				shown.banner = nil
+				setVis(banner, false)
+			end
+		end
+	end
+
+	function obj:GetInfo() return info end
+
+	function obj:Copy()
+		if not info.Url then return false end
+		if type(setclipboard) == "function" and pcall(setclipboard, info.Url) then toast("Invite copied") return true end
+		toast("Clipboard not supported", "Warning")
+		return false
+	end
+
+	-- useCache = true: may reuse a result fetched in the last 45 s (by this or another card); default is a fresh request
+	function obj:Refresh(useCache)
+		if not code or busy or not alive() then return end
+		if not useCache and os.clock() - lastTry < 5 then return end   -- spamming the button must not hit Discord's rate limit
+		busy, lastTry = true, os.clock()
+		local mine = gen
+		task.spawn(function()
+			local wait, loaded = 2, info.Name ~= nil
+			for attempt = 1, 3 do
+				local ok, d, err, retry = pcall(Library._discordFetch, code, useCache)
+				if not ok then d, err = nil, tostring(d) end
+				if mine ~= gen or not alive() then break end
+				if d then
+					info = d
+					local okA, eA = pcall(apply, d)
+					if not okA then warn("[SpectreUI] Discord card: " .. tostring(eA)) end
+					if type(cfg.OnUpdate) == "function" then safe(cfg.OnUpdate, info) end
+					break
+				end
+				local final = err == "invite not found or expired" or err == "invalid invite" or attempt == 3
+				if final then
+					-- keep showing the last good data; only show an error when there is nothing else to show
+					if not loaded then setText(statL, "Could not load server info (" .. esc(err or "error") .. ")") end
+					break
+				end
+				task.wait(retry or wait)
+				wait = wait * 2.5
+				useCache = false
+			end
+			if mine == gen then busy = false end
+		end)
+	end
+
+	-- first fetch: wait a moment (the window is still being built / the splash is playing) and until the window is open
+	local function kick()
+		local mine = gen
+		task.spawn(function()
+			task.wait(0.8)
+			while mine == gen and alive() and hidden() do task.wait(1) end
+			if mine == gen and alive() then obj:Refresh(true) end
+		end)
+	end
+
+	local function startLoop()
+		loopGen += 1
+		local my = loopGen
+		local every = tonumber(cfg.Refresh) or 300
+		if every <= 0 or not code then return end
+		task.spawn(function()
+			while my == loopGen and alive() do
+				task.wait(math.max(every, 60))
+				while my == loopGen and alive() and hidden() do task.wait(2) end   -- nothing is fetched while the window is hidden
+				if my ~= loopGen or not alive() then break end
+				obj:Refresh()
+			end
+		end)
+	end
+
+	function obj:SetInvite(inv)
+		gen += 1
+		busy, shown, loading, tries = false, {}, {}, {}
+		code = Library._discordParse(inv)
+		info = { Code = code, Url = code and ("https://discord.gg/" .. code) or nil }
+		resetView()
+		startLoop()
+		obj:Refresh(true)
+	end
+
+	function obj:Destroy()
+		destroyed, gen, loopGen = true, gen + 1, loopGen + 1
+		pcall(function() card:Destroy() end)
+		pcall(function() if obj.Button and obj.Button.Frame then obj.Button.Frame:Destroy() end end)
+	end
+
+	local function rpcInvite()
+		local req = (syn and syn.request) or request or http_request or (http and http.request) or (fluxus and fluxus.request)
+		if not req or not code then return false end
+		local HS = game:GetService("HttpService")
+		local okB, body = pcall(function()
+			return HS:JSONEncode({ cmd = "INVITE_BROWSER", args = { code = code }, nonce = HS:GenerateGUID(false) })
+		end)
+		if not okB then return false end
+		for port = 6463, 6466 do   -- Discord listens on the first free port of this range
+			local ok, res = pcall(req, {
+				Url = ("http://127.0.0.1:%d/rpc?v=1"):format(port), Method = "POST",
+				Headers = { ["Content-Type"] = "application/json", ["Origin"] = "https://discord.com" }, Body = body,
+			})
+			if ok and type(res) == "table" and tonumber(res.StatusCode) and res.StatusCode < 400 then return true end
+		end
+		return false
+	end
+
+	local lastClick = 0
+	obj.Button = self:CreateButton({
+		Name = cfg.Button or "Join Discord", Color = cfg.Color,
+		Callback = function()
+			if os.clock() - lastClick < 1.5 then return end   -- debounce double taps
+			lastClick = os.clock()
+			if not code then return toast("Invalid invite", "Error") end
+			if cfg.Open ~= false then
+				-- the local RPC calls yield on the network: run them off the click handler so the UI never waits on them
+				task.spawn(function()
+					if rpcInvite() then toast("Opening Discord...") else obj:Copy() end
+				end)
+				return
+			end
+			obj:Copy()
+		end,
+	})
+
+	kick()
+	startLoop()
+	return obj
+end
 
 ------------------------------------------------------------ HUD + Tour (v3.11)
 -- Window:Watermark(cfg | "text") -> handle     live FPS / Ping / Time pill (draggable, follows the theme)
@@ -10722,15 +11375,16 @@ do
 		local box = new("Frame", {
 			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5), Size = UDim2.fromOffset(boxW, h - 4),
 			BackgroundColor3 = T.Control, BorderSizePixel = 0, Parent = frame,
-		}, { corner(13), stroke(T.Border, 1, 0.4) })
+		}, { corner(2), stroke(T.Border, 1, 0.4) })
 		local function mkBtn(txt, left)
 			return new("TextButton", {
 				AnchorPoint = Vector2.new(left and 0 or 1, 0), Position = UDim2.fromScale(left and 0 or 1, 0), Size = UDim2.new(0, btnW, 1, 0),
-				BackgroundColor3 = T.Accent, BackgroundTransparency = 0.82, AutoButtonColor = false, Text = txt, Font = T.FontBold,
+				BackgroundColor3 = T.Accent, BackgroundTransparency = 0.82, AutoButtonColor = false, Text = txt, Font = Enum.Font.Code,
 				TextSize = 18, TextColor3 = T.Accent, Parent = box,
-			}, { corner(12) })
+			}, { corner(2) })
 		end
-		local minus, plus = mkBtn("-", true), mkBtn("+", false)
+		local function mkBtnB(txt, left) local bt = mkBtn(txt, left) Library._bevel(bt, T.Control) return bt end
+		local minus, plus = mkBtnB("-", true), mkBtnB("+", false)
 		local valLabel = new("TextLabel", {
 			Position = UDim2.fromOffset(btnW, 0), Size = UDim2.new(1, -btnW * 2, 1, 0), BackgroundTransparency = 1, Text = "",
 			Font = T.FontBold, TextSize = 13, TextColor3 = T.Text, TextTruncate = Enum.TextTruncate.AtEnd, Parent = box,
@@ -11392,8 +12046,9 @@ function Section:CreateButtonRow(cfg)
 			Text = d.Name or "Button", Font = d.Bold and T.FontBold or T.Font, TextSize = 13,
 			TextColor3 = d.TextColor or (color and Library.OnAccent(color)) or T.Text,
 			TextTruncate = Enum.TextTruncate.AtEnd, ClipsDescendants = true, Parent = row,
-		}, { corner(14), stroke(color and color:Lerp(Color3.new(1, 1, 1), 0.3) or T.Border, 1, color and 0.5 or 0.35) })
+		}, { corner(2), stroke(color and color:Lerp(Color3.new(1, 1, 1), 0.3) or T.Border, 1, color and 0.5 or 0.35) })
 		local bs = b:FindFirstChildOfClass("UIStroke")
+		Library._bevel(b, color or T.Control)
 		if color then
 			strokeFeedback(b, bs, 0.3, 0.05)
 		else
@@ -11428,7 +12083,7 @@ function Section:CreateInputButton(cfg)
 	local boxFrame = new("Frame", {
 		Position = UDim2.fromOffset(0, top), Size = UDim2.new(1, -(bw + 6), 0, h), BackgroundColor3 = T.Control,
 		BackgroundTransparency = 0.1, BorderSizePixel = 0, ClipsDescendants = true, Parent = frame,
-	}, { corner(14), stroke(T.Border, 1, 0.35) })
+	}, { corner(2), stroke(T.Border, 1, 0.35) })
 	local boxStroke = boxFrame:FindFirstChildOfClass("UIStroke")
 	local box = new("TextBox", {
 		Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -20, 1, 0), BackgroundTransparency = 1, Text = tostring(cfg.Default or ""),
@@ -11439,7 +12094,7 @@ function Section:CreateInputButton(cfg)
 		AnchorPoint = V2(1, 0), Position = UDim2.new(1, 0, 0, top), Size = UDim2.fromOffset(bw, h), BackgroundColor3 = T.Accent,
 		BackgroundTransparency = 0.05, AutoButtonColor = false, Text = cfg.Button or "OK", Font = T.FontBold, TextSize = 13,
 		TextColor3 = Library.OnAccent(T.Accent), TextTruncate = Enum.TextTruncate.AtEnd, ClipsDescendants = true, Parent = frame,
-	}, { corner(14), stroke(T.Accent:Lerp(Color3.new(1, 1, 1), 0.3), 1, 0.5) })
+	}, { corner(2), stroke(T.Accent:Lerp(Color3.new(1, 1, 1), 0.3), 1, 0.5) })
 	strokeFeedback(btn, btn:FindFirstChildOfClass("UIStroke"), 0.5, 0.05)
 	clickRipple(btn, nil)
 
@@ -11533,7 +12188,7 @@ function Section:CreateCodeBlock(cfg)
 	local bodyH = tonumber(cfg.Height) or 110
 	local showCopy = cfg.Copy ~= false
 	local hasHead = cfg.Name ~= nil or showCopy
-	local top = hasHead and 22 or 0
+	local top = hasHead and (UserInputService.TouchEnabled and 30 or 22) or 0
 	local maxChars = tonumber(cfg.MaxChars) or 20000
 	local frame = new("Frame", { Size = UDim2.new(1, 0, 0, top + bodyH), BackgroundTransparency = 1, Parent = self.Body })
 	if cfg.Name then
@@ -11555,7 +12210,7 @@ function Section:CreateCodeBlock(cfg)
 	local obj = {}
 	if showCopy then
 		local cb = new("TextButton", {
-			AnchorPoint = V2(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(58, 18), BackgroundColor3 = T.Control,
+			AnchorPoint = V2(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(UserInputService.TouchEnabled and 68 or 58, UserInputService.TouchEnabled and 26 or 18), BackgroundColor3 = T.Control,
 			BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "Copy", Font = T.Font, TextSize = 12, TextColor3 = T.Text,
 			ClipsDescendants = true, Parent = frame,
 		}, { corner(9), stroke(T.Border, 1, 0.35) })
@@ -11663,6 +12318,7 @@ function Section:CreateCountdown(cfg)
 	local acc, conn = 0, nil
 	conn = RunService.Heartbeat:Connect(function(dt)
 		if not frame.Parent then conn:Disconnect() return end
+		if not win.Visible then return end
 		acc += dt
 		if acc < 0.5 then return end
 		acc = 0
@@ -12202,7 +12858,6 @@ end
 --            Splash = { WaitBuild = false } (or Library.Splash.WaitBuild = false) brings back the old timed splash.
 do
 	local TS, RS, UIS = game:GetService("TweenService"), game:GetService("RunService"), game:GetService("UserInputService")
-	local Plrs, CG = game:GetService("Players"), game:GetService("CoreGui")
 	local S = { Enabled = true, Duration = 4, Skippable = true, Async = false, Backdrop = 1, Theme = "Mono", Panel = true, Block = false,
 		WaitBuild = true, IdleTime = 0.8, BuildTimeout = 30,
 		Steps = { "Loading", "Preparing interface", "Almost ready" } }
@@ -12376,7 +13031,7 @@ do
 			else s = steps[math.clamp(math.floor(shown / 0.85 * #steps) + 1, 1, #steps)] end
 			if s ~= lastS then lastS = s status.Text = s end
 		end
-		local function tick() local dt = math.min(RS.Heartbeat:Wait(), 0.1) step(dt) return dt end
+		local function frameStep() local dt = math.min(RS.Heartbeat:Wait(), 0.1) step(dt) return dt end
 
 		-- "done": no more circles. The rings / glow just fade out and the logo gives a tiny pop,
 		-- then the window plays its own launch animation (rise + light sweep + tabs popping in).
@@ -12403,11 +13058,11 @@ do
 		end
 
 		-- main loop: runs until the timeline ends (or the person taps)
-		while t < D do tick() end
+		while t < D do frameStep() end
 		-- the bar waits at 85% while the window is built (building blocks the thread for a moment, so it
 		-- happens at 85% and not at 100%), then it fills the rest smoothly instead of looking frozen at the end
 		local e = 0
-		while e < 0.2 do e = e + tick() end   -- let the last frame draw before build() blocks
+		while e < 0.2 do e = e + frameStep() end   -- let the last frame draw before build() blocks
 		if build then build() end   -- real window is created here, hidden behind the splash until the exit starts
 		if ctx and ctx.hold and ctx.win then
 			-- WaitBuild: the splash stays up (bar parked at 85%) until the script has finished creating its tabs / controls
@@ -12421,23 +13076,23 @@ do
 				local now = os.clock()
 				if (win._loadHolds or 0) <= 0 and now - last >= idle then break end
 				if now - t0 >= limit then break end
-				tick()
+				frameStep()
 			end
 			if conn then conn:Disconnect() end
 		end
 		fin = true
 		e = 0
-		while shown < 0.995 and e < 1.5 do e = e + tick() end
+		while shown < 0.995 and e < 1.5 do e = e + frameStep() end
 		e = 0
 		burst()
 		e = 0
-		while e < 0.3 do e = e + tick() end   -- brief "Ready", then the window's own launch animation takes over
+		while e < 0.3 do e = e + frameStep() end   -- brief "Ready", then the window's own launch animation takes over
 		if ctx and ctx.onExit then pcall(ctx.onExit) end   -- WaitBuild: show the finished window now
 		task.spawn(function()
 			pcall(function()
 				exit()
 				local x = 0
-				while x < 0.6 do x = x + tick() end
+				while x < 0.6 do x = x + frameStep() end
 			end)
 			gui:Destroy()
 		end)
@@ -12478,6 +13133,7 @@ do
 			end
 			ctx.onExit = reveal
 			local function buildHeld()
+				if ctx.abandoned then return end
 				ctx.built = true
 				Library._holdIntro = true
 				local okb, res = pcall(orig, self, cfg)
@@ -12512,8 +13168,13 @@ do
 				return w
 			end
 			task.spawn(run, buildHeld)
-			while not w and not failed do task.wait() end   -- returns as soon as the window exists; the splash goes on in its own thread
-			if not w then w = orig(self, cfg) end
+			local tw0 = os.clock()
+			while not w and not failed and os.clock() - tw0 < 20 do task.wait() end   -- returns as soon as the window exists; the splash goes on in its own thread
+			if not w then
+				ctx.abandoned = true
+				if ctx.gui then pcall(function() ctx.gui:Destroy() end) end
+				w = orig(self, cfg)
+			end
 			return w
 		end
 
@@ -12591,8 +13252,12 @@ do
 		end
 		return q
 	end
-	local function runFn(fn, tab)
+	local function runFn(fn, tab, slice)
+		local win = tab.Window
+		if slice and win then win._slThread, win._sliceT = coroutine.running(), os.clock() end
 		local ok, err = pcall(fn, tab)
+		if slice and win then win._slThread = nil end
+		if not ok and win and win._destroyed then return false end
 		if not ok then warn("[SpectreUI] tab '" .. tostring(tab.Name) .. "' load error: " .. tostring(err)) end
 		return ok
 	end
@@ -12661,7 +13326,7 @@ do
 				while #tab._slBuilds > 0 and alive(win) do
 					local fn = table.remove(tab._slBuilds, 1)
 					prog(0.5 + 0.5 * done / (done + pending() + 1), get(win, "BuildText") .. ": " .. tostring(tab.Name))
-					runFn(fn, tab)
+					runFn(fn, tab, true)
 					done = done + 1
 					task.wait(get(win, "BuildDelay"))
 				end
@@ -12682,9 +13347,17 @@ do
 		if not ok then
 			warn("[SpectreUI] staged load error: " .. tostring(err))
 			if q.load then pcall(function() q.load:Fail("Load error", 2) end) end
+			-- never retry a failed cycle (it would spin without yielding = freeze): show what is left and finish
+			table.clear(q.tabs)
+			for _, t in ipairs(win.Tabs) do
+				if t._slLoaded == false then
+					if t.Button then t.Button.Visible = true end
+					finishTab(t)
+				end
+			end
 		end
 		if not alive(win) then return end
-		if #q.tabs > 0 then return run(win) end   -- tabs created while we were finishing
+		if ok and #q.tabs > 0 then return run(win) end   -- tabs created while we were finishing
 		win._slLoaded = true
 		if win._slCheckWanted and win._QueueCheck then
 			win._slCheckWanted = false
@@ -12785,9 +13458,272 @@ do
 		end
 		return self
 	end
-	function Window:WaitLoaded()
-		while self._slLoaded == false and alive(self) do task.wait() end
+	function Window:WaitLoaded(timeout)
+		local t0, limit = os.clock(), tonumber(timeout) or 60
+		while self._slLoaded == false and alive(self) and os.clock() - t0 < limit do task.wait() end
 		return self
+	end
+end
+
+------------------------------------------------------------------ v3.16 : Animation Plus
+-- Extra motion on top of the existing engine. Event-driven only (TweenService), no Heartbeat / RenderStepped loops.
+--   Library.Anim.Plus          = false   turn this whole block off
+--   Library.Anim.Cascade       = true    cards fade in one after another when a tab opens
+--   Library.Anim.CascadeStep   = 0.045   seconds between cards      Library.Anim.CascadeMax = 8   cards animated per tab
+--   Library.Anim.CascadeLow    = false   true = also cascade on phones / low power (default: off there)
+--   Library.Anim.ToggleStretch = true    toggle knob stretches + squashes while it travels (jelly)
+--   Window:PlayCascade(tab?)             replay the cascade by hand
+-- Settings tab: an "Animation" section (speed preset, cascade, toggle jelly) is added to Window:CreateSettingsTab()
+-- unless CreateSettingsTab({ Sections = { Animation = false } }).
+do
+	local TS = game:GetService("TweenService")
+	local UIS = game:GetService("UserInputService")
+	local RS = game:GetService("RunService")
+	local A = Library.Anim
+	local EQUAD, EBACK, ESINE = Enum.EasingStyle.Quad, Enum.EasingStyle.Back, Enum.EasingStyle.Sine
+	local EOUT = Enum.EasingDirection.Out
+
+	if A.Plus == nil then A.Plus = true end
+	if A.Cascade == nil then A.Cascade = true end
+	if A.CascadeStep == nil then A.CascadeStep = 0.045 end
+	if A.CascadeMax == nil then A.CascadeMax = 8 end
+	if A.CascadeLow == nil then A.CascadeLow = false end
+	if A.ToggleStretch == nil then A.ToggleStretch = true end
+
+	local function lite()
+		local p = Library.Perf and Library.Perf.LowPower
+		if p ~= nil then return p end
+		return UIS.TouchEnabled
+	end
+
+	local function go(o, t, props, style, dir, delay)
+		t = math.max(t * (A.Speed or 1), 0.06)
+		local tw = TS:Create(o, TweenInfo.new(t, style or ESINE, dir or EOUT, 0, false, (delay or 0) * (A.Speed or 1)), props)
+		tw:Play()
+		return tw
+	end
+
+	---------------------------------------------------------------- toggle jelly
+	-- the knob stretches in the direction it travels, then settles back with a small overshoot
+	local origToggle = Section.CreateToggle
+	function Section:CreateToggle(cfg)
+		local obj = origToggle(self, cfg)
+		if type(obj) ~= "table" or typeof(obj.Frame) ~= "Instance" or type(obj.Set) ~= "function" then return obj end
+		pcall(function()
+			local row = obj.Frame
+			local track
+			for _, c in ipairs(row:GetChildren()) do
+				if c:IsA("Frame") then track = c break end
+			end
+			if not track then return end
+			local knob
+			for _, c in ipairs(track:GetChildren()) do
+				if c:IsA("Frame") and c.ZIndex == 2 then knob = c break end   -- trackFill is ZIndex 1, the knob ZIndex 2
+			end
+			if not knob then return end
+
+			local baseSize = knob.Size
+			local seq = 0
+			local function jelly()
+				seq += 1
+				local my = seq
+				-- stretch + squash first (fast), then spring back to the real size
+				go(knob, 0.09, { Size = UDim2.fromOffset(baseSize.X.Offset + 4, baseSize.Y.Offset - 2) }, EQUAD, EOUT)
+				task.delay(0.09 * (A.Speed or 1), function()
+					if my ~= seq or not knob.Parent then return end
+					go(knob, 0.26, { Size = baseSize }, EBACK, EOUT)
+				end)
+			end
+
+			local rawSet = obj.Set
+			function obj:Set(v, silent)
+				local before = obj:Get()
+				rawSet(self, v, silent)
+				if A.Plus and A.ToggleStretch and ((v and true or false) ~= before) and knob.Parent then
+					jelly()
+				end
+			end
+		end)
+		return obj
+	end
+
+	---------------------------------------------------------------- tab cascade
+	-- Section cards fade in one after another. Only the card background + stroke fade (cheap): no UIScale
+	-- (it re-rasterizes strokes every frame) and no Position tween (the cards are owned by a UIListLayout).
+	local inflight = setmetatable({}, { __mode = "k" })   -- card -> { bg, stroke }  (rest values while a fade is running)
+
+	function Window:PlayCascade(tab)
+		tab = tab or self.Active
+		if not A.Plus or not A.Cascade or not tab or self._destroyed then return end
+		if lite() and A.CascadeLow ~= true then return end
+		local win = self
+		task.spawn(function()
+			RS.RenderStepped:Wait()   -- let the heavy first frame of the page pass, like the page slide does
+			if win._destroyed or win.Active ~= tab or not tab.Page or not tab.Page.Visible then return end
+
+			-- visible cards, top to bottom (left column first on equal height)
+			local cards = {}
+			for _, s in ipairs(tab.Sections or {}) do
+				local f = s.Frame
+				if f and f.Parent and f.Visible then table.insert(cards, f) end
+			end
+			table.sort(cards, function(a, b)
+				local ay, by = a.AbsolutePosition.Y, b.AbsolutePosition.Y
+				if math.abs(ay - by) > 4 then return ay < by end
+				return a.AbsolutePosition.X < b.AbsolutePosition.X
+			end)
+
+			local step = A.CascadeStep or 0.045
+			for i = 1, math.min(#cards, A.CascadeMax or 8) do
+				local f = cards[i]
+				local st = f:FindFirstChildOfClass("UIStroke")
+				local rest = inflight[f]
+				if not rest then
+					rest = { bg = f.BackgroundTransparency, stroke = st and st.Transparency or nil }
+					inflight[f] = rest
+				end
+				local delay = (i - 1) * step
+				f.BackgroundTransparency = 1
+				if st and rest.stroke then st.Transparency = 1 end
+				local t1 = go(f, 0.34, { BackgroundTransparency = rest.bg }, ESINE, EOUT, delay)
+				if st and rest.stroke then go(st, 0.34, { Transparency = rest.stroke }, ESINE, EOUT, delay) end
+				-- the rest values are only forgotten once the fade really finished (a newer cascade reuses them)
+				t1.Completed:Connect(function(state)
+					if state == Enum.PlaybackState.Completed and inflight[f] == rest then inflight[f] = nil end
+				end)
+			end
+		end)
+	end
+
+	local origSelect = Window.SelectTab
+	function Window:SelectTab(tab)
+		local prev = self.Active
+		origSelect(self, tab)
+		if prev and prev ~= tab and self.Active == tab then
+			pcall(self.PlayCascade, self, tab)
+		end
+	end
+
+	---------------------------------------------------------------- Settings tab: Animation section
+	local origSettings = Window.CreateSettingsTab
+	function Window:CreateSettingsTab(cfg)
+		local parts = origSettings(self, cfg)
+		cfg = cfg or {}
+		local S = cfg.Sections or {}
+		if S.Animation == false or type(parts) ~= "table" or not parts.Tab or parts.AnimationSection then return parts end
+		pcall(function()
+			local P = cfg.FlagPrefix or "ui_"
+			local sec = parts.Tab:CreateSection({ Name = "Animation", Column = 2 })
+			parts.AnimationSection = sec
+
+			local PRESETS = { Snappy = 0.8, Normal = 1, Soft = 1.25 }
+			local current = "Normal"
+			for name, v in pairs(PRESETS) do
+				if math.abs((A.Speed or 1) - v) < 0.01 then current = name end
+			end
+			parts.AnimSpeed = sec:CreateSegmented({
+				Name = "Speed", Options = { "Snappy", "Normal", "Soft" }, Default = current, Flag = P .. "anim_speed",
+				Callback = function(v) if PRESETS[v] then A.Speed = PRESETS[v] end end,
+			})
+			parts.AnimCascade = sec:CreateToggle({
+				Name = "Card cascade on tab change", Default = A.Cascade == true, Flag = P .. "anim_cascade",
+				Callback = function(v) A.Cascade = v and true or false end,
+			})
+			parts.AnimJelly = sec:CreateToggle({
+				Name = "Toggle jelly", Default = A.ToggleStretch == true, Flag = P .. "anim_jelly",
+				Callback = function(v) A.ToggleStretch = v and true or false end,
+			})
+		end)
+		return parts
+	end
+end
+
+---------------------------------------------------------------- mobile: keep the focused TextBox above the on-screen keyboard
+-- On phones the keyboard covers the lower ~45% of the screen. When a TextBox inside the window gets focus and would end
+-- up behind the keyboard, the window slides up just enough to keep the box visible, and slides back when focus is lost.
+-- Touch devices only.  CreateWindow({ KeyboardAvoid = false }) turns it off for one window.
+do
+	local function attach(win)
+		if type(win) ~= "table" or win._kbAvoid then return end
+		if win.Cfg and win.Cfg.KeyboardAvoid == false then return end
+		local main, gui = win.Main, win.Gui
+		if not main or not gui then return end
+		win._kbAvoid = true
+
+		local base, liftPos, lifted, seq = nil, nil, 0, 0
+		local function info(t) return TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out) end
+
+		-- y where the keyboard starts (nil = no on-screen keyboard, e.g. a tablet with a hardware keyboard)
+		local function keyboardTop(vp)
+			local okV, visible = pcall(function() return UserInputService.OnScreenKeyboardVisible end)
+			local okP, pos = pcall(function() return UserInputService.OnScreenKeyboardPosition end)
+			local okS, size = pcall(function() return UserInputService.OnScreenKeyboardSize end)
+			if okV and visible and okP and okS and typeof(pos) == "Vector2" and typeof(size) == "Vector2" and size.Y > 40 then
+				return pos.Y
+			end
+			if UserInputService.KeyboardEnabled then return nil end
+			return vp.Y * 0.55   -- not reported (yet): assume the keyboard covers the lower 45%
+		end
+
+		local function restore()
+			seq += 1
+			if lifted == 0 or not base then return end
+			local target, from, to = base, liftPos, nil
+			lifted, base, liftPos = 0, nil, nil
+			if win._destroyed or not main.Parent or not from then return end
+			local cur = main.Position
+			-- only slide back when nothing else moved the window meanwhile (drag / resize / rotation)
+			local lo, hi = math.min(from.Y.Offset, target.Y.Offset) - 1, math.max(from.Y.Offset, target.Y.Offset) + 1
+			if cur.X == target.X and cur.Y.Scale == target.Y.Scale and cur.Y.Offset >= lo and cur.Y.Offset <= hi then
+				TweenService:Create(main, info(), { Position = target }):Play()
+			end
+		end
+
+		local function lift(box)
+			seq += 1
+			local my = seq
+			task.delay(0.28, function()   -- let the keyboard slide in so its real position is known
+				if my ~= seq or win._destroyed or not main.Parent or not main.Visible then return end
+				if not box.Parent or not box:IsDescendantOf(main) then return end
+				local top = keyboardTop(gui.AbsoluteSize)
+				if not top then return end
+				local need = (box.AbsolutePosition.Y + box.AbsoluteSize.Y + 14) - top
+				if need <= 0 then return end
+				-- the box may travel up until its own top edge is 8px from the screen top (the window header can leave the
+				-- screen while typing; it slides back afterwards). On a landscape phone the window is almost full height.
+				local room = box.AbsolutePosition.Y - 8
+				local dy = math.floor(math.min(need, math.max(room, 0)))
+				if dy < 1 then return end
+				local cur = main.Position
+				if lifted == 0 then base = cur end
+				local target = UDim2.new(cur.X.Scale, cur.X.Offset, cur.Y.Scale, cur.Y.Offset - dy)
+				lifted += dy
+				liftPos = target
+				TweenService:Create(main, info(), { Position = target }):Play()
+			end)
+		end
+
+		table.insert(win.Conns, UserInputService.TextBoxFocused:Connect(function(box)
+			if box then lift(box) end
+		end))
+		table.insert(win.Conns, UserInputService.TextBoxFocusReleased:Connect(function()
+			-- wait a moment: if another TextBox takes focus right away, lift() cancels this and the window stays put
+			seq += 1
+			local my = seq
+			task.delay(0.12, function()
+				if my ~= seq or win._destroyed then return end
+				restore()
+			end)
+		end))
+	end
+
+	if UserInputService.TouchEnabled then
+		local prevCreate = Library.CreateWindow
+		function Library:CreateWindow(cfg)
+			local win = prevCreate(self, cfg)
+			if type(win) == "table" then pcall(attach, win) end
+			return win
+		end
 	end
 end
 
