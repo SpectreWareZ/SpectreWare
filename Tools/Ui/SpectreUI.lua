@@ -243,6 +243,8 @@
     - Section:CreateTable({ Name, Columns = { "A", { Name = "B", Width = 0.3 } }, Rows, Height, RowHeight, Zebra, OnRowClick(row, i) })
         :SetRows :AddRow :RemoveRow(i) :SetCell(i, col, v) :Clear :Count :GetRows
     - Section:CreateImage({ Image = id | "rbxassetid://.." | "lucide:name", Name, Height, Fit = "Fit"|"Crop"|"Stretch", Corner, Color })     :Set(image) :Get()
+    - Section:CreateStatusCard({ Name, Image, Badge, BadgeColor, Color, IconSize, Bars = { { Label, Value, Max = 100, Color, Text }, ... } })
+        one rounded card per item: picture tile + title + status pill + slim meters (max 4)   :Set({ Name, Image, Badge, BadgeColor, Empty, Bars }) :SetTitle :SetImage :SetBadge(text, color) :SetBar(i, value, text, color) :SetEmpty(bool, text)
     - Window:RemoveTab(nameOrTab) / RenameTab(nameOrTab, newName) / ListTabs()      Tab:Remove() / Tab:Rename(name)
     - Window:SetToggleKey(Enum.KeyCode | "F4") / GetToggleKey()      Window:Open() / Close() / IsOpen()
     - Library:Copy(text, title)   clipboard + "Copied" card
@@ -12957,6 +12959,165 @@ function Section:CreateImage(cfg)
 	return obj
 end
 
+---------------------------------------------------------------- StatusCard
+-- Section:CreateStatusCard({ Name, Image, Badge, BadgeColor, Color, IconSize, Bars = { { Label, Value, Max = 100, Color, Text }, ... } })
+-- :Set({ Name, Image, Badge, BadgeColor, Empty, Bars = { { Value, Text, Color }, ... } })
+-- :SetTitle(t) :SetImage(img) :SetBadge(text, color) :SetBar(i, value, text, color) :SetEmpty(bool, text) :Get()
+-- One rounded card per item: picture tile on the left, title + status pill, and a row of slim rounded meters
+-- (label + value) under it. Replaces the "image row + text row" pair for plant / pet / slot lists.
+function Section:CreateStatusCard(cfg)
+	if type(cfg) == "string" then cfg = { Name = cfg } end
+	cfg = cfg or {}
+	local T = self.Window.Theme
+	local H, PAD = 64, 8
+	local TILE = H - PAD * 2
+	local accent = cfg.Color or T.Accent
+	local WHITE = Color3.new(1, 1, 1)
+	local RIGHT = Enum.TextXAlignment.Right
+	local ATEND = Enum.TextTruncate.AtEnd
+
+	local card = new("Frame", {
+		Size = UDim2.new(1, 0, 0, H), BackgroundColor3 = T.Control, BackgroundTransparency = 0.3, BorderSizePixel = 0, Parent = self.Body,
+	}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }), stroke(T.Border, 1, 0.45) })
+
+	local tile = new("Frame", {
+		Position = UDim2.fromOffset(PAD, PAD), Size = UDim2.fromOffset(TILE, TILE), BackgroundColor3 = accent, BackgroundTransparency = 0.88,
+		BorderSizePixel = 0, ClipsDescendants = true, Parent = card,
+	}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }), stroke(accent, 1, 0.65) })
+
+	local bx = PAD * 2 + TILE
+	local body = new("Frame", {
+		Position = UDim2.fromOffset(bx, 0), Size = UDim2.new(1, -(bx + PAD), 1, 0), BackgroundTransparency = 1, Parent = card,
+	})
+	local title = new("TextLabel", {
+		Position = UDim2.fromOffset(0, PAD), Size = UDim2.new(0.6, 0, 0, 18), BackgroundTransparency = 1, Text = tostring(cfg.Name or "Item"),
+		Font = T.FontBold, TextSize = 14, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = ATEND, Parent = body,
+	})
+	local pill = new("TextLabel", {
+		AnchorPoint = V2(1, 0), Position = UDim2.new(1, 0, 0, PAD), Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = T.SubText, BackgroundTransparency = 0.85, BorderSizePixel = 0, Text = "", Font = T.FontBold, TextSize = 12,
+		TextColor3 = T.SubText, Visible = false, Parent = body,
+	}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }) })
+
+	-- meters
+	local bars = type(cfg.Bars) == "table" and cfg.Bars or {}
+	local n = math.clamp(#bars, 1, 4)
+	local cols = new("Frame", {
+		Position = UDim2.fromOffset(0, PAD + 18 + 6), Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, Parent = body,
+	}, { new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }) })
+	local cells = {}
+	for i = 1, n do
+		local b = bars[i] or {}
+		local col = b.Color or accent
+		local cell = new("Frame", {
+			LayoutOrder = i, Size = UDim2.new(1 / n, -math.floor(8 * (n - 1) / n), 1, 0), BackgroundTransparency = 1, Parent = cols,
+		})
+		new("TextLabel", {
+			Size = UDim2.new(0.5, 0, 0, 14), BackgroundTransparency = 1, Text = tostring(b.Label or ""), Font = T.Font, TextSize = 12,
+			TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = ATEND, Parent = cell,
+		})
+		local val = new("TextLabel", {
+			AnchorPoint = V2(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0.5, 0, 0, 14), BackgroundTransparency = 1, Text = "--",
+			Font = T.FontBold, TextSize = 13, TextColor3 = col, TextXAlignment = RIGHT, TextTruncate = ATEND, Parent = cell,
+		})
+		local track = new("Frame", {
+			Position = UDim2.fromOffset(0, 18), Size = UDim2.new(1, 0, 0, 5), BackgroundColor3 = T.Background, BackgroundTransparency = 0.2,
+			BorderSizePixel = 0, Parent = cell,
+		}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		local fill = new("Frame", {
+			Size = UDim2.fromScale(0, 1), BackgroundColor3 = WHITE, BorderSizePixel = 0, Parent = track,
+		}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), gradient(col, col:Lerp(WHITE, 0.25), 0) })
+		cells[i] = { val = val, fill = fill, default = col, max = tonumber(b.Max) or 100 }
+	end
+
+	local empty, shown, picValue = false, nil, cfg.Image
+	local function applyEmpty()
+		card.BackgroundTransparency = empty and 0.6 or 0.3
+		tile.BackgroundTransparency = empty and 0.94 or 0.88
+		title.TextColor3 = empty and T.SubText or T.Text
+		if shown then pcall(function() shown.ImageTransparency = empty and 0.65 or 0 end) end
+	end
+	local function showPic(img)
+		if shown then shown:Destroy() shown = nil end
+		if type(img) == "string" and tonumber(img) then img = tonumber(img) end
+		if img ~= nil and img ~= "" then
+			if type(img) == "number" or (type(img) == "string" and (img:find("^rbxasset") or img:find("^https?://"))) then
+				shown = new("ImageLabel", {
+					AnchorPoint = V2(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -8, 1, -8), BackgroundTransparency = 1,
+					Image = type(img) == "number" and ("rbxassetid://" .. img) or img, ScaleType = Enum.ScaleType.Fit, Parent = tile,
+				})
+			elseif Library:IsIconName(img) then
+				local desc = Library:ResolveIcon(img)
+				if desc then
+					local sz = tonumber(cfg.IconSize) or 26
+					shown = Library:MakeIcon(desc, accent)
+					shown.AnchorPoint = V2(0.5, 0.5)
+					shown.Position = UDim2.fromScale(0.5, 0.5)
+					shown.Size = UDim2.fromOffset(sz, sz)
+					shown.Parent = tile
+				end
+			end
+		end
+		applyEmpty()
+	end
+	local function setBadge(text, color)
+		if text == nil or text == "" then pill.Visible = false return end
+		color = color or T.SubText
+		pill.Text = tostring(text)
+		pill.TextColor3 = color
+		pill.BackgroundColor3 = color
+		pill.Visible = true
+	end
+	local function paintBar(i, v, text, color)
+		local c = cells[i]
+		if not c then return end
+		v = tonumber(v) or 0
+		local a = c.max > 0 and math.clamp(v / c.max, 0, 1) or 0
+		local col = color or c.default
+		c.val.Text = text ~= nil and tostring(text) or tostring(math.floor(v + 0.5))
+		c.val.TextColor3 = col
+		local g = c.fill:FindFirstChildOfClass("UIGradient")
+		if g then g.Color = ColorSequence.new(col, col:Lerp(WHITE, 0.25)) end
+		tween(c.fill, 0.25, { Size = UDim2.fromScale(a, 1) })
+	end
+	local function setEmpty(on, text)
+		empty = on ~= false
+		if empty then
+			setBadge(text or cfg.EmptyText or "ว่าง", T.SubText)
+			for i = 1, n do paintBar(i, 0, "--") end
+		end
+		applyEmpty()
+	end
+
+	showPic(picValue)
+	setBadge(cfg.Badge, cfg.BadgeColor)
+	for i = 1, n do
+		local b = bars[i] or {}
+		paintBar(i, b.Value or 0, b.Value == nil and "--" or b.Text, nil)
+	end
+	self:_Register(card, cfg.Name or "card", H)
+
+	local obj = { Frame = card }
+	function obj:SetTitle(t) title.Text = tostring(t) end
+	function obj:SetImage(img) picValue = img showPic(img) end
+	function obj:SetBadge(text, color) setBadge(text, color) end
+	function obj:SetBar(i, v, text, color) paintBar(i, v, text, color) end
+	function obj:SetEmpty(on, text) setEmpty(on, text) end
+	function obj:Set(t)
+		if type(t) ~= "table" then return end
+		if t.Name ~= nil then title.Text = tostring(t.Name) end
+		if t.Image ~= nil then picValue = t.Image showPic(t.Image) end
+		if t.Empty ~= nil then setEmpty(t.Empty, t.EmptyText) end
+		if t.Badge ~= nil then setBadge(t.Badge, t.BadgeColor) end
+		if type(t.Bars) == "table" then
+			if t.Empty == nil then empty = false applyEmpty() end
+			for i, b in ipairs(t.Bars) do paintBar(i, b.Value, b.Text, b.Color) end
+		end
+	end
+	function obj:Get() return { Name = title.Text, Image = picValue, Empty = empty, Badge = pill.Visible and pill.Text or nil } end
+	return obj
+end
+
 ---------------------------------------------------------------- Window / Tab / Library helpers
 local function tabOf(win, nameOrTab)
 	return type(nameOrTab) == "string" and win:GetTab(nameOrTab) or nameOrTab
@@ -13042,10 +13203,10 @@ local decorate, NOVALUE = Library._decorate, Library._NOVALUE
 if not decorate or not NOVALUE then
 	warn("[SpectreUI] v3.14 controls: decorate not available")
 else
-	for _, k in ipairs({ "ButtonRow", "KeyValue", "CodeBlock", "Countdown", "Table", "Image" }) do NOVALUE[k] = true end
+	for _, k in ipairs({ "ButtonRow", "KeyValue", "CodeBlock", "Countdown", "Table", "Image", "StatusCard" }) do NOVALUE[k] = true end
 	local kinds = {
 		CreateButtonRow = "ButtonRow", CreateInputButton = "InputButton", CreateKeyValue = "KeyValue", CreateCodeBlock = "CodeBlock",
-		CreateCountdown = "Countdown", CreateListBox = "ListBox", CreateTable = "Table", CreateImage = "Image",
+		CreateCountdown = "Countdown", CreateListBox = "ListBox", CreateTable = "Table", CreateImage = "Image", CreateStatusCard = "StatusCard",
 	}
 	for fname, kind in pairs(kinds) do
 		local orig = Section[fname]
