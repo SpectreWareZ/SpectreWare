@@ -52,6 +52,9 @@
                    Window:LockTab(nameOrTab, reason) / UnlockTab(nameOrTab) / IsTabLocked(nameOrTab)
                    A locked tab shows a padlock, is dimmed and cannot be opened (click, SetTab, palette).
                    If it was the open tab the window jumps to the first unlocked tab.  LockedNotify = false  -> no toast.
+                   v3.6: a locked tab can never be entered, also while the UI loads or when it is the only tab (a LOCKED cover
+                   is shown then). The sidebar button gets an amber shade + outline + side bar + padlock + "LOCKED" pill.
+                   Library.LockColor = Color3 changes the amber (set before CreateWindow).
     - Dropdown images : options can carry a picture, in every Dropdown (single + Multi)
                    Options = { { Name = "Sword", Image = 123456 }, { Name = "Bow", Image = "rbxassetid://789" }, "Plain text" }
                    or  Images = { Sword = 123456, Bow = "lucide:target", Red = Color3.fromRGB(255,0,0) }
@@ -14236,5 +14239,240 @@ do
 		end
 	end
 end
+
+---------------------------------------------------------------- tab lock v2 (v3.6)
+-- A locked tab can NEVER be opened, also while the UI is still loading (staged load) and also when it is the only tab:
+--   * click / SetTab / Goto / search / command palette  -> shake + warning toast, the page does not open
+--   * Locked = true in CreateTab, or Tab:Lock() right after it, is enforced before the first page is shown
+--   * if the open tab gets locked and there is no other tab to jump to, its page is closed and a "LOCKED" cover is shown
+--   * the sidebar button is clearly marked: amber tinted shade + amber outline + amber side bar + amber padlock + "LOCKED" pill
+-- Library.LockColor = Color3 changes the amber (set it before CreateWindow).
+-- (wrapped in a function: this chunk is at Lua's local-variable limit, so no new top-level locals here)
+Library._tabLockV2 = (function()
+	local LOCK = Library.LockColor or rgb(251, 191, 36)
+	local K = {}
+
+	-- first tab that may be opened right now (not locked, fully built)
+	local function pickable(win, skip)
+		for _, t in ipairs(win.Tabs) do
+			if t ~= skip and not t._locked and t._slLoaded ~= false and t.Page and t.Page.Parent then return t end
+		end
+	end
+
+	---------------------------------------------------------------- full-page "locked" cover (only when no tab can be shown)
+	local function ensureCover(win)
+		local c = win._lockCover
+		if c and c.Parent then return c end
+		local T = win.Theme
+		c = new("Frame", {
+			Name = "LockCover", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false, ZIndex = 18, Parent = win.Pages,
+		}, {
+			new("Frame", {
+				Name = "Padlock", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -52),
+				Size = UDim2.fromOffset(46, 46), BackgroundTransparency = 1, ZIndex = 19,
+			}, {
+				new("Frame", {   -- shackle
+					AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.fromOffset(26, 30),
+					BackgroundTransparency = 1, ZIndex = 19,
+				}, { corner(13), stroke(LOCK, 4, 0) }),
+				new("Frame", {   -- body
+					AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0), Size = UDim2.fromOffset(42, 26),
+					BackgroundColor3 = LOCK, BorderSizePixel = 0, ZIndex = 20,
+				}, { corner(8) }),
+			}),
+			new("TextLabel", {
+				Name = "Title", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, -16), Size = UDim2.new(1, -32, 0, 26),
+				BackgroundTransparency = 1, Text = "LOCKED", Font = T.FontBold, TextSize = 20, TextColor3 = LOCK, ZIndex = 19,
+			}),
+			new("TextLabel", {
+				Name = "Sub", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 12), Size = UDim2.new(1, -32, 0, 20),
+				BackgroundTransparency = 1, Text = "", Font = T.Font, TextSize = 14, TextColor3 = T.Text, ZIndex = 19,
+			}),
+			new("TextLabel", {
+				Name = "Reason", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 34), Size = UDim2.new(1, -48, 0, 44),
+				BackgroundTransparency = 1, Text = "", Font = T.Font, TextSize = 13, TextColor3 = T.SubText,
+				TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 19,
+			}),
+		})
+		win._lockCover = c
+		return c
+	end
+
+	local function syncCover(win)
+		if win._destroyed or not win.Pages or not win.Pages.Parent then return end
+		local cover = win._lockCover
+		if win.Active then
+			if cover and cover.Visible then cover.Visible = false end
+			return
+		end
+		local focus = win._lockFocus
+		if not (focus and focus._locked and focus.Button and focus.Button.Parent) then
+			focus = nil
+			for _, t in ipairs(win.Tabs) do
+				if t._locked then focus = t break end
+			end
+		end
+		if not focus then
+			if cover and cover.Visible then cover.Visible = false end
+			return
+		end
+		cover = ensureCover(win)
+		cover.Sub.Text = tostring(focus.Name) .. " is locked"
+		cover.Reason.Text = focus.LockReason or "This tab is locked."
+		cover.Visible = true
+	end
+
+	---------------------------------------------------------------- never leave a locked page open
+	local startPicker
+	local function leave(win, tab)
+		local t = pickable(win, tab)
+		if t then win:SelectTab(t) end
+		if win.Active == tab then
+			-- nothing else can be shown (only tab / the others are still loading): close this page by hand
+			if tab.Page then tab.Page.Visible = false end
+			tab:_SetSelected(false)
+			win.Active = nil
+			startPicker(win)
+		end
+	end
+
+	-- while nothing is open: as soon as a tab is unlocked / finished loading, open it
+	startPicker = function(win)
+		if win._lockPicker then return end
+		win._lockPicker = true
+		task.spawn(function()
+			while not win._destroyed and not win.Active do
+				local t = pickable(win)
+				if t then win:SelectTab(t) break end
+				if win._slLoaded ~= false then break end   -- not loading any more and nothing to open
+				task.wait(0.2)
+			end
+			win._lockPicker = nil
+			syncCover(win)
+		end)
+	end
+
+	---------------------------------------------------------------- sidebar button look
+	local function parts(tab)
+		local p = tab._lockParts
+		if p then return p end
+		local T, btn = tab.Window.Theme, tab.Button
+		p = {}
+		p.Shade = new("Frame", {
+			Name = "LockShade", Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Background:Lerp(LOCK, 0.08),
+			BackgroundTransparency = 0.4, BorderSizePixel = 0, Visible = false, ZIndex = 2, Parent = btn,
+		}, { corner(10) })
+		p.Stroke = new("UIStroke", {
+			Color = LOCK, Thickness = 1, Transparency = 0.55, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = p.Shade,
+		})
+		p.Bar = new("Frame", {
+			Name = "LockBar", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 4, 0.5, 0), Size = UDim2.new(0, 3, 0.5, 0),
+			BackgroundColor3 = LOCK, BorderSizePixel = 0, Visible = false, ZIndex = 3, Parent = btn,
+		}, { corner(3) })
+		p.Pill = new("TextLabel", {
+			Name = "LockPill", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -32, 0.5, 0), Size = UDim2.fromOffset(50, 16),
+			BackgroundColor3 = LOCK, BackgroundTransparency = 0.82, Text = "LOCKED", Font = T.FontBold, TextSize = 9,
+			TextColor3 = LOCK, Visible = false, ZIndex = 3, Parent = btn,
+		}, { corner(8) })
+		btn:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() K.pill(tab) end)
+		tab._lockParts = p
+		return p
+	end
+
+	-- the "LOCKED" pill only shows when the sidebar is wide enough, so it never covers the tab name
+	function K.pill(tab)
+		local p = tab._lockParts
+		if not p or not tab.Button or not tab.Button.Parent then return end
+		local win = tab.Window
+		local sc = (win.Scale and win.Scale.Scale) or 1
+		local w = tab.Button.AbsoluteSize.X / math.max(sc, 0.01)
+		local lbl = tab.Label
+		local need = (tab._lblX or 46) + Tab._textW(lbl.Text, lbl.TextSize, lbl.Font) + 8 + 50 + 34
+		local show = tab._locked == true and lbl.Visible and w >= need
+		if p.Pill.Visible ~= show then p.Pill.Visible = show end
+	end
+
+	local function applyVisual(tab, v)
+		local p = parts(tab)
+		local T = tab.Window.Theme
+		p.Shade.Visible = v
+		p.Bar.Visible = v
+		tab.LockIcon.Visible = v
+		for _, c in ipairs(tab.LockIcon:GetChildren()) do   -- padlock drawn in the lock color
+			local st = c:FindFirstChildOfClass("UIStroke")
+			if st then st.Color = v and LOCK or T.SubText end
+			if c.BackgroundTransparency < 1 then c.BackgroundColor3 = v and LOCK or T.SubText end
+		end
+		local dim = (v or tab._slLoaded == false) and 0.55 or 0
+		tween(tab.Label, 0.2, { TextTransparency = dim })
+		local prop = tab.Icon:IsA("ImageLabel") and "ImageTransparency" or "TextTransparency"
+		tween(tab.Icon, 0.2, { [prop] = dim })
+		for _, part in ipairs(tab.Icon:GetChildren()) do
+			if part:IsA("ImageLabel") then tween(part, 0.2, { ImageTransparency = dim }) end
+		end
+		tab:_FitLabel()
+		K.pill(tab)
+	end
+
+	---------------------------------------------------------------- API
+	function Tab:SetLocked(v, reason)
+		v = v and true or false
+		if reason ~= nil then self.LockReason = reason end
+		local win = self.Window
+		self._locked = v
+		applyVisual(self, v)   -- idempotent: safe to call again with the same value
+		if v then
+			win._lockFocus = self
+			if win.Active == self then
+				leave(win, self)
+			elseif self.Page then
+				self.Page.Visible = false
+			end
+		else
+			if win._lockFocus == self then win._lockFocus = nil end
+			if not win.Active then
+				if self._slLoaded ~= false then win:SelectTab(self) else startPicker(win) end
+			end
+		end
+		syncCover(win)
+		return self
+	end
+
+	function Tab:SetLockReason(text)
+		self.LockReason = text
+		syncCover(self.Window)
+		return self
+	end
+
+	-- outermost guard: whatever path asks for a locked tab (SetTab, Goto, search, palette, other scripts) ends here
+	local prevSelect = Window.SelectTab
+	function Window:SelectTab(tab)
+		if type(tab) == "table" and tab._locked then
+			self:_LockedFeedback(tab)
+			return
+		end
+		local r = table.pack(prevSelect(self, tab))
+		local a = self.Active
+		if a and a._locked then leave(self, a) end   -- safety net: a locked page is never left open
+		syncCover(self)
+		return table.unpack(r, 1, r.n)
+	end
+
+	-- extra feedback on a blocked click: the amber outline flashes
+	local prevFeedback = Window._LockedFeedback
+	function Window:_LockedFeedback(tab)
+		local p = tab._lockParts
+		if p and p.Stroke and p.Stroke.Parent then
+			p.Stroke.Transparency = 0
+			tween(p.Stroke, 0.6, { Transparency = 0.55 })
+		end
+		self._lockFocus = tab
+		prevFeedback(self, tab)
+		syncCover(self)
+	end
+
+	K.Sync = syncCover
+	return K
+end)()
 
 return Library
