@@ -13319,22 +13319,22 @@ end
 -- Plain launch screen shown while CreateWindow builds the UI: logo, name, thin progress bar, one status line.
 -- No particles / glitch / HUD frames; short fade in and fade out. A gradient card sits behind it (Splash = { Panel = false } to remove);
 -- taps pass through to whatever is underneath while it shows (Splash = { Block = true } blocks them).
---   Library:CreateWindow({ Splash = false })                       skip it for this window
+--   The launch screen ALWAYS shows and cannot be turned off (Splash = false, Enabled = false and Skippable are ignored).
 --   Library:CreateWindow({ Splash = { Title = "SPECTREWARE", Subtitle = "ANIME ASTRAL", Duration = 2.5,
---       Steps = { "Checking key", "Loading" }, Logo = 123456, Skippable = true, Async = false } })
+--       Steps = { "Checking key", "Loading" }, Logo = 123456, Async = false } })
 --       Async = true -> the window is built at once and the splash plays on top of it
 --   Backdrop = 1 (fully transparent, default) .. 0 (solid theme background)
 --   Colours: follows the UI theme the player chose / saved earlier (Library:SetTheme, themes.json, CreateWindow({ Theme = ... })).
 --            With no theme chosen it uses Mono (grey / white). Splash = { Theme = "Cyber" } forces one preset;
 --            Library.Splash.Theme = false (default) = always the same theme as the UI; set it to "Mono" for the grey fallback when no theme was chosen.
---   Library.Splash.Enabled = false  /  .Duration  /  .Steps  /  .Skippable  /  .Async   global defaults
+--   Library.Splash.Duration (min 3) / .Steps / .Async   global defaults
 --   WaitBuild (default true): the window stays hidden and the splash stays up until the script has finished creating its tabs /
 --            controls, then the window opens fully built. It is detected automatically (no new UI for IdleTime seconds, default 0.8),
 --            or explicitly: Window:HoldLoading() / Window:ReleaseLoading() / Window:FinishLoading().  BuildTimeout (30 s) is the safety net.
 --            Splash = { WaitBuild = false } (or Library.Splash.WaitBuild = false) brings back the old timed splash.
 do
 	local TS, RS, UIS = game:GetService("TweenService"), game:GetService("RunService"), game:GetService("UserInputService")
-	local S = { Enabled = true, Duration = 4, Skippable = true, Async = false, Backdrop = 1, Theme = false, Panel = true, Block = false,
+	local S = { Enabled = true, Duration = 4, Skippable = false, Async = false, Backdrop = 1, Theme = false, Panel = true, Block = false,
 		WaitBuild = true, IdleTime = 0.8, BuildTimeout = 30,
 		Steps = { "Loading", "Preparing interface", "Almost ready" } }
 	Library.Splash = S
@@ -13388,7 +13388,7 @@ do
 		sub = (o.Subtitle or sub) and tostring(o.Subtitle or sub) or ""
 		local steps = opt("Steps")
 		if type(steps) ~= "table" or #steps == 0 then steps = { "Loading" } end
-		local D = math.max(1, tonumber(opt("Duration")) or 4)
+		local D = math.max(3, tonumber(opt("Duration")) or 4)   -- minimum 3 s, cannot be shortened below that
 		local logoId = o.Logo or cfg.Logo
 		local cam = workspace.CurrentCamera
 		local vp = cam and cam.ViewportSize or V2(1280, 720)
@@ -13474,9 +13474,7 @@ do
 		local t, shown, fin, skip, done = 0, 0, false, false, false
 		local pcache, lastS = -1, ""
 		local hit = panel or bg
-		hit.InputBegan:Connect(function(i)
-			if opt("Skippable") and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) and t > 0.8 then skip = true end
-		end)
+		-- (no tap-to-skip: the launch screen always plays to the end)
 
 		local bd = tonumber(opt("Backdrop")) or 1
 		if bd < 1 then tw(bg, 0.25, { BackgroundTransparency = bd }) end   -- default: stays fully transparent
@@ -13587,8 +13585,9 @@ do
 
 	function Library:CreateWindow(cfg)
 		cfg = cfg or {}
-		if cfg.Splash == false or S.Enabled == false then return orig(self, cfg) end
-		local o = type(cfg.Splash) == "table" and cfg.Splash or {}
+		-- the launch screen is mandatory: Splash = false / Library.Splash.Enabled = false are ignored
+		cfg.Splash = type(cfg.Splash) == "table" and cfg.Splash or {}
+		local o = cfg.Splash
 		local async = o.Async
 		if async == nil then async = S.Async end
 		local hold = o.WaitBuild
