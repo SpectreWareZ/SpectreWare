@@ -1,5 +1,5 @@
 --[[
-    SpectreUI - dark/violet Roblox UI library  (beautified build)
+    SpectreUI - dark/violet Roblox UI library  (soft rounded build: rounded window/tabs/toggles/dropdowns, no bevel)
     smooth pass: ripple capped at 3 per button and cleaned up by its own tween (was a fixed delay that ignored Anim.Speed);
                  slider drag applies one update per rendered frame and glides between notches on coarse sliders
     Window / Sidebar tabs / Search / Sections / Toggle / Dropdown (+Multi) / Slider / Button / Label / Divider / Textbox / Keybind / ColorPicker / Paragraph / Notify / Toast / Dialog / Loading / Config
@@ -856,7 +856,7 @@ local function nextFrame(fn)
 	end)
 end
 
-local function corner(r) return new("UICorner", { CornerRadius = UDim.new(0, math.min(r, 3)) }) end   -- classic: nothing is rounder than 3px
+local function corner(r) return new("UICorner", { CornerRadius = UDim.new(0, r <= 3 and 8 or math.min(r, 24)) }) end   -- soft build: tiny radii -> 8 (auto-clamped to a pill on small parts)
 
 ------------------------------------------------------------------ icon packs (Footagesus/Icons Main-v2)
 -- Lazy: the pack module (lucide / solar / craft / geist / sfsymbols / gravity) is only downloaded the
@@ -1492,7 +1492,7 @@ local function twinkle() return Library.Perf.Twinkle == true end
 -- sakura petals: tumbling, drifting down and sideways
 FX_KINDS.petals = function(fx, layer, T)
 	for i = 1, cnt(fx, 12) do
-		local o = dot(layer, math.random(8, 13), (i % 3 == 0) and T.Sheen or T.Accent2, rnd(0.25, 0.5), false)
+		local o = dot(layer, math.random(8, 13), (i % 3 == 0) and T.Sheen or T.Accent2, rnd(0.6, 0.8), false)
 		o.Rotation = math.random(0, 360)
 		local x = rnd(0.05, 0.95)
 		local x2 = math.clamp(x + rnd(-0.14, 0.14), 0.03, 0.97)
@@ -1505,7 +1505,7 @@ end
 FX_KINDS.orbs = function(fx, layer, T)
 	local cols = { T.Accent, T.Accent2, T.Sheen }
 	for i = 1, cnt(fx, 14) do
-		local o = dot(layer, math.random(4, 8), cols[(i % 3) + 1], rnd(0.3, 0.5), true)
+		local o = dot(layer, math.random(4, 8), cols[(i % 3) + 1], rnd(0.65, 0.85), true)
 		local x = rnd(0.05, 0.95)
 		travel(fx, o, UDim2.fromScale(x, 1.06), UDim2.fromScale(math.clamp(x + rnd(-0.06, 0.06), 0.03, 0.97), -0.06), rnd(15, 26))
 		if twinkle() then loopTween(fx, o, rnd(1.8, 3.6), { BackgroundTransparency = rnd(0.75, 0.88) }, SINE, true) end
@@ -1515,7 +1515,7 @@ end
 -- embers: quick, warm, flickering
 FX_KINDS.embers = function(fx, layer, T)
 	for i = 1, cnt(fx, 16) do
-		local o = dot(layer, math.random(3, 5), (i % 4 == 0) and T.Sheen or T.Accent2, rnd(0.2, 0.4), true)
+		local o = dot(layer, math.random(3, 5), (i % 4 == 0) and T.Sheen or T.Accent2, rnd(0.6, 0.8), true)
 		local x = rnd(0.05, 0.95)
 		travel(fx, o, UDim2.fromScale(x, 1.06), UDim2.fromScale(math.clamp(x + rnd(-0.07, 0.07), 0.03, 0.97), -0.06), rnd(6, 11))
 		if twinkle() then loopTween(fx, o, rnd(0.6, 1.4), { BackgroundTransparency = rnd(0.7, 0.85) }, SINE, true) end
@@ -1528,7 +1528,7 @@ FX_KINDS.rain = function(fx, layer, T)
 		local h = math.random(18, 38)
 		local o = new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(1, h), BackgroundColor3 = (i % 4 == 0) and T.Sheen or T.Accent,
-			BackgroundTransparency = rnd(0.3, 0.55), BorderSizePixel = 0, Parent = layer,
+			BackgroundTransparency = rnd(0.65, 0.82), BorderSizePixel = 0, Parent = layer,
 		}, { new("UIGradient", { Rotation = 90, Transparency = fadeSeq(0) }) })
 		local x = rnd(0.04, 0.96)
 		travel(fx, o, UDim2.fromScale(x, -0.08), UDim2.fromScale(x, 1.08), rnd(2.6, 5.2))
@@ -1542,21 +1542,21 @@ FX_KINDS.grid = function(fx, layer, T)
 			AnchorPoint = vertical and Vector2.new(0.5, 0) or Vector2.new(0, 0.5),
 			Position = vertical and UDim2.fromScale(at, 0) or UDim2.fromScale(0, at),
 			Size = vertical and UDim2.new(0, 1, 1, 0) or UDim2.new(1, 0, 0, 1),
-			BackgroundColor3 = T.Accent, BackgroundTransparency = 0.94, BorderSizePixel = 0, Parent = layer,
+			BackgroundColor3 = T.Accent, BackgroundTransparency = 0.96, BorderSizePixel = 0, Parent = layer,
 		}, { new("UIGradient", { Rotation = vertical and 90 or 0, Transparency = NumberSequence.new({ nsk(0, 1), nsk(0.5, 0), nsk(1, 1) }) }) })
 	end
 	for i = 1, 7 do line(true, i / 8) end
 	for i = 1, 4 do line(false, i / 5) end
 	local beam = new("Frame", {
 		Size = UDim2.new(1, 0, 0.24, 0), Position = UDim2.fromScale(0, -0.3), BackgroundColor3 = T.Accent,
-		BackgroundTransparency = 0.8, BorderSizePixel = 0, Parent = layer,
+		BackgroundTransparency = 0.92, BorderSizePixel = 0, Parent = layer,
 	}, { new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ nsk(0, 1), nsk(0.85, 0.4), nsk(1, 1) }) }) })
 	local tw = TweenService:Create(beam, TweenInfo.new(4.2, LINEAR, Enum.EasingDirection.Out, -1, false, 1.3), { Position = UDim2.fromScale(0, 1.05) })
 	tw:Play()
 	table.insert(fx.Tweens, tw)
 	-- a few blinking nodes on the lattice
 	for i = 1, cnt(fx, 6) do
-		local o = dot(layer, 5, (i % 2 == 0) and T.Accent2 or T.Accent, 0.6, true)
+		local o = dot(layer, 5, (i % 2 == 0) and T.Accent2 or T.Accent, 0.82, true)
 		o.Position = UDim2.fromScale(math.random(1, 7) / 8, math.random(1, 4) / 5)
 		if twinkle() then loopTween(fx, o, rnd(1.2, 2.6), { BackgroundTransparency = 0.95 }, SINE, true) end
 	end
@@ -1598,10 +1598,10 @@ local function scene(layer, radius, T, minimal)
 	full(white, { new("UIGradient", {
 		Rotation = 135,
 		Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, bg:Lerp(T.Accent, 0.26)),
-			ColorSequenceKeypoint.new(0.42, bg:Lerp(T.Accent, 0.05)),
+			ColorSequenceKeypoint.new(0, bg:Lerp(T.Accent, 0.14)),
+			ColorSequenceKeypoint.new(0.42, bg:Lerp(T.Accent, 0.03)),
 			ColorSequenceKeypoint.new(0.72, bg),
-			ColorSequenceKeypoint.new(1, bg:Lerp(T.Accent2, 0.22)),
+			ColorSequenceKeypoint.new(1, bg:Lerp(T.Accent2, 0.12)),
 		}),
 	}) })
 	if minimal then return end
@@ -1614,12 +1614,12 @@ local function scene(layer, radius, T, minimal)
 			}),
 		}) })
 	end
-	band(T.Accent, 25, 0.2, 0.78)
-	band(T.Accent2, 115, 0.85, 0.82)
+	band(T.Accent, 25, 0.2, 0.9)
+	band(T.Accent2, 115, 0.85, 0.92)
 	-- 3. vignette (bottom)
 	full(Color3.new(0, 0, 0), { new("UIGradient", {
 		Rotation = 90,
-		Transparency = NumberSequence.new({ nsk(0, 1), nsk(0.55, 1), nsk(1, 0.45) }),
+		Transparency = NumberSequence.new({ nsk(0, 1), nsk(0.55, 1), nsk(1, 0.35) }),
 	}) })
 	-- 4. rim light, kept inside the clipped layer so it is never cut off
 	new("Frame", {
@@ -1673,7 +1673,7 @@ function Window:SetBackground(kind, quiet)
 	if fx.Lite then return end   -- static only: nothing animated, nothing to pause
 
 	-- PC only: ONE slow aurora sweep + a few particles (half of the old amount)
-	if Library.Perf.Aurora == true then aurora(fx, layer, r, T.Accent, T.Accent2, 28, 0.8, rnd(18, 24), -0.55, 0.55) end
+	if Library.Perf.Aurora == true then aurora(fx, layer, r, T.Accent, T.Accent2, 28, 0.9, rnd(18, 24), -0.55, 0.55) end
 	local build = FX_KINDS[kind] or FX_KINDS.orbs
 	build(fx, layer, T)
 
@@ -1818,7 +1818,7 @@ function Library:CreateWindow(cfg)
 		local fr, fb, fn = Library._fontPair(cfg.Font)
 		if fr then T.Font, T.FontBold, fontName = fr, fb, fn end
 	end
-	local RADIUS = 4   -- classic: near-square window
+	local RADIUS = 16   -- soft build: rounded window
 	-- cfg.Transparency: 0 = default look ... 1 = fully see-through (backgrounds only, text/controls stay visible)
 	local GLASS = math.clamp(tonumber(cfg.Transparency) or 0, 0, 1)
 	local function glass(base) return base + (1 - base) * GLASS end
@@ -1856,7 +1856,7 @@ function Library:CreateWindow(cfg)
 		Parent = gui,
 	}, {
 		corner(RADIUS),
-		stroke(T.Border, 2, 0.05),
+		stroke(T.Border, 1.5, 0.25),
 		wash(cseq({ 0, T.Top }, { 1, T.Background }), 90),
 	})
 	win.Main = main
@@ -1881,15 +1881,15 @@ function Library:CreateWindow(cfg)
 		Name = "HeaderCard", Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 0, HEADER_H - 12),
 		BackgroundColor3 = T.Control, BackgroundTransparency = glass(0.1), BorderSizePixel = 0, Parent = header,
 	}, {
-		corner(2), stroke(T.Border, 2, 0.1),
+		corner(12), stroke(T.Border, 1, 0.3),
 		new("Frame", {
 			Name = "Tint", Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Accent, BackgroundTransparency = 0,
 			BorderSizePixel = 0,
 		}, {
-			corner(2),
-			-- classic title-bar gradient: strong accent on the left fading to the panel colour on the right
+			corner(12),
+			-- title-bar gradient: strong accent on the left fading to the panel colour on the right
 			new("UIGradient", { Transparency = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(0.55, 0.62), NumberSequenceKeypoint.new(1, 0.9),
+				NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(0.55, 0.78), NumberSequenceKeypoint.new(1, 0.94),
 			}) }),
 		}),
 	})
@@ -1929,7 +1929,7 @@ function Library:CreateWindow(cfg)
 			LayoutOrder = 1, Size = UDim2.fromOffset(34, 34), BackgroundColor3 = Color3.new(1, 1, 1),
 			BorderSizePixel = 0, Parent = left,
 		}, {
-			corner(2), gradient(T.Accent, T.Accent2, 45), stroke(T.Border, 2, 0.1),
+			corner(10), gradient(T.Accent, T.Accent2, 45), stroke(T.Border, 1, 0.3),
 			Library._oa(new("TextLabel", {
 				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = brand:sub(1, 2),
 				Font = Enum.Font.GothamBlack, TextSize = 15, TextColor3 = Library.OnAccent(T),
@@ -1938,13 +1938,13 @@ function Library:CreateWindow(cfg)
 	end
 	win.BrandLabel = new("TextLabel", {
 		LayoutOrder = 2, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, BackgroundTransparency = 1,
-		Text = brand, Font = T.FontBold, TextSize = 18, TextColor3 = Color3.new(1, 1, 1), Parent = left,
+		Text = brand, Font = T.FontBold, TextSize = 18, TextColor3 = T.Text, Parent = left,
 	})
 	if sub then
 		win.SubSep = new("Frame", {   -- the pill (kept under the old name so compact mode still hides it)
 			LayoutOrder = 3, Size = UDim2.fromOffset(0, 24), AutomaticSize = AX, BackgroundColor3 = T.Accent,
 			BackgroundTransparency = 0.7, BorderSizePixel = 0, Parent = left,
-		}, { corner(2), stroke(T.Accent, 1, 0.2), padding(9, 0, 9, 0) })
+		}, { corner(12), stroke(T.Accent, 1, 0.35), padding(9, 0, 9, 0) })
 		win.SubLabel = new("TextLabel", {
 			Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, BackgroundTransparency = 1,
 			Text = sub, Font = T.Font, TextSize = 12, TextColor3 = T.Text, Parent = win.SubSep,
@@ -2112,7 +2112,7 @@ function Library:CreateWindow(cfg)
 	win.SidePanel = new("Frame", {
 		Name = "SidePanel", Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -19, 1, -10),
 		BackgroundColor3 = T.Control, BackgroundTransparency = glass(0.2), BorderSizePixel = 0, Parent = sidebar,
-	}, { corner(3), stroke(T.Border, 2, 0.2) })   -- classic: near-square corners, flat fill, 2px frame
+	}, { corner(14), stroke(T.Border, 1, 0.35) })   -- soft build: rounded panel, hairline frame
 	win.Sidebar = sidebar
 	win.TabList = new("ScrollingFrame", {
 		Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -19, 1, -FOOT_H - 10), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
@@ -2131,7 +2131,7 @@ function Library:CreateWindow(cfg)
 	win.ProfileButton = new("TextButton", {
 		Name = "ProfileButton", Position = UDim2.fromOffset(-12, 3), Size = UDim2.new(1, 20, 1, -6),
 		BackgroundColor3 = T.Accent, BackgroundTransparency = 1, Text = "", AutoButtonColor = false, BorderSizePixel = 0, Parent = footer,
-	}, { corner(3) })
+	}, { corner(12) })
 	feedback(win.ProfileButton, win.ProfileButton, "BackgroundTransparency", 1, 0.88, 0.78, true)
 	-- profile card: player avatar + display name + @username (replaces the old brand/sub footer)
 	local lpl = Players.LocalPlayer
@@ -2175,7 +2175,7 @@ function Library:CreateWindow(cfg)
 		Name = "SearchBar", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -(8 + btnArea + 10), 0.5, 0),
 		Size = UDim2.fromOffset(SEARCH_BAR_H, SEARCH_BAR_H), BackgroundColor3 = T.Control,
 		BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = true, Parent = hcard,
-	}, { corner(2), stroke(T.Border, 1, 1) })   -- collapsed: transparent like the other header buttons
+	}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), stroke(T.Border, 1, 1) })   -- pill; collapsed: transparent like the other header buttons
 	win.SearchBar = searchBar
 	local searchStroke = searchBar:FindFirstChildOfClass("UIStroke")
 	searchStroke.Transparency = 1   -- stroke() lightens by 0.15; start fully hidden while collapsed
@@ -2194,10 +2194,31 @@ function Library:CreateWindow(cfg)
 		BorderSizePixel = 0, Parent = mag,
 	})
 	win.SearchBox = new("TextBox", {
-		Position = UDim2.fromOffset(32, 0), Size = UDim2.new(1, -42, 1, 0), BackgroundTransparency = 1, Text = "", Visible = false,
+		Position = UDim2.fromOffset(32, 0), Size = UDim2.new(1, -62, 1, 0), BackgroundTransparency = 1, Text = "", Visible = false,
 		PlaceholderText = "Search all tabs...", PlaceholderColor3 = T.SubText, TextColor3 = T.Text, Font = T.Font, TextSize = 14,
 		TextXAlignment = LEFT, ClearTextOnFocus = false, TextTruncate = Enum.TextTruncate.AtEnd, Parent = searchBar,
 	})
+	-- round clear button (x drawn from two frames, no glyph needed) shown while there is text
+	local clearBtn = new("TextButton", {
+		Name = "SearchClear", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(18, 18),
+		BackgroundColor3 = T.SubText, BackgroundTransparency = 0.8, Text = "", AutoButtonColor = false, Visible = false, ZIndex = 6, Parent = searchBar,
+	}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	for _, rot in ipairs({ 45, -45 }) do
+		new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(8, 1.5), Rotation = rot,
+			BackgroundColor3 = T.Text, BorderSizePixel = 0, ZIndex = 7, Parent = clearBtn,
+		})
+	end
+	local function updateClear()
+		clearBtn.Visible = win.SearchBox.Visible and win.SearchBox.Text ~= ""
+	end
+	win.SearchBox:GetPropertyChangedSignal("Text"):Connect(updateClear)
+	clearBtn.MouseEnter:Connect(function() if not usingTouch() then tween(clearBtn, 0.12, { BackgroundTransparency = 0.5 }) end end)
+	clearBtn.MouseLeave:Connect(function() tween(clearBtn, 0.16, { BackgroundTransparency = 0.8 }) end)
+	clearBtn.MouseButton1Click:Connect(function()
+		win.SearchBox.Text = ""
+		win.SearchBox:CaptureFocus()
+	end)
 	-- collapsed = just the magnifier; tap it and it grows into the full box (collapses again when empty + unfocused)
 	local searchOpen, expandedW, applyHeader = false, 190, nil
 	local hit = new("TextButton", {
@@ -2242,6 +2263,7 @@ function Library:CreateWindow(cfg)
 		searchOpen = v
 		hit.Visible = not v
 		win.SearchBox.Visible = v
+		updateClear()
 		if win._searchChip then win._searchChip.Visible = v and win.SearchBox.Text == "" end
 		-- open = boxed field with the icon on the left; collapsed = bare icon centered, like the other buttons
 		tween(mag, 0.2, { Position = UDim2.new(0, v and 10 or magX, 0.5, 0) })
@@ -2249,11 +2271,49 @@ function Library:CreateWindow(cfg)
 		tween(magHandle, 0.2, { BackgroundColor3 = v and T.Accent or T.SubText })
 		tween(searchBar, 0.2, { BackgroundTransparency = v and 0.35 or 1 })
 		tween(searchStroke, 0.2, { Transparency = v and 0.45 or 1 })
+		if not v then   -- folded: drop the focus tint so the next (hover) open starts from the calm look
+			tween(searchBar, 0.2, { BackgroundColor3 = T.Control })
+			tween(searchStroke, 0.2, { Color = T.Border, Thickness = 1 })
+		end
 		applyHeader(true)
 	end
 	-- hover feedback identical to the - / [] / x buttons (collapsed only)
-	hit.MouseEnter:Connect(function() if not searchOpen then tween(searchBar, 0.14, { BackgroundTransparency = 0.4 }) end end)
-	hit.MouseLeave:Connect(function() if not searchOpen then tween(searchBar, 0.16, { BackgroundTransparency = 1 }) end end)
+	hit.MouseEnter:Connect(function()
+		if searchOpen then return end
+		tween(searchBar, 0.14, { BackgroundTransparency = 0.4 })
+		tween(magRingStroke, 0.14, { Color = T.Text })
+		tween(magHandle, 0.14, { BackgroundColor3 = T.Text })
+	end)
+	hit.MouseLeave:Connect(function()
+		if searchOpen then return end
+		tween(searchBar, 0.16, { BackgroundTransparency = 1 })
+		tween(magRingStroke, 0.16, { Color = T.SubText })
+		tween(magHandle, 0.16, { BackgroundColor3 = T.SubText })
+	end)
+	-- PC: hovering the magnifier opens the search field by itself (no click needed). Moving the mouse away folds it
+	-- back, unless it is focused or has text in it. Touch has no hover, so it still opens on tap.
+	--   Library.SearchHover = false   turn the hover-open off
+	local hoverSeq = 0
+	local function mouseOverBar()
+		local m, p, sz = UserInputService:GetMouseLocation(), searchBar.AbsolutePosition, searchBar.AbsoluteSize   -- gui ignores the top inset
+		return m.X >= p.X and m.X <= p.X + sz.X and m.Y >= p.Y and m.Y <= p.Y + sz.Y
+	end
+	local function hoverFold()
+		hoverSeq = hoverSeq + 1
+		local seq = hoverSeq
+		task.delay(0.35, function()
+			if seq ~= hoverSeq or not searchOpen or win._destroyed then return end
+			if win.SearchBox:IsFocused() or win.SearchBox.Text ~= "" or mouseOverBar() then return end
+			setSearchOpen(false)
+		end)
+	end
+	hit.MouseEnter:Connect(function()
+		if usingTouch() or Library.SearchHover == false then return end
+		hoverSeq = hoverSeq + 1
+		setSearchOpen(true)
+	end)
+	searchBar.MouseLeave:Connect(function() if searchOpen then hoverFold() end end)
+	win.SearchBox.MouseLeave:Connect(function() if searchOpen then hoverFold() end end)
 	hit.MouseButton1Click:Connect(function()
 		setSearchOpen(true)
 		task.defer(function()
@@ -2289,14 +2349,14 @@ function Library:CreateWindow(cfg)
 	end)
 	win.SearchBox.Focused:Connect(function()
 		setSearchOpen(true)
-		tween(searchStroke, 0.18, { Color = T.Accent, Transparency = 0.05 })
-		tween(searchBar, 0.18, { BackgroundTransparency = 0.15 })
+		tween(searchStroke, 0.18, { Color = T.Accent, Transparency = 0.05, Thickness = 1.5 })
+		tween(searchBar, 0.18, { BackgroundTransparency = 0.15, BackgroundColor3 = T.Control:Lerp(T.Accent, 0.12) })
 	end)
 	win.SearchBox.FocusLost:Connect(function()
 		if win.SearchBox.Text == "" then setSearchOpen(false) end
 		if searchOpen then
-			tween(searchStroke, 0.22, { Color = T.Border, Transparency = 0.45 })
-			tween(searchBar, 0.22, { BackgroundTransparency = 0.35 })
+			tween(searchStroke, 0.22, { Color = T.Border, Transparency = 0.45, Thickness = 1 })
+			tween(searchBar, 0.22, { BackgroundTransparency = 0.35, BackgroundColor3 = T.Control })
 		end
 	end)
 
@@ -4018,7 +4078,7 @@ local function buildIcon(parent, icon, color, T, size, bag)
 	-- tinted badge behind the glyph
 	new("Frame", {
 		Size = UDim2.fromScale(1, 1), BackgroundColor3 = color, BackgroundTransparency = 0.82, BorderSizePixel = 0, Parent = holder,
-	}, { new("UICorner", { CornerRadius = UDim.new(0, 2) }) })
+	}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }) })
 	if icon == "check" then
 		seg(holder, 6.2 * u, 11.6 * u, 9.6 * u, 15 * u, 2 * u, color)
 		seg(holder, 9.6 * u, 15 * u, 16.2 * u, 7.6 * u, 2 * u, color)
@@ -5213,16 +5273,16 @@ function Window:CreateTab(cfg)
 	local btn = new("TextButton", {
 		LayoutOrder = #self.Tabs + 1, Size = UDim2.new(1, 0, 0, tabH),
 		BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 1, AutoButtonColor = false, Text = "", ClipsDescendants = true, Parent = self.TabList,
-	}, { corner(2), stroke(T.Accent, 1, 1), gradient(T.AccentSoft, T.AccentSoft, 0) })   -- classic: square, flat
+	}, { corner(10), stroke(T.Accent, 1, 1), gradient(T.AccentSoft:Lerp(T.Accent, 0.16), T.AccentSoft, 0) })   -- soft build: rounded, gradient wash
 	tab.Button = btn
 	tab.BtnStroke = btn:FindFirstChildOfClass("UIStroke")
 	-- stroke() lowers transparency by 0.15, so stroke(.., 1, 1) was 0.85 (a faint outline on never-selected tabs): force it fully hidden
 	tab.BtnStroke.Transparency = 1
 	tab.BtnGrad = btn:FindFirstChildOfClass("UIGradient")
 	tab.Indicator = new("Frame", {
-		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.new(0, 4, 0, 0),
+		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 4, 0.5, 0), Size = UDim2.new(0, 4, 0, 0),
 		BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = btn,
-	}, { gradient(T.Accent, T.Accent, 90) })
+	}, { corner(4), gradient(T.Accent, T.Accent2, 90) })
 
 	local ic = cfg.Icon
 	local function wrapIcon(el)
@@ -5409,10 +5469,14 @@ function Tab:_SetSelected(sel)
 	local T = self.Window.Theme
 	tween(self.Button, 0.22, { BackgroundTransparency = sel and 0 or 1 })
 	tween(self.BtnStroke, 0.22, { Transparency = sel and 0.2 or 1 })
-	tween(self.Indicator, 0.12, { Size = UDim2.new(0, 4, sel and 1 or 0, 0) })
+	tween(self.Indicator, 0.18, { Size = UDim2.new(0, 4, sel and 0.55 or 0, 0) })
 	tween(self.Label, 0.22, { TextColor3 = sel and T.Text or T.SubText })
 	local prop = self.Icon:IsA("ImageLabel") and "ImageColor3" or "TextColor3"
-	local icol = sel and T.Accent or T.SubText
+	local icol = T.SubText
+	if sel then   -- near-white accents (Mono) are toned down so the active tab does not glare
+		icol = T.Accent
+		if math.max(icol.R, icol.G, icol.B) > 0.85 then icol = icol:Lerp(T.SubText, 0.4) end
+	end
 	tween(self.Icon, 0.22, { [prop] = icol })
 	for _, part in ipairs(self.Icon:GetChildren()) do
 		if part:IsA("ImageLabel") then tween(part, 0.22, { ImageColor3 = icol }) end
@@ -5423,7 +5487,7 @@ function Tab:_SetSelected(sel)
 	end
 	if self.BtnGrad then
 		-- active tab gets a soft violet wash, idle stays flat
-		self.BtnGrad.Color = cseq({ 0, T.AccentSoft }, { 1, T.AccentSoft })   -- classic: flat, no wash
+		self.BtnGrad.Color = cseq({ 0, T.AccentSoft:Lerp(T.Accent, 0.16) }, { 1, T.AccentSoft })   -- soft build: accent wash
 	end
 end
 
@@ -5697,39 +5761,21 @@ end
 -- classic 3D bevel (Win95 style): light top/left edge, dark bottom/right edge, inverts while pressed.
 -- (a Library field, not a new top-level local: the chunk is close to Lua's local limit)
 function Library._bevel(btn, base, sunken)
-	base = base or Color3.fromRGB(70, 74, 96)
-	local hi, lo = base:Lerp(Color3.new(1, 1, 1), 0.45), base:Lerp(Color3.new(0, 0, 0), 0.6)
-	if sunken then hi, lo = lo, hi end   -- inset: dark top/left, light bottom/right
-	local function edge(pos, size, anchor)
-		return new("Frame", { Position = pos, Size = size, AnchorPoint = anchor or Vector2.new(0, 0), BorderSizePixel = 0, ZIndex = 5, Parent = btn })
+	-- soft build: no Win95 edges. A faint top sheen on raised buttons, nothing on inset fields; returns the same set() hook.
+	if not sunken and btn and not lowPower() and not btn:FindFirstChild("SoftSheen") then
+		new("Frame", { Name = "SoftSheen", Size = UDim2.new(1, 0, 0.5, 0), BackgroundColor3 = Color3.new(1, 1, 1),
+			BackgroundTransparency = 0.93, BorderSizePixel = 0, ZIndex = 5, Active = false, Parent = btn },
+			{ new("UICorner", { CornerRadius = UDim.new(0, 8) }),
+			  new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(0, 1) }) })
 	end
-	local top   = edge(UDim2.fromOffset(0, 0), UDim2.new(1, 0, 0, 2))
-	local left  = edge(UDim2.fromOffset(0, 0), UDim2.new(0, 2, 1, 0))
-	local bot   = edge(UDim2.fromScale(0, 1), UDim2.new(1, 0, 0, 2), Vector2.new(0, 1))
-	local right = edge(UDim2.fromScale(1, 0), UDim2.new(0, 2, 1, 0), Vector2.new(1, 0))
-	local pDark, pLight = base:Lerp(Color3.new(0, 0, 0), 0.2), base:Lerp(Color3.new(1, 1, 1), 0.3)
-	-- pressed -> fast ease in, released -> slower ease out (a hard colour snap on release is what read as a stutter)
-	local function paintEdge(e, c, t)
-		if t <= 0 or lowPower() then e.BackgroundColor3 = c
-		else tween(e, t, { BackgroundColor3 = c }, SINE, OUT) end
-	end
-	local function set(pressed, instant)
-		local t = instant and 0 or (pressed and 0.07 or 0.22)
-		local d, l = pressed and pDark or hi, pressed and pLight or lo
-		paintEdge(top, d, t) paintEdge(left, d, t)
-		paintEdge(bot, l, t) paintEdge(right, l, t)
-	end
-	set(false, true)
-	if not sunken then
-		-- mouse and touch; a finger that turns into a scroll reverts the press
-		dragSafePress(btn, function() set(true) end, function() set(false) end, 10)
-		btn.MouseLeave:Connect(function() if not usingTouch() then set(false) end end)
-	end
-	return set
+	return function() end
 end
 
+-- Section:CreateButton({ Name, Callback, Icon, Color, Gradient = { c1, c2 }, Bold, Radius = 8, Spin, Sound, Feedback, ... })
+--   v3.18 look: rounded (Radius), soft top sheen, accent bar + accent outline on hover, shade on press. Radius = 3 = the old flat look.
 function Section:CreateButton(cfg)
 	local T = self.Window.Theme
+	local R = math.clamp(tonumber(cfg.Radius) or 8, 0, 16)
 	local accent = cfg.Color
 	local grad = cfg.Gradient
 	local gradLabel
@@ -5741,7 +5787,7 @@ function Section:CreateButton(cfg)
 		BackgroundTransparency = 0.1, AutoButtonColor = false,
 		Text = cfg.Name or "Button", Font = cfg.Bold and T.FontBold or T.Font, TextSize = 13,
 		TextColor3 = cfg.TextColor or (accent and Library.OnAccent(accent)) or T.Text, TextTruncate = Enum.TextTruncate.AtEnd, ClipsDescendants = true, Parent = self.Body,
-	}, { corner(2), stroke(grad and (grad[2] or T.Accent2) or (accent and accent:Lerp(Color3.new(1, 1, 1), 0.3) or T.Border), 1, grad and 0.5 or 0.35) })
+	}, { new("UICorner", { CornerRadius = UDim.new(0, R) }), stroke(grad and (grad[2] or T.Accent2) or (accent and accent:Lerp(Color3.new(1, 1, 1), 0.3) or T.Border), 1, grad and 0.5 or 0.35) })
 	if grad then
 		-- gradient needs the frame background visible (transparency stays low, not 1)
 		b.BackgroundColor3 = Color3.new(1, 1, 1)
@@ -5765,13 +5811,14 @@ function Section:CreateButton(cfg)
 		im.ZIndex = b.ZIndex + 1
 		im.Parent = b
 	end
-	Library._bevel(b, grad and grad[1] or accent or T.Control)
-	-- top highlight for depth (off: classic bevel replaces it)
-	if false then
-		new("Frame", {
-			Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.Sheen, BackgroundTransparency = 0.85, BorderSizePixel = 0, Parent = b,
-		}, { corner(1) })
-	end
+	-- soft sheen: the top half is a touch lighter and fades out. It is an overlay frame (a UIGradient on the button itself
+	-- would tint the label text too), nearly transparent, so text and icon stay crisp.
+	new("Frame", {
+		Size = UDim2.fromScale(1, 0.55), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Active = false, ZIndex = 3, Parent = b,
+	}, {
+		new("UICorner", { CornerRadius = UDim.new(0, R) }),
+		new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, grad and 0.86 or 0.9), NumberSequenceKeypoint.new(1, 1) }) }),
+	})
 	local bStroke = b:FindFirstChildOfClass("UIStroke")
 	-- coloured / gradient buttons have no background tween (a gradient can't be tinted), so a soft dark shade fades in
 	-- on press and eases out on release. Only transparency moves: no scaling, so the text never re-rasterizes.
@@ -5780,7 +5827,25 @@ function Section:CreateButton(cfg)
 		shade = new("Frame", {
 			Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1,
 			BorderSizePixel = 0, ZIndex = 4, Parent = b,
-		}, { corner(2) })
+		}, { new("UICorner", { CornerRadius = UDim.new(0, R) }) })
+	end
+	-- hover: an accent bar grows on the left edge and the outline turns accent (plain buttons only; coloured ones already
+	-- brighten their outline). Colours are read at event time so a live theme switch is followed.
+	if not (grad or accent) then
+		local bar = new("Frame", {
+			AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 4, 0.5, 0), Size = UDim2.new(0, 3, 0, 0),
+			BackgroundColor3 = T.Accent, BorderSizePixel = 0, ZIndex = 5, Parent = b,
+		}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		b.MouseEnter:Connect(function()
+			if usingTouch() then return end
+			bar.BackgroundColor3 = T.Accent
+			tween(bar, 0.2, { Size = UDim2.new(0, 3, 0.55, 0) }, BACK, OUT)
+			if bStroke then tween(bStroke, 0.16, { Color = T.Accent }) end
+		end)
+		b.MouseLeave:Connect(function()
+			tween(bar, 0.16, { Size = UDim2.new(0, 3, 0, 0) }, SINE, OUT)
+			if bStroke then tween(bStroke, 0.18, { Color = T.Border }) end
+		end)
 	end
 	dragSafePress(b, function()
 		if shade then tween(shade, 0.07, { BackgroundTransparency = 0.8 }, SINE, OUT) end
@@ -5847,7 +5912,7 @@ function Section:CreateToggle(cfg)
 	local row = new("TextButton", {
 		Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = T.Control, BackgroundTransparency = 1, Text = "",
 		AutoButtonColor = false, Parent = self.Body,
-	}, { corner(2) })
+	}, { corner(10) })
 	feedback(row, row, "BackgroundTransparency", 1, 0.82, 0.62, true)
 	new("TextLabel", {
 		Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -62, 1, 0), BackgroundTransparency = 1, Text = cfg.Name or "Toggle",
@@ -5856,7 +5921,7 @@ function Section:CreateToggle(cfg)
 	local track = new("Frame", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(42, 22),
 		BackgroundColor3 = value and T.Accent or T.Control, BorderSizePixel = 0, Parent = row,
-	}, { corner(2), stroke(T.Border, 1, 0.6) })
+	}, { corner(11), stroke(T.Border, 1, 0.5) })
 	Library._bevel(track, T.Control, true)
 	-- gradient fill lives on its own frame so its fade can be tweened (UIGradient.Transparency snaps instantly)
 	local trackFill = new("Frame", {
@@ -5918,7 +5983,7 @@ function Section:CreateSlider(cfg)
 	local knob = new("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(knobS, knobS),
 		BackgroundColor3 = T.Knob, BorderSizePixel = 0, ZIndex = 2, Parent = track,
-	}, { new("UICorner", { CornerRadius = UDim.new(0, 2) }), stroke(T.Accent, 2, 0) })
+	}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }), stroke(T.Accent, 2, 0) })
 
 	local obj = {}
 	local pendingX, pumpC, dragging   -- declared up here so :Set can see whether a drag is running
@@ -6041,7 +6106,7 @@ function Section:CreateDropdown(cfg)
 	local optH = touch and 44 or 36
 	local searchH = touch and 50 or 44
 	local footH = touch and 50 or 44
-	local GAP, PAD = 4, 14
+	local GAP, PAD = 5, 16
 	local options = cfg.Options or {}
 	local multi = cfg.Multi and true or false
 	local placeholder = cfg.Placeholder or "Select..."
@@ -6134,8 +6199,10 @@ function Section:CreateDropdown(cfg)
 	local btn = new("TextButton", {
 		LayoutOrder = 2, Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1,
 		AutoButtonColor = false, Text = "", Parent = frame,
-	}, { rc(7), stroke(T.Border, 1, 0.35) })
-	Library._bevel(btn, T.Control, true)   -- sunken field edge, like Textbox
+	}, { rc(11), stroke(T.Border, 1, 0.35) })
+	if not lowPower() then
+		new("UIGradient", { Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(206, 206, 216)), Rotation = 90, Parent = btn })
+	end
 	local btnStroke = btn:FindFirstChildOfClass("UIStroke")
 	feedback(btn, btn, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
 	local txt = new("TextLabel", {
@@ -6286,7 +6353,10 @@ function Section:CreateDropdown(cfg)
 			local b = new("TextButton", {
 				LayoutOrder = i, Size = UDim2.new(1, 0, 0, optH), BackgroundColor3 = selBG, BackgroundTransparency = 1,
 				AutoButtonColor = false, Text = "", Parent = scroll,
-			}, { rc(10) })
+			}, { rc(12) })
+			if not lowPower() then
+				new("UIGradient", { Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(190, 190, 205)), Rotation = 0, Parent = b })
+			end
 			local rowStroke
 			if not lowPower() then
 				rowStroke = new("UIStroke", { Color = T.Accent, Thickness = 1, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
@@ -6388,8 +6458,8 @@ function Section:CreateDropdown(cfg)
 		popup = new("Frame", {
 			Visible = false, ZIndex = 61, BackgroundColor3 = popBG, BorderSizePixel = 0, ClipsDescendants = true,
 			Active = true, Parent = win.Gui,
-		}, { rc(14),
-			new("UIStroke", { Color = T.Accent, Thickness = 1.5, Transparency = 0.3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
+		}, { rc(18),
+			new("UIStroke", { Color = T.Accent, Thickness = 1, Transparency = 0.3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
 			wash(cseq({ 0, popBG }, { 1, popBG }), 90) })
 		popupStroke = popup:FindFirstChildOfClass("UIStroke")
 		popGrad = popup:FindFirstChildOfClass("UIGradient")
@@ -6399,13 +6469,13 @@ function Section:CreateDropdown(cfg)
 			Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Control, Text = "", PlaceholderText = "Search…",
 			PlaceholderColor3 = T.SubText, TextColor3 = T.Text, Font = T.Font, TextSize = touch and 14 or 13, TextXAlignment = LEFT,
 			ClearTextOnFocus = false, Parent = searchHolder,
-		}, { rc(10), new("UIStroke", { Color = T.Accent, Thickness = 1, Transparency = 0.6, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }), padding(14, 0, 14, 0) })
+		}, { rc(12), new("UIStroke", { Color = T.Accent, Thickness = 1, Transparency = 0.6, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }), padding(14, 0, 14, 0) })
 
 		scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
 			Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = touch and 5 or 4,
 			ScrollBarImageColor3 = T.Accent, CanvasSize = UDim2.new(), AutomaticCanvasSize = AY,
 			ScrollingDirection = Enum.ScrollingDirection.Y, Parent = popup,
-		}, { list(GAP), padding(8, 6, 8, 8) })
+		}, { list(GAP), padding(10, 8, 10, 10) })
 		emptyLbl = new("TextLabel", {
 			LayoutOrder = 0, Size = UDim2.new(1, 0, 0, optH), BackgroundTransparency = 1, Text = "No results found", Font = T.Font,
 			TextSize = 14, TextColor3 = T.SubText, Visible = false, Parent = scroll,
@@ -6427,7 +6497,7 @@ function Section:CreateDropdown(cfg)
 				selAll = new("TextButton", {
 					Size = UDim2.new(0.34, -4, 1, 0), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = cfg.SelectAllText or "Select All",
 					Font = T.FontBold, TextSize = 13, TextColor3 = T.Accent, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer,
-				}, { rc(7), stroke(T.Accent, 1, 0.5) })
+				}, { rc(11), stroke(T.Accent, 1, 0.5) })
 				feedback(selAll, selAll, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
 				strokeFeedback(selAll, selAll:FindFirstChildOfClass("UIStroke"), 0.5, 0.15)
 			end
@@ -6436,14 +6506,14 @@ function Section:CreateDropdown(cfg)
 				Size = withAll and UDim2.new(0.26, -4, 1, 0) or UDim2.new(0.38, -3, 1, 0),
 				BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "Clear",
 				Font = T.Font, TextSize = 13, TextColor3 = T.Text, Parent = footer,
-			}, { rc(7), stroke(T.Border, 1, 0.35) })
+			}, { rc(11), stroke(T.Border, 1, 0.35) })
 			feedback(clear, clear, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
 			strokeFeedback(clear, clear:FindFirstChildOfClass("UIStroke"), 0.35, 0.05)
 			local done = new("TextButton", {
 				Position = withAll and UDim2.new(0.60, 2, 0, 0) or UDim2.new(0.38, 3, 0, 0),
 				Size = withAll and UDim2.new(0.40, -2, 1, 0) or UDim2.new(0.62, -3, 1, 0),
 				BackgroundColor3 = Color3.new(1, 1, 1), AutoButtonColor = false, Text = "", Parent = footer,
-			}, { rc(7), gradient(T.Accent, T.Accent2, 0), stroke(T.Accent2, 1, 0.5) })
+			}, { rc(11), gradient(T.Accent, T.Accent2, 0), stroke(T.Accent2, 1, 0.5) })
 			-- UIGradient tints the parent's own text too (it made "Done" vanish), so the label is a separate child
 			Library._oa(new("TextLabel", {
 				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "Done", Font = T.FontBold, TextSize = 13,
@@ -6981,7 +7051,7 @@ function Section:CreateColorPicker(cfg)
 		}, { corner(6), new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(1, 0) }) })
 		svKnob = new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(12, 12), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 3, Parent = svBox,
-		}, { new("UICorner", { CornerRadius = UDim.new(0, 2) }), stroke(Color3.new(1, 1, 1), 2, 0) })
+		}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }), stroke(Color3.new(1, 1, 1), 2, 0) })
 		local svHit = new("TextButton", {
 			Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 4, Parent = svBox,
 		})
@@ -7113,8 +7183,9 @@ function Section:CreateBadge(cfg)
 	local pillStroke = pill:FindFirstChildOfClass("UIStroke")
 	local val = new("TextLabel", {
 		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = tostring(cfg.Value or "ON"),
-		Font = T.FontBold, TextSize = 13, TextColor3 = Color3.new(1, 1, 1), TextTruncate = Enum.TextTruncate.AtEnd, Parent = pill,
+		Font = T.FontBold, TextSize = 13, TextColor3 = Library.OnAccent(cfg.Color or T.Accent), TextTruncate = Enum.TextTruncate.AtEnd, Parent = pill,
 	}, { padding(6, 0, 6, 0) })
+	if not cfg.Color then Library._oa(val) end
 	self:_Register(row, cfg.Name, rowH())
 	local obj = { Frame = row }
 	function obj:Set(v)
@@ -7123,6 +7194,7 @@ function Section:CreateBadge(cfg)
 	function obj:SetColor(c)
 		pill.BackgroundColor3 = c
 		pillStroke.Color = c
+		val.TextColor3 = Library.OnAccent(c)
 	end
 	return obj
 end
@@ -8543,7 +8615,7 @@ function Section:CreateRangeSlider(cfg)
 		return new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(knobS, knobS),
 			BackgroundColor3 = T.Knob, BorderSizePixel = 0, ZIndex = 2, Parent = track,
-		}, { new("UICorner", { CornerRadius = UDim.new(0, 2) }), stroke(T.Accent, 2, 0) })
+		}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }), stroke(T.Accent, 2, 0) })
 	end
 	local knobLo, knobHi = mkKnob(), mkKnob()
 
@@ -12278,9 +12350,19 @@ function Section:CreateButtonRow(cfg)
 			Text = d.Name or "Button", Font = d.Bold and T.FontBold or T.Font, TextSize = 13,
 			TextColor3 = d.TextColor or (color and Library.OnAccent(color)) or T.Text,
 			TextTruncate = Enum.TextTruncate.AtEnd, ClipsDescendants = true, Parent = row,
-		}, { corner(2), stroke(color and color:Lerp(Color3.new(1, 1, 1), 0.3) or T.Border, 1, color and 0.5 or 0.35) })
+		}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }), stroke(color and color:Lerp(Color3.new(1, 1, 1), 0.3) or T.Border, 1, color and 0.5 or 0.35) })
 		local bs = b:FindFirstChildOfClass("UIStroke")
-		Library._bevel(b, color or T.Control)
+		-- same look as Section:CreateButton: rounded + soft top sheen (overlay frame, so the text is never tinted)
+		new("Frame", {
+			Size = UDim2.fromScale(1, 0.55), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Active = false, ZIndex = 3, Parent = b,
+		}, {
+			new("UICorner", { CornerRadius = UDim.new(0, 8) }),
+			new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.9), NumberSequenceKeypoint.new(1, 1) }) }),
+		})
+		if not color then
+			b.MouseEnter:Connect(function() if not usingTouch() then tween(bs, 0.16, { Color = T.Accent }) end end)
+			b.MouseLeave:Connect(function() tween(bs, 0.18, { Color = T.Border }) end)
+		end
 		if color then
 			strokeFeedback(b, bs, 0.3, 0.05)
 		else
@@ -13241,7 +13323,7 @@ end
 --   Backdrop = 1 (fully transparent, default) .. 0 (solid theme background)
 --   Colours: follows the UI theme the player chose / saved earlier (Library:SetTheme, themes.json, CreateWindow({ Theme = ... })).
 --            With no theme chosen it uses Mono (grey / white). Splash = { Theme = "Cyber" } forces one preset;
---            Library.Splash.Theme = "Mono" (default) is that fallback; set it to false to always use the UI default theme instead.
+--            Library.Splash.Theme = false (default) = always the same theme as the UI; set it to "Mono" for the grey fallback when no theme was chosen.
 --   Library.Splash.Enabled = false  /  .Duration  /  .Steps  /  .Skippable  /  .Async   global defaults
 --   WaitBuild (default true): the window stays hidden and the splash stays up until the script has finished creating its tabs /
 --            controls, then the window opens fully built. It is detected automatically (no new UI for IdleTime seconds, default 0.8),
@@ -13249,7 +13331,7 @@ end
 --            Splash = { WaitBuild = false } (or Library.Splash.WaitBuild = false) brings back the old timed splash.
 do
 	local TS, RS, UIS = game:GetService("TweenService"), game:GetService("RunService"), game:GetService("UserInputService")
-	local S = { Enabled = true, Duration = 4, Skippable = true, Async = false, Backdrop = 1, Theme = "Mono", Panel = true, Block = false,
+	local S = { Enabled = true, Duration = 4, Skippable = true, Async = false, Backdrop = 1, Theme = false, Panel = true, Block = false,
 		WaitBuild = true, IdleTime = 0.8, BuildTimeout = 30,
 		Steps = { "Loading", "Preparing interface", "Almost ready" } }
 	Library.Splash = S
@@ -13459,13 +13541,16 @@ do
 			-- WaitBuild: the splash stays up (bar parked at 85%) until the script has finished creating its tabs / controls
 			local win = ctx.win
 			local t0, last = os.clock(), os.clock()
-			local conn
+			local conn, loadedAt
 			if win.Gui then conn = win.Gui.DescendantAdded:Connect(function() last = os.clock() end) end
 			local idle = tonumber(opt("IdleTime")) or 0.8
 			local limit = tonumber(opt("BuildTimeout")) or 30
 			while not ctx.released and not win._destroyed and win.Gui and win.Gui.Parent do
 				local now = os.clock()
-				if (win._loadHolds or 0) <= 0 and now - last >= idle then break end
+				-- staged load finished = every tab is built: stop after a short settle even if live widgets (graph / stat / console)
+				-- keep adding instances, otherwise "idle" never arrives and the splash sits until BuildTimeout
+				if win._slLoaded == true then loadedAt = loadedAt or now else loadedAt = nil end
+				if (win._loadHolds or 0) <= 0 and (now - last >= idle or (loadedAt and now - loadedAt >= 0.4)) then break end
 				if now - t0 >= limit then break end
 				frameStep()
 			end
