@@ -53,8 +53,8 @@
                    A locked tab shows a padlock, is dimmed and cannot be opened (click, SetTab, palette).
                    If it was the open tab the window jumps to the first unlocked tab.  LockedNotify = false  -> no toast.
                    v3.6: a locked tab can never be entered, also while the UI loads or when it is the only tab (a LOCKED cover
-                   is shown then). The sidebar button gets an amber shade + outline + side bar + padlock + "LOCKED" pill.
-                   Library.LockColor = Color3 changes the amber (set before CreateWindow).
+                   is shown then). The sidebar button is dimmed with a soft shade + padlock + "LOCKED" pill, in the theme colours.
+                   Library.LockColor = Color3 overrides the lock colour (default: follows the theme).
     - Dropdown images : options can carry a picture, in every Dropdown (single + Multi)
                    Options = { { Name = "Sword", Image = 123456 }, { Name = "Bow", Image = "rbxassetid://789" }, "Plain text" }
                    or  Images = { Sword = 123456, Bow = "lucide:target", Red = Color3.fromRGB(255,0,0) }
@@ -14244,12 +14244,13 @@ end
 --   * click / SetTab / Goto / search / command palette  -> shake + warning toast, the page does not open
 --   * Locked = true in CreateTab, or Tab:Lock() right after it, is enforced before the first page is shown
 --   * if the open tab gets locked and there is no other tab to jump to, its page is closed and a "LOCKED" cover is shown
---   * the sidebar button is clearly marked: amber tinted shade + amber outline + amber side bar + amber padlock + "LOCKED" pill
--- Library.LockColor = Color3 changes the amber (set it before CreateWindow).
+--   * the sidebar button is marked in the theme colours: soft shade + muted padlock + "LOCKED" pill (no amber)
+-- Library.LockColor = Color3 overrides the lock colour (default: follows the theme).
 -- (wrapped in a function: this chunk is at Lua's local-variable limit, so no new top-level locals here)
 Library._tabLockV2 = (function()
-	local LOCK = Library.LockColor or rgb(251, 191, 36)
 	local K = {}
+	-- neutral by default: follows the UI theme (muted text colour). Library.LockColor = Color3 still overrides it.
+	local function LC(T) return Library.LockColor or T.SubText end
 
 	-- first tab that may be opened right now (not locked, fully built)
 	local function pickable(win, skip)
@@ -14273,15 +14274,15 @@ Library._tabLockV2 = (function()
 				new("Frame", {   -- shackle
 					AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.fromOffset(26, 30),
 					BackgroundTransparency = 1, ZIndex = 19,
-				}, { corner(13), stroke(LOCK, 4, 0) }),
+				}, { corner(13), stroke(LC(T), 3, 0.15) }),
 				new("Frame", {   -- body
 					AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0), Size = UDim2.fromOffset(42, 26),
-					BackgroundColor3 = LOCK, BorderSizePixel = 0, ZIndex = 20,
+					BackgroundColor3 = LC(T), BorderSizePixel = 0, ZIndex = 20,
 				}, { corner(8) }),
 			}),
 			new("TextLabel", {
 				Name = "Title", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, -16), Size = UDim2.new(1, -32, 0, 26),
-				BackgroundTransparency = 1, Text = "LOCKED", Font = T.FontBold, TextSize = 20, TextColor3 = LOCK, ZIndex = 19,
+				BackgroundTransparency = 1, Text = "LOCKED", Font = T.FontBold, TextSize = 18, TextColor3 = T.Text, ZIndex = 19,
 			}),
 			new("TextLabel", {
 				Name = "Sub", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 12), Size = UDim2.new(1, -32, 0, 20),
@@ -14358,20 +14359,20 @@ Library._tabLockV2 = (function()
 		local T, btn = tab.Window.Theme, tab.Button
 		p = {}
 		p.Shade = new("Frame", {
-			Name = "LockShade", Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Background:Lerp(LOCK, 0.08),
-			BackgroundTransparency = 0.4, BorderSizePixel = 0, Visible = false, ZIndex = 2, Parent = btn,
+			Name = "LockShade", Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Background:Lerp(T.Text, 0.04),
+			BackgroundTransparency = 0.45, BorderSizePixel = 0, Visible = false, ZIndex = 2, Parent = btn,
 		}, { corner(10) })
 		p.Stroke = new("UIStroke", {
-			Color = LOCK, Thickness = 1, Transparency = 0.55, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = p.Shade,
+			Color = T.Text, Thickness = 1, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = p.Shade,
 		})
 		p.Bar = new("Frame", {
 			Name = "LockBar", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 4, 0.5, 0), Size = UDim2.new(0, 3, 0.5, 0),
-			BackgroundColor3 = LOCK, BorderSizePixel = 0, Visible = false, ZIndex = 3, Parent = btn,
+			BackgroundColor3 = T.SubText, BorderSizePixel = 0, Visible = false, ZIndex = 3, Parent = btn,
 		}, { corner(3) })
 		p.Pill = new("TextLabel", {
 			Name = "LockPill", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -32, 0.5, 0), Size = UDim2.fromOffset(50, 16),
-			BackgroundColor3 = LOCK, BackgroundTransparency = 0.82, Text = "LOCKED", Font = T.FontBold, TextSize = 9,
-			TextColor3 = LOCK, Visible = false, ZIndex = 3, Parent = btn,
+			BackgroundColor3 = T.Text, BackgroundTransparency = 0.92, Text = "LOCKED", Font = T.FontBold, TextSize = 9,
+			TextColor3 = T.SubText, Visible = false, ZIndex = 3, Parent = btn,
 		}, { corner(8) })
 		btn:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() K.pill(tab) end)
 		tab._lockParts = p
@@ -14395,12 +14396,12 @@ Library._tabLockV2 = (function()
 		local p = parts(tab)
 		local T = tab.Window.Theme
 		p.Shade.Visible = v
-		p.Bar.Visible = v
+		p.Bar.Visible = false   -- no coloured side bar any more
 		tab.LockIcon.Visible = v
 		for _, c in ipairs(tab.LockIcon:GetChildren()) do   -- padlock drawn in the lock color
 			local st = c:FindFirstChildOfClass("UIStroke")
-			if st then st.Color = v and LOCK or T.SubText end
-			if c.BackgroundTransparency < 1 then c.BackgroundColor3 = v and LOCK or T.SubText end
+			if st then st.Color = LC(T) end
+			if c.BackgroundTransparency < 1 then c.BackgroundColor3 = LC(T) end
 		end
 		local dim = (v or tab._slLoaded == false) and 0.55 or 0
 		tween(tab.Label, 0.2, { TextTransparency = dim })
@@ -14457,13 +14458,13 @@ Library._tabLockV2 = (function()
 		return table.unpack(r, 1, r.n)
 	end
 
-	-- extra feedback on a blocked click: the amber outline flashes
+	-- extra feedback on a blocked click: a soft outline flashes
 	local prevFeedback = Window._LockedFeedback
 	function Window:_LockedFeedback(tab)
 		local p = tab._lockParts
 		if p and p.Stroke and p.Stroke.Parent then
-			p.Stroke.Transparency = 0
-			tween(p.Stroke, 0.6, { Transparency = 0.55 })
+			p.Stroke.Transparency = 0.6
+			tween(p.Stroke, 0.6, { Transparency = 1 })
 		end
 		self._lockFocus = tab
 		prevFeedback(self, tab)
