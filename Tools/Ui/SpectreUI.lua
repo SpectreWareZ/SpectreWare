@@ -260,6 +260,7 @@
 
     v2 notes
     - Window is draggable by its header (mouse + touch), clamped to the screen, position kept on resize / rotation.
+      On phones it also stays clear of the status bar / notch (CreateWindow({ TopMargin = n }) overrides, 0 = edge).
     - The floating "open" button (shown while the window is closed) is draggable too; a tap still opens the window.
       It stays where you drop it (no jump / snap). CreateWindow({ OpenSnap = true }) brings back the glide to the nearest screen edge.
     - Everything is event-driven: only TweenService + input events (the only per-frame work is the tiny
@@ -530,6 +531,25 @@ function Library._visibleRect(gui)
 	return mn, mx
 end
 
+-- Space kept free at the TOP of the screen so a window can never be opened / dragged under the phone status bar
+-- (clock / battery), the notch or the Roblox top bar.  Touch devices only: on PC the plain 6 px edge margin stays.
+-- CreateWindow({ TopMargin = n }) overrides it (0 = allow the very edge).  Never more than a quarter of the screen height.
+function Library._topSafe(cfg, vp)
+	local t
+	if cfg and type(cfg.TopMargin) == "number" then
+		t = math.max(cfg.TopMargin, 0)
+	elseif UserInputService.TouchEnabled then
+		t = 32   -- floor when the engine reports nothing
+		local gs = game:GetService("GuiService")
+		pcall(function() t = math.max(t, gs:GetGuiInset().Y) end)
+		pcall(function() t = math.max(t, gs.TopbarInset.Max.Y) end)   -- status bar + notch + Roblox top bar (newer clients)
+	else
+		return 0
+	end
+	if vp and vp.Y > 0 then t = math.min(t, vp.Y * 0.25) end
+	return math.floor(t + 0.5)
+end
+
 -- Popups (dropdown / colour picker) live in win.Gui but are placed from the AbsolutePosition of the control that opened
 -- them. On some clients (GUI inset / safe area / scaled windows) those two coordinate spaces differ, so the popup used to
 -- open away from its control. This re-reads where the popup's anchor point REALLY is and shifts Position by the difference,
@@ -724,7 +744,8 @@ Library.Perf = {
 	--   Library.Perf.LowPower = false   -- force the pretty path anywhere
 	LowPower = nil,
 	-- frame-rate governor (see Window:_StartGovernor): steps the visuals down when the window stutters
-	Adaptive = true, SlowFrame = 1 / 30, SlowShare = 0.2, Warmup = 2,
+	-- Recover = true: when the frame rate is clean again (~8 s above 45 fps) the backdrop steps back up one level (Recover = false = one-way, old behaviour)
+	Adaptive = true, SlowFrame = 1 / 30, SlowShare = 0.2, Warmup = 2, Recover = true, RecoverWindows = 4,
 	-- backdrop cost knobs (PC). The old defaults ran ~25 looping tweens + a full-window animated gradient, which costs
 	-- several FPS for as long as the window is open. Lean defaults: a few particles, no aurora sweep, no twinkle/spin tweens.
 	--   Library.Perf.Aurora = true     -- bring back the sliding aurora wash (most expensive effect)
@@ -1229,12 +1250,14 @@ local function dragSafePress(btn, down, up, thr)
 end
 
 -- keep an element (centered by `c`, half-size `half`) fully inside the viewport `vp`
-local function clampCenter(vp, half, c)
+-- `top` (optional) = extra room kept free above the element (phone status bar / notch), see Library._topSafe
+local function clampCenter(vp, half, c, top)
 	local m = 6
+	local tm = math.max(m, top or 0)
 	local loX, hiX = half.X + m, vp.X - half.X - m
-	local loY, hiY = half.Y + m, vp.Y - half.Y - m
+	local loY, hiY = half.Y + tm, vp.Y - half.Y - m
 	local x = (loX > hiX) and vp.X / 2 or math.clamp(c.X, loX, hiX)
-	local y = (loY > hiY) and vp.Y / 2 or math.clamp(c.Y, loY, hiY)
+	local y = (loY > hiY) and (tm + vp.Y - m) / 2 or math.clamp(c.Y, loY, hiY)
 	return Vector2.new(x, y)
 end
 
@@ -1333,6 +1356,7 @@ local function makeDraggable(gui, handle, target, state)
 		local vpSize, halfSize = viewport(), target.AbsoluteSize / 2 -- cached for the whole drag
 		if state.Half then halfSize = Vector2.new(state.Half, state.Half) end -- real size, ignores UIScale squish / pop tween
 		local thr = state.Threshold or 0
+		local topM = state.Top and state.Top() or 0 -- room kept free at the top (status bar / notch), read once per drag
 		stopFollow()
 		shown, lastPos = startC, nil
 		state.Center = startC -- never keep a stale center from the previous drag / an old viewport size
@@ -1355,7 +1379,7 @@ local function makeDraggable(gui, handle, target, state)
 				end
 				-- CatchUp: keep the full offset; the eased follow glides the last `thr` pixels instead of leaving the element behind the pointer
 			end
-			local c = clampCenter(vpSize, halfSize, startC + d)
+			local c = clampCenter(vpSize, halfSize, startC + d, topM)
 			if state.Clamp then c = state.Clamp(c, vpSize) end -- extra live limits (e.g. keep clear of the Roblox menu)
 			if c ~= state.Center then
 				state.Center = c
@@ -1414,7 +1438,7 @@ local function makeResizable(win, handle, mx, my)
 		local startSz = Vector2.new(ms.X.Scale * vp0.X + ms.X.Offset, ms.Y.Scale * vp0.Y + ms.Y.Offset)
 		local startC = Vector2.new(mp.X.Scale * vp0.X + mp.X.Offset, mp.Y.Scale * vp0.Y + mp.Y.Offset)
 		local tl = startC - startSz / 2
-		tl = Vector2.new(math.max(tl.X, 6), math.max(tl.Y, 6)) -- same margin clampCenter keeps
+		tl = Vector2.new(math.max(tl.X, 6), math.max(tl.Y, math.max(6, win:_Top()))) -- same margins clampCenter keeps
 		if win.Maximized then win:_SetMaxFlag(false) end
 		win.Cfg.Width, win.Cfg.Height = math.floor(startSz.X + 0.5), math.floor(startSz.Y + 0.5)
 
@@ -1428,11 +1452,12 @@ local function makeResizable(win, handle, mx, my)
 			if vp.X <= 0 or vp.Y <= 0 then return end
 			local d = v2(m.Position) - startPt
 			local minW = math.min(win.Cfg.MinWidth or 700, vp.X - 16)
-			local minH = math.min(win.Cfg.MinHeight or 280, vp.Y - 16)
+			local topPad = math.max(8, win:_Top())
+			local minH = math.min(win.Cfg.MinHeight or 280, vp.Y - topPad - 8)
 			-- max = what _Fit allows (screen - 16) AND what fits right of / below the top-left corner,
 			-- so _Fit never has to shrink / shift the window behind the finger
 			local maxW = math.max(minW, math.min(vp.X - 16, vp.X - 8 - tl.X))
-			local maxH = math.max(minH, math.min(vp.Y - 16, vp.Y - 8 - tl.Y))
+			local maxH = math.max(minH, math.min(vp.Y - topPad - 8, vp.Y - 8 - tl.Y))
 			local w = math.clamp(startSz.X + d.X * mx, minW, maxW)
 			local h = math.clamp(startSz.Y + d.Y * my, minH, maxH)
 			win.Cfg.Width, win.Cfg.Height = math.floor(w + 0.5), math.floor(h + 0.5)
@@ -1761,8 +1786,11 @@ function Window:_StartGovernor()
 	if self._gov or Library.Perf.Adaptive == false then return end
 	local P = Library.Perf
 	local acc, n, slow = 0, 0, 0
+	local good = 0                    -- consecutive clean 2 s windows
+	local holdUntil, backoff = 0, 12  -- after a step down, wait before trying a step up (doubles each time, max 2 min)
 	local resumeAt = os.clock() + (P.Warmup or 3)
-	self._govReset = function() acc, n, slow = 0, 0, 0 resumeAt = os.clock() + (P.Warmup or 3) end
+	self._govReset = function() acc, n, slow, good = 0, 0, 0, 0 resumeAt = os.clock() + (P.Warmup or 3) end
+	self._govHold = function() holdUntil = os.clock() + backoff backoff = math.min(backoff * 2, 120) good = 0 end
 	self._gov = RunService.Heartbeat:Connect(function(dt)
 		if not self.Visible or self._moving or self._drag.Dragging or os.clock() < resumeAt then
 			acc, n, slow = 0, 0, 0
@@ -1770,14 +1798,36 @@ function Window:_StartGovernor()
 		end
 		acc += dt
 		n += 1
-		if dt > (P.SlowFrame or 1 / 18) then slow += 1 end
+		if dt > (P.SlowFrame or 1 / 30) then slow += 1 end
 		if acc >= 2 then
-			local share = slow / n
+			local share, avg = slow / n, acc / n
 			acc, n, slow = 0, 0, 0
-			if share > (P.SlowShare or 0.25) then self:_Degrade() end
+			local q = self._qual or 0
+			if share > (P.SlowShare or 0.2) then
+				good = 0
+				self:_Degrade()
+			elseif P.Recover ~= false and q >= 1 and q <= 2 and not lowPower() and share == 0 and avg < 1 / 45 and os.clock() >= holdUntil then
+				good += 1
+				if good >= (P.RecoverWindows or 4) then   -- ~8 s of clean, fast frames
+					good = 0
+					self:_Recover()
+				end
+			else
+				good = 0
+			end
 		end
 	end)
 	table.insert(self.Conns, self._gov)
+end
+
+-- one step back up (backdrop only: level 2 -> 1 -> 0). Level 3 (flat cards) is permanent on purpose.
+function Window:_Recover()
+	local q = self._qual or 0
+	if q < 1 or q > 2 or self._destroyed then return end
+	self._qual = q - 1
+	self:SetBackground(nil, true)
+	if self._govReset then self._govReset() end
+	safe(self.Cfg.OnRecover, self._qual)
 end
 
 function Window:_Degrade()
@@ -1800,6 +1850,7 @@ function Window:_Degrade()
 		if self._gov then self._gov:Disconnect() self._gov = nil end
 	end
 	if self._govReset then self._govReset() end
+	if self._govHold then self._govHold() end
 	safe(self.Cfg.OnDegrade, q)
 end
 
@@ -1882,9 +1933,9 @@ function Library:CreateWindow(cfg)
 	-- floating rounded header card (inset from the window edge, concentric with the window radius)
 	local hcard = new("Frame", {
 		Name = "HeaderCard", Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 0, HEADER_H - 12),
-		BackgroundColor3 = T.Control, BackgroundTransparency = glass(0.1), BorderSizePixel = 0, Parent = header,
+		BackgroundColor3 = T.Control:Lerp(T.Background, 0.4), BackgroundTransparency = glass(0.04), BorderSizePixel = 0, Parent = header,
 	}, {
-		corner(12), stroke(T.Border, 1, 0.3),
+		corner(12), stroke(T.Accent, 1, 0.72),
 		new("Frame", {
 			Name = "Tint", Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Accent, BackgroundTransparency = 0,
 			BorderSizePixel = 0,
@@ -1892,11 +1943,25 @@ function Library:CreateWindow(cfg)
 			corner(12),
 			-- title-bar gradient: strong accent on the left fading to the panel colour on the right
 			new("UIGradient", { Transparency = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(0.55, 0.78), NumberSequenceKeypoint.new(1, 0.94),
+				NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(0.5, 0.82), NumberSequenceKeypoint.new(1, 0.96),
 			}) }),
 		}),
 	})
 	win.HeaderCard = hcard
+	win._rest = 0.9   -- resting fill of the round header chips (search / hide / maximize / close)
+	new("Frame", {
+		Name = "GlowLine", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0), Size = UDim2.new(1, -40, 0, 2),
+		BackgroundColor3 = T.Accent, BorderSizePixel = 0, Parent = hcard,
+	}, { new("UIGradient", { Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.18, 0.5), NumberSequenceKeypoint.new(0.5, 0.2),
+		NumberSequenceKeypoint.new(0.82, 0.5), NumberSequenceKeypoint.new(1, 1),
+	}) }) })
+	if not lowPower() then
+		new("Frame", {
+			Name = "Sheen", Size = UDim2.new(1, 0, 0.55, 0), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.93,
+			BorderSizePixel = 0, Active = false, Parent = hcard,
+		}, { corner(12), new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(0, 1) }) })
+	end
 
 	-- header cluster is bounded and clipped so a long brand / subtitle can never
 	-- slide under the close button (that was a real overlap on narrow screens)
@@ -1946,8 +2011,8 @@ function Library:CreateWindow(cfg)
 	if sub then
 		win.SubSep = new("Frame", {   -- the pill (kept under the old name so compact mode still hides it)
 			LayoutOrder = 3, Size = UDim2.fromOffset(0, 24), AutomaticSize = AX, BackgroundColor3 = T.Accent,
-			BackgroundTransparency = 0.7, BorderSizePixel = 0, Parent = left,
-		}, { corner(12), stroke(T.Accent, 1, 0.35), padding(9, 0, 9, 0) })
+			BackgroundTransparency = 0.82, BorderSizePixel = 0, Parent = left,
+		}, { corner(12), stroke(T.Accent, 1, 0.5), padding(10, 0, 10, 0) })
 		win.SubLabel = new("TextLabel", {
 			Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, BackgroundTransparency = 1,
 			Text = sub, Font = T.Font, TextSize = 12, TextColor3 = T.Text, Parent = win.SubSep,
@@ -1956,22 +2021,33 @@ function Library:CreateWindow(cfg)
 
 	local close = new("TextButton", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(closeW, closeW),
-		BackgroundColor3 = T.Control, BackgroundTransparency = 1, Text = "×", Font = Enum.Font.Code, TextSize = 26, TextColor3 = T.Text,
-		AutoButtonColor = false, Parent = hcard,
-	}, { corner(2) })
-	Library._bevel(close, T.Control)
+		BackgroundColor3 = T.Control, BackgroundTransparency = win._rest, Text = "", AutoButtonColor = false, Parent = hcard,
+	}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	win._xs = {}
+	for _, rot in ipairs({ 45, -45 }) do
+		table.insert(win._xs, new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(14, 2), Rotation = rot,
+			BackgroundColor3 = T.SubText, BorderSizePixel = 0, Active = false, Parent = close,
+		}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }) }))
+	end
+	win._xTint = function(c, d)
+		for _, f in ipairs(win._xs) do tween(f, d or 0.14, { BackgroundColor3 = c }) end
+	end
 	close.MouseEnter:Connect(function()
 		if not usingTouch() then
-			tween(close, 0.14, { TextColor3 = Color3.fromRGB(255, 120, 120), BackgroundTransparency = 0.4 })
+			win._xTint(Color3.fromRGB(255, 125, 125))
+			tween(close, 0.14, { BackgroundColor3 = Color3.fromRGB(140, 42, 48), BackgroundTransparency = 0.3 })
 		end
 	end)
 	close.MouseLeave:Connect(function()
-		tween(close, 0.14, { TextColor3 = T.SubText, BackgroundTransparency = 1 })
+		win._xTint(T.SubText)
+		tween(close, 0.16, { BackgroundColor3 = T.Control, BackgroundTransparency = win._rest })
 	end)
 	bindPress(close, function()
-		tween(close, 0.07, { TextColor3 = Color3.fromRGB(255, 120, 120) })
+		win._xTint(Color3.fromRGB(255, 125, 125), 0.07)
 	end, function()
-		tween(close, 0.16, { TextColor3 = T.SubText, BackgroundTransparency = 1 })
+		win._xTint(T.SubText, 0.16)
+		tween(close, 0.16, { BackgroundColor3 = T.Control, BackgroundTransparency = win._rest })
 	end)
 	-- X = delete: really destroys the window (use the "–" button next to it to just hide it)
 	local confirmOpen = false
@@ -2003,10 +2079,9 @@ function Library:CreateWindow(cfg)
 		local hideB = new("TextButton", {
 			Name = "Hide", AnchorPoint = Vector2.new(1, 0.5),
 			Position = UDim2.new(1, -(8 + (closeW + 4) * (canResize and 2 or 1)), 0.5, 0),
-			Size = UDim2.fromOffset(closeW, closeW), BackgroundColor3 = T.Control, BackgroundTransparency = 1,
+			Size = UDim2.fromOffset(closeW, closeW), BackgroundColor3 = T.Control, BackgroundTransparency = win._rest,
 			Text = "", AutoButtonColor = false, Parent = hcard,
-		}, { corner(2) })
-		Library._bevel(hideB, T.Control)
+		}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 		local bar = new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(12, 2),
 			BackgroundColor3 = T.SubText, BorderSizePixel = 0, Parent = hideB,
@@ -2019,12 +2094,12 @@ function Library:CreateWindow(cfg)
 		end)
 		hideB.MouseLeave:Connect(function()
 			tween(bar, 0.14, { BackgroundColor3 = T.SubText })
-			tween(hideB, 0.14, { BackgroundTransparency = 1 })
+			tween(hideB, 0.14, { BackgroundTransparency = win._rest })
 		end)
 		bindPress(hideB, function()
 					end, function()
 						tween(bar, 0.16, { BackgroundColor3 = T.SubText })
-			tween(hideB, 0.16, { BackgroundTransparency = 1 })
+			tween(hideB, 0.16, { BackgroundTransparency = win._rest })
 		end)
 		hideB.MouseButton1Click:Connect(function() win:SetVisible(false) end)
 	end
@@ -2033,10 +2108,9 @@ function Library:CreateWindow(cfg)
 	if canResize then
 		local mxb = new("TextButton", {
 			Name = "Maximize", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -(8 + closeW + 4), 0.5, 0),
-			Size = UDim2.fromOffset(closeW, closeW), BackgroundColor3 = T.Control, BackgroundTransparency = 1,
+			Size = UDim2.fromOffset(closeW, closeW), BackgroundColor3 = T.Control, BackgroundTransparency = win._rest,
 			Text = "", AutoButtonColor = false, Parent = hcard,
-		}, { corner(2) })
-		Library._bevel(mxb, T.Control)
+		}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 		local function sq(size)
 			return new("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(size, size),
@@ -2062,11 +2136,11 @@ function Library:CreateWindow(cfg)
 		end)
 		mxb.MouseLeave:Connect(function()
 			tint(T.SubText)
-			tween(mxb, 0.16, { BackgroundTransparency = 1 })
+			tween(mxb, 0.16, { BackgroundTransparency = win._rest })
 		end)
 		bindPress(mxb, function()
 					end, function()
-						if usingTouch() then tint(T.SubText); tween(mxb, 0.16, { BackgroundTransparency = 1 }) end
+						if usingTouch() then tint(T.SubText); tween(mxb, 0.16, { BackgroundTransparency = win._rest }) end
 		end)
 		mxb.MouseButton1Click:Connect(function() win:SetMaximized(not win.Maximized) end)
 	end
@@ -2104,6 +2178,7 @@ function Library:CreateWindow(cfg)
 		if win._govReset then win._govReset() end
 		if not lowPower() then mainStroke.Color, mainStroke.Transparency = T.Border, 0.1 end
 	end
+	win._drag.Top = function() return win:_Top() end   -- never drag the header under the phone status bar / notch
 	makeDraggable(gui, dragZone, main, win._drag)
 
 	---------------------------------------------------------- body / sidebar
@@ -2177,7 +2252,7 @@ function Library:CreateWindow(cfg)
 	local searchBar = new("Frame", {
 		Name = "SearchBar", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -(8 + btnArea + 10), 0.5, 0),
 		Size = UDim2.fromOffset(SEARCH_BAR_H, SEARCH_BAR_H), BackgroundColor3 = T.Control,
-		BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = true, Parent = hcard,
+		BackgroundTransparency = win._rest, BorderSizePixel = 0, ClipsDescendants = true, Parent = hcard,
 	}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), stroke(T.Border, 1, 1) })   -- pill; collapsed: transparent like the other header buttons
 	win.SearchBar = searchBar
 	local searchStroke = searchBar:FindFirstChildOfClass("UIStroke")
@@ -2272,7 +2347,7 @@ function Library:CreateWindow(cfg)
 		tween(mag, 0.2, { Position = UDim2.new(0, v and 10 or magX, 0.5, 0) })
 		tween(magRingStroke, 0.2, { Color = v and T.Accent or T.SubText })
 		tween(magHandle, 0.2, { BackgroundColor3 = v and T.Accent or T.SubText })
-		tween(searchBar, 0.2, { BackgroundTransparency = v and 0.35 or 1 })
+		tween(searchBar, 0.2, { BackgroundTransparency = v and 0.35 or win._rest })
 		tween(searchStroke, 0.2, { Transparency = v and 0.45 or 1 })
 		if not v then   -- folded: drop the focus tint so the next (hover) open starts from the calm look
 			tween(searchBar, 0.2, { BackgroundColor3 = T.Control })
@@ -2289,7 +2364,7 @@ function Library:CreateWindow(cfg)
 	end)
 	hit.MouseLeave:Connect(function()
 		if searchOpen then return end
-		tween(searchBar, 0.16, { BackgroundTransparency = 1 })
+		tween(searchBar, 0.16, { BackgroundTransparency = win._rest })
 		tween(magRingStroke, 0.16, { Color = T.SubText })
 		tween(magHandle, 0.16, { BackgroundColor3 = T.SubText })
 	end)
@@ -2586,8 +2661,11 @@ function Library:CreateWindow(cfg)
 			BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, ImageColor3 = cfg.LogoColor or Color3.new(1, 1, 1),
 			Image = (type(cfg.Logo) == "number" or tonumber(cfg.Logo)) and ("rbxassetid://" .. tostring(cfg.Logo)) or cfg.Logo, Parent = ob,
 		})
-	else
-		new("UIGradient", { Color = cseq({ 0, T.Panel }, { 1, T.Lift }), Rotation = 90, Parent = ob })
+	end
+	new("UIGradient", { Color = cseq({ 0, T.Panel:Lerp(Color3.new(1, 1, 1), 0.06) }, { 1, T.Panel:Lerp(Color3.new(0, 0, 0), 0.12) }), Rotation = 90, Parent = ob })
+	if obStroke then   -- accent ring that blends into the second accent colour
+		obStroke.Thickness = 1.25
+		new("UIGradient", { Color = cseq({ 0, T.Accent }, { 1, T.Accent2 }), Rotation = 45, Parent = obStroke })
 	end
 	win.OpenScale = feedback(ob, ob, "BackgroundColor3", T.Panel, T.Lift, T.AccentSoft, false)
 
@@ -2623,7 +2701,7 @@ function Library:CreateWindow(cfg)
 	local function wake(on)
 		local a = on and 0 or 0.5
 		tween(ob, 0.25, { TextTransparency = a })
-		if obStroke then tween(obStroke, 0.25, { Transparency = on and 0.2 or 0.65 }) end
+		if obStroke then tween(obStroke, 0.25, { Transparency = on and 0.3 or 0.7 }) end
 		if obLogo then tween(obLogo, 0.25, { ImageTransparency = a }) end
 		if not on then tween(ob, 0.25, { BackgroundTransparency = 0.4 }) else tween(ob, 0.15, { BackgroundTransparency = 0 }) end
 	end
@@ -2660,13 +2738,15 @@ function Library:CreateWindow(cfg)
 		end
 	end)
 
-	win._openDrag.Threshold = touchUI and 10 or 6
-	-- Drag feel (fixed, same on touch and mouse): Position is applied every rendered frame (RenderStepped) and eased toward the
-	-- pointer with a fast rate, so uneven input timing never shows as hopping. CatchUp = the button does not "stick" for the first
-	-- few pixels of a drag: it glides under the finger / cursor as soon as the tap threshold is passed.
+	-- Drag feel.
+	--  * Phone: the button is locked to the finger. The pointer is read as often as the engine reports it, but Position is written
+	--    once per rendered frame (RenderStepped), so it is never a frame behind and never written twice in one frame. No easing =
+	--    no rubber-band lag; no CatchUp = no jump when the tap threshold is crossed (the drag starts from where the finger is).
+	--  * PC: eased follow (hides 60 Hz mouse input on high-refresh screens), as before.
+	win._openDrag.Threshold = touchUI and 6 or 6
 	win._openDrag.Smooth = true
-	win._openDrag.FollowRate = 50
-	win._openDrag.CatchUp = true
+	win._openDrag.FollowRate = touchUI and 10000 or 50
+	win._openDrag.CatchUp = not touchUI
 	win._openDrag.Half = BS / 2
 	-- on phones keep the button off the Roblox menu / chat icons (top-left) while dragging, so it never has to be
 	-- pulled back after release
@@ -2731,15 +2811,17 @@ function Window:_Fit(animate)
 	local vp = self.Gui.AbsoluteSize
 	if vp.X <= 0 or vp.Y <= 0 then return end
 	local w, h
+	local top = self:_Top()   -- room kept free above the window (phone status bar / notch)
 	if self.Maximized then
 		local m = UserInputService.TouchEnabled and 6 or 12
-		w, h = math.max(vp.X - m * 2, 200), math.max(vp.Y - m * 2, 160)
+		w, h = math.max(vp.X - m * 2, 200), math.max(vp.Y - math.max(m, top) - m, 160)
 	else
 		-- floor = MinWidth (default 700) so the two-column layout never collapses; SetSize obeys it too
+		local topPad = math.max(8, top)
 		local fw = math.min(self.Cfg.MinWidth or 700, vp.X - 16)
-		local fh = math.min(self.Cfg.MinHeight or 280, vp.Y - 16)
+		local fh = math.min(self.Cfg.MinHeight or 280, vp.Y - topPad - 8)
 		w = math.max(math.min(self.Cfg.Width or 820, vp.X - 16), fw)
-		h = math.max(math.min(self.Cfg.Height or 540, vp.Y - 16), fh)
+		h = math.max(math.min(self.Cfg.Height or 540, vp.Y - topPad - 8), fh)
 	end
 	local anim = animate and not lowPower()
 	if anim then
@@ -2779,9 +2861,9 @@ function Window:_Fit(animate)
 	end
 
 	-- keep the (possibly dragged) window and open button on screen after a resize / rotation
-	local rel = self.Maximized and Vector2.new(0.5, 0.5) or self._drag.Rel
+	local rel = self:_Rel()
 	if rel then
-		local c = clampCenter(vp, Vector2.new(w, h) / 2, Vector2.new(rel.X * vp.X, rel.Y * vp.Y))
+		local c = clampCenter(vp, Vector2.new(w, h) / 2, Vector2.new(rel.X * vp.X, rel.Y * vp.Y), top)
 		if anim then
 			tween(self.Main, 0.3, { Position = UDim2.fromOffset(c.X, c.Y) })
 		else
@@ -2827,16 +2909,39 @@ end
 -- slide + fade only, which is cheap.
 local SLIDE = 8
 
+-- room kept free above the window (phone status bar / notch); 0 on PC unless CreateWindow({ TopMargin = n })
+function Window:_Top()
+	return Library._topSafe(self.Cfg, self.Gui.AbsoluteSize)
+end
+
+-- where the window centre sits as a fraction of the screen. A phone window that was never dragged is still
+-- clamped below the status bar (rel = centre), PC keeps its old behaviour (nil until the first drag).
+function Window:_Rel()
+	if self.Maximized then return Vector2.new(0.5, 0.5) end
+	local r = self._drag.Rel
+	if not r and self:_Top() > 0 then r = Vector2.new(0.5, 0.5) end
+	return r
+end
+
+-- colour of the soft fade at the top of each scrolling column (matches the window wash right under the header)
+function Window:_UpdateFades()
+	local T = self.Theme
+	local col = T.Top:Lerp(T.Background, 0.15)
+	for _, t in ipairs(self.Tabs) do
+		if t.Fades then for _, f in ipairs(t.Fades) do f.BackgroundColor3 = col end end
+	end
+end
+
 -- Where the window rests when it is not animating: the saved (dragged) position, clamped to the screen the
 -- same way _Fit does. nil until the window has been placed once, then the live Position is used instead.
 -- (_AnimBase / _AnimDone call this; it used to be missing, which broke the open / close animation.)
 function Window:_HomePos()
 	local vp = self.Gui.AbsoluteSize
 	if vp.X <= 0 or vp.Y <= 0 then return nil end
-	local rel = self.Maximized and Vector2.new(0.5, 0.5) or self._drag.Rel
+	local rel = self:_Rel()
 	if not rel then return nil end
 	local half = self.Main.AbsoluteSize / math.max(self.Scale.Scale, 0.01) / 2
-	local c = clampCenter(vp, half, Vector2.new(rel.X * vp.X, rel.Y * vp.Y))
+	local c = clampCenter(vp, half, Vector2.new(rel.X * vp.X, rel.Y * vp.Y), self:_Top())
 	return UDim2.fromOffset(math.round(c.X), math.round(c.Y))
 end
 
@@ -3405,8 +3510,9 @@ end
 
 function Window:Center()
 	local vp = self.Gui.AbsoluteSize
-	self.Main.Position = UDim2.fromOffset(vp.X / 2, vp.Y / 2)
-	self._drag.Rel = Vector2.new(0.5, 0.5)
+	local y = vp.Y / 2 + math.max(self:_Top() - 8, 0) / 2   -- centre of the free area below the status bar
+	self.Main.Position = UDim2.fromOffset(vp.X / 2, y)
+	self._drag.Rel = Vector2.new(0.5, vp.Y > 0 and y / vp.Y or 0.5)
 end
 
 -- quick attention pulse on the window border (used by Notify too)
@@ -5379,6 +5485,28 @@ function Window:CreateTab(cfg)
 			ScrollingDirection = Enum.ScrollingDirection.Y, ElasticBehavior = Enum.ElasticBehavior.Never, Parent = tab.Scroll,
 		}, { list(12), padding(0, 0, 0, 8) })
 	end
+	-- soft edge where a column scrolls up under the header: a short band of window colour that melts into the page, so rows /
+	-- titles are not cut with a hard line. It only appears once its column is scrolled (invisible at rest), is a plain frame +
+	-- one gradient (no CanvasGroup, nothing per frame) and never takes input. Geometry mirrors the columns (see Tab:_Relayout).
+	tab.Fades = {}
+	do
+		local fadeCol = T.Top:Lerp(T.Background, 0.15)
+		for i = 1, 2 do
+			local col = tab.Cols[i]
+			local fade = new("Frame", {
+				Name = "ColFade", Position = i == 1 and UDim2.fromOffset(12, 0) or UDim2.new(0.5, 2, 0, 0),
+				Size = UDim2.new(0.5, -22, 0, 18), BackgroundColor3 = fadeCol, BackgroundTransparency = 1,
+				BorderSizePixel = 0, Active = false, ZIndex = 8, Parent = tab.Page,
+			}, { new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.5, 0.62), NumberSequenceKeypoint.new(1, 1),
+			}) }) })
+			tab.Fades[i] = fade
+			col:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+				local bt = 1 - math.clamp(col.CanvasPosition.Y / 20, 0, 1)   -- fully in after 20 px of scroll
+				if math.abs(fade.BackgroundTransparency - bt) > 0.02 then fade.BackgroundTransparency = bt end
+			end)
+		end
+	end
 
 	table.insert(self.Tabs, tab)
 	if cfg.Locked then tab:SetLocked(true, cfg.LockReason) end
@@ -5514,6 +5642,12 @@ function Tab:_Relayout()
 	if c2.Visible ~= (two and true or false) then c2.Visible = two and true or false end
 	local want1 = two and UDim2.new(0.5, -6, 1, 0) or UDim2.new(1, 0, 1, 0)
 	if c1.Size ~= want1 then c1.Size = want1 end
+	local f1, f2 = self.Fades and self.Fades[1], self.Fades and self.Fades[2]
+	if f1 and f2 then
+		local fs = two and UDim2.new(0.5, -22, 0, 18) or UDim2.new(1, -32, 0, 18)
+		if f1.Size ~= fs then f1.Size = fs end
+		if f2.Visible ~= (two and true or false) then f2.Visible = two and true or false end
+	end
 	local h1, h2 = 0, 0
 	for i, s in ipairs(self.Sections) do
 		local col
@@ -5955,8 +6089,40 @@ function Section:CreateToggle(cfg)
 	return regObj(cfg, obj)
 end
 
-function Section:CreateSlider(cfg)
-	local T = self.Window.Theme
+-- Click-to-type number box used by Slider / RangeSlider. Looks like the old value label; tap it and the bare number
+-- (no suffix) is selected for typing. Enter / tapping away commits: commit(n) gets the number, or nil when the text
+-- is not a number (the caller then restores the label). Commas work as decimal points and a typed suffix is ignored.
+function Library._numBox(T, props, suffix, getRaw, commit)
+	local p = {
+		BackgroundColor3 = T.Control, BackgroundTransparency = 1, BorderSizePixel = 0, Font = T.FontBold, TextSize = 13,
+		TextColor3 = T.Accent, ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Right,
+		TextTruncate = Enum.TextTruncate.AtEnd, Text = "", ZIndex = 3,
+	}
+	for k, v in pairs(props) do p[k] = v end
+	local st = stroke(T.Accent, 1, 1)
+	local box = new("TextBox", p, { corner(6), st, padding(4, 0, 4, 0) })
+	local sx = (suffix or ""):gsub("%s", "")
+	box.Focused:Connect(function()
+		box.Text = getRaw()
+		tween(st, 0.15, { Transparency = 0.25 })
+		tween(box, 0.15, { BackgroundTransparency = 0.3 })
+		task.defer(function()   -- select everything so typing replaces the old number
+			if box:IsFocused() then pcall(function() box.SelectionStart = 1 box.CursorPosition = #box.Text + 1 end) end
+		end)
+	end)
+	box.FocusLost:Connect(function()
+		tween(st, 0.18, { Transparency = 1 })
+		tween(box, 0.18, { BackgroundTransparency = 1 })
+		local s = box.Text:gsub(",", "."):gsub("%s", "")
+		if sx ~= "" and s:sub(-#sx) == sx then s = s:sub(1, -#sx - 1) end
+		local n = tonumber(s)
+		if n and (n ~= n or math.abs(n) == math.huge) then n = nil end
+		commit(n)
+	end)
+	return box
+end
+
+function Section:CreateSlider(cfg)	local T = self.Window.Theme
 	local tab = self.Tab
 	local min, max, inc = cfg.Min or 0, cfg.Max or 100, cfg.Increment or 1
 	local value = snap(cfg.Default or min, min, max, inc)
@@ -5970,10 +6136,7 @@ function Section:CreateSlider(cfg)
 		Size = UDim2.new(1, -70, 0, 18), BackgroundTransparency = 1, Text = cfg.Name or "Slider", Font = T.Font, TextSize = 14,
 		TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
 	})
-	local valLabel = new("TextLabel", {
-		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(66, 18), BackgroundTransparency = 1,
-		Text = tostring(value) .. suffix, Font = T.FontBold, TextSize = 13, TextColor3 = T.Accent, TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
-	})
+	local valLabel   -- click-to-type number box, created below (it needs obj / render)
 	local hit = new("TextButton", {
 		Position = UDim2.fromOffset(0, 20), Size = UDim2.new(1, 0, 1, -20), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Parent = frame,
 	})
@@ -6012,6 +6175,11 @@ function Section:CreateSlider(cfg)
 		if changed and not silent then safe(cfg.Callback, v) end
 	end
 	function obj:Get() return value end
+	valLabel = Library._numBox(T, {
+		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(72, 20), Parent = frame,
+	}, suffix, function() return tostring(value) end, function(n)
+		if n == nil then render(value, false) else obj:Set(n) end   -- Set snaps to Increment, clamps to Min / Max, fires Callback
+	end)
 	render(value, false)
 	setFlag(cfg, value)
 
@@ -6122,6 +6290,12 @@ function Section:CreateDropdown(cfg)
 	-- ---- image support. Options may be { "a", "b" } or { { Name = "a", Image = 123 }, ... };
 	-- cfg.Images = { a = 123 } works too.  The value of an option is always its Name.
 	local images = {}
+	local hasSub = false   -- some option is "Title | detail" -> every row gets a 2nd (dim) line
+	local function splitName(opt)
+		local t, d = tostring(opt):match("^(.-)%s*|%s*(.+)$")
+		if t and t ~= "" and d then return t, d end
+		return tostring(opt), nil
+	end
 	local function normalize(list)
 		images = {}
 		local out = {}
@@ -6138,11 +6312,23 @@ function Section:CreateDropdown(cfg)
 		if type(cfg.Images) == "table" then
 			for k, v in pairs(cfg.Images) do images[k] = v end
 		end
+		hasSub = false
+		for _, n in ipairs(out) do
+			local _, d = splitName(n)
+			if d then hasSub = true break end
+		end
 		return out
+	end
+	-- thumbnail size: phones get a smaller picture (cfg.ImageSize is still respected, but capped on touch)
+	local function imgSz()
+		local sz = cfg.ImageSize or (touch and 28 or 32)
+		if touch then sz = math.min(sz, 30) end
+		return sz
 	end
 	local function calcOptH()
 		local base = touch and 44 or 36
-		if next(images) ~= nil then base = math.max(touch and 48 or 40, (cfg.ImageSize or 0) + 10) end
+		if next(images) ~= nil then base = math.max(touch and 46 or 40, imgSz() + 12) end
+		if hasSub then base = math.max(base, touch and 52 or 46) end
 		optH = base
 	end
 	local function makeThumb(ref, sz)
@@ -6154,7 +6340,7 @@ function Section:CreateDropdown(cfg)
 		if typeof(ref) == "Color3" then
 			f.BackgroundColor3, f.BackgroundTransparency = ref, 0
 		elseif type(ref) == "number" or sref:match("^%d+$") then
-			new("ImageLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Crop,
+			new("ImageLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit,
 				Image = "rbxassetid://" .. sref, Parent = f })
 		elseif Library:IsIconName(sref) then
 			local d = Library:ResolveIcon(sref)
@@ -6164,7 +6350,7 @@ function Section:CreateDropdown(cfg)
 				ic.Parent = f
 			end
 		else
-			new("ImageLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Crop,
+			new("ImageLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit,
 				Image = sref, Parent = f })
 		end
 		return f
@@ -6212,7 +6398,7 @@ function Section:CreateDropdown(cfg)
 		Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -38, 1, 0), BackgroundTransparency = 1, Text = placeholder,
 		Font = T.Font, TextSize = 13, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 	})
-	local thumbSz = math.max(16, h - 12)
+	local thumbSz = math.min(math.max(16, h - 12), touch and 26 or 32)
 	local thumbs = new("Frame", {
 		Name = "Thumbs", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0),
 		Size = UDim2.fromOffset(0, thumbSz), BackgroundTransparency = 1, Parent = btn,
@@ -6248,7 +6434,7 @@ function Section:CreateDropdown(cfg)
 	local popup, popupStroke, popGrad, scroll, searchHolder, searchBox, emptyLbl
 	local rows = {}
 	local popW, maxH = 190, 240
-	local escC
+	local escC, vpC
 
 	local function refreshText()
 		local list = multi and selectedList() or (value ~= nil and { value } or {})
@@ -6272,7 +6458,7 @@ function Section:CreateDropdown(cfg)
 				txt.Text, txt.TextColor3 = placeholder, T.SubText
 			else
 				local names = {}
-				for i, o in ipairs(out) do names[i] = tostring(o) end
+				for i, o in ipairs(out) do names[i] = (splitName(o)) end
 				txt.Text, txt.TextColor3 = table.concat(names, ", "), T.Text
 			end
 			local showBadge = #out > 1
@@ -6280,7 +6466,7 @@ function Section:CreateDropdown(cfg)
 			badgeLbl.Text = tostring(#out)
 			rightPad = showBadge and -68 or -38
 		else
-			txt.Text = value ~= nil and tostring(value) or placeholder
+			txt.Text = value ~= nil and (splitName(value)) or placeholder
 			txt.TextColor3 = value ~= nil and T.Text or T.SubText
 		end
 		txt.Position = UDim2.fromOffset(12 + off, 0)
@@ -6319,15 +6505,68 @@ function Section:CreateDropdown(cfg)
 		return n
 	end
 
+	-- ---- row layout: a long name wraps onto a 2nd line (instead of "Cake | ซื้อได้..."), rows grow to fit it
+	local TextSvc = game:GetService("TextService")
+	local function lblSize()
+		local sc = win._textScale or Library.TextScale or 1
+		local base = touch and 15 or 14
+		return math.max(8, math.floor(base * sc + 0.5))
+	end
+	local function measure(text, width, size)
+		size = size or lblSize()
+		local ok, v = pcall(function()
+			return TextSvc:GetTextSize(text, size, T.Font, Vector2.new(math.max(width, 20), 10000))
+		end)
+		if ok and v then return v end
+		return Vector2.new(#text * size * 0.55, size)
+	end
+	local function labelX(opt)
+		if images[opt] ~= nil then return 18 + math.min(imgSz(), optH - 8) + 10 end
+		return 18
+	end
+	-- widest one-line option -> the popup may be wider than its button (never wider than the screen)
+	local function desiredWidth()
+		local w = 0
+		local sc = win._textScale or Library.TextScale or 1
+		local subSz = math.max(8, math.floor((touch and 12 or 11) * sc + 0.5))
+		for _, opt in ipairs(options) do
+			local t, d = splitName(opt)
+			local tw = measure(t, 10000).X
+			if d then tw = math.max(tw, measure(d, 10000, subSz).X) end
+			w = math.max(w, tw + labelX(opt) + 34 + 20 + 6)
+		end
+		return w
+	end
+	local function layoutRows()
+		for _, r in pairs(rows) do
+			r.h = optH
+			r.btn.Size = UDim2.new(1, 0, 0, optH)
+		end
+	end
+	local function rowsHeight(untilIdx)
+		local total = 0
+		for i, opt in ipairs(options) do
+			if untilIdx and i > untilIdx then break end
+			local r = rows[opt]
+			if not r or r.btn.Visible then total = total + ((r and r.h) or optH) + GAP end
+		end
+		return total
+	end
+
 	-- resize the popup to the visible rows (clamped to the space available)
-	local function fit()
+	local function fit(opening)
 		if not popup then return end
 		local top, bot = chrome()
 		local n = visibleCount()
 		emptyLbl.Visible = n == 0
-		local rowsH = math.max(n, 1) * (optH + GAP) + PAD
+		local rowsH = (n == 0 and (optH + GAP) or rowsHeight()) + PAD
 		local ph = math.clamp(top + bot + rowsH, math.min(top + bot + optH + PAD, maxH), maxH)
-		tween(popup, 0.2, { Size = UDim2.fromOffset(popW, ph) })
+		if opening then
+			popup.Size = UDim2.fromOffset(popW, math.max(math.floor(ph * 0.72), 1))
+			tween(popup, 0.24, { Size = UDim2.fromOffset(popW, ph) }, QUINT, OUT)
+		else
+			tween(popup, 0.16, { Size = UDim2.fromOffset(popW, ph) }, QUINT, OUT)
+		end
 	end
 
 	local function applyChrome()
@@ -6370,18 +6609,32 @@ function Section:CreateDropdown(cfg)
 			}, { corner(2), gradient(T.Accent, T.Accent2, 90) })
 			local lblX = 18
 			if images[opt] ~= nil then
-				local isz = math.min(cfg.ImageSize or (optH - 10), optH - 6)
+				local isz = math.min(imgSz(), optH - 8)
 				local th = makeThumb(images[opt], isz)
 				th.AnchorPoint = Vector2.new(0, 0.5)
 				th.Position = UDim2.new(0, 18, 0.5, 0)
 				th.Parent = b
 				lblX = 18 + isz + 10
 			end
+			local title, detail = splitName(opt)
+			local holder = new("Frame", {
+				AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, lblX, 0.5, 0), Size = UDim2.new(1, -(lblX + 34), 0, 0),
+				AutomaticSize = AY, BackgroundTransparency = 1, Parent = b,
+			}, { new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 1), VerticalAlignment = Enum.VerticalAlignment.Center }) })
 			local lbl = new("TextLabel", {
-				Position = UDim2.fromOffset(lblX, 0), Size = UDim2.new(1, -(lblX + 34), 1, 0), BackgroundTransparency = 1, Text = tostring(opt),
-				Font = T.Font, TextSize = touch and 15 or 14, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = b,
+				LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Text = title,
+				Font = T.Font, TextSize = touch and 15 or 14, TextColor3 = T.Text, TextXAlignment = LEFT,
+				TextTruncate = Enum.TextTruncate.AtEnd, Parent = holder,
 			})
-			local r = { btn = b, bar = bar, label = lbl, stroke = rowStroke }
+			local sub
+			if detail then
+				sub = new("TextLabel", {
+					LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Text = detail,
+					Font = T.Font, TextSize = touch and 12 or 11, TextColor3 = T.SubText, TextXAlignment = LEFT,
+					TextTruncate = Enum.TextTruncate.AtEnd, Parent = holder,
+				})
+			end
+			local r = { btn = b, bar = bar, label = lbl, sub = sub, stroke = rowStroke, h = optH }
 			if multi then
 				r.box = new("Frame", {
 					AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(18, 18),
@@ -6433,6 +6686,7 @@ function Section:CreateDropdown(cfg)
 			end)
 			rows[opt] = r
 		end
+		layoutRows()
 		paint()
 	end
 
@@ -6452,6 +6706,7 @@ function Section:CreateDropdown(cfg)
 		scroll.ScrollBarImageColor3 = T.Accent
 		for _, r in pairs(rows) do
 			r.btn.BackgroundColor3 = selBG
+			if r.sub then r.sub.TextColor3 = T.SubText end
 			if r.chk then r.chk.BackgroundColor3 = T.Accent end
 			if r.stroke then r.stroke.Color = T.Accent end
 		end
@@ -6574,12 +6829,13 @@ function Section:CreateDropdown(cfg)
 		local vp = bmax - bmin
 		local cap = touch and 300 or 260
 		local minH = top + bot + optH + PAD
-		local want = math.min(top + bot + math.max(#options, 1) * (optH + GAP) + PAD, cap)
+		popW = math.min(math.max(size.X, 190, math.min(desiredWidth(), touch and 340 or 320)), vp.X - 12)
+		layoutRows()
+		local want = math.min(top + bot + math.max(rowsHeight(), optH + GAP) + PAD, cap)
 		local below = bmax.Y - (pos.Y + size.Y + 4) - 8
 		local above = pos.Y - 4 - 8 - bmin.Y
 		local down = want <= below or below >= above
 		maxH = math.max(math.min(cap, down and below or above), math.min(minH, vp.Y - 16))
-		popW = math.min(math.max(size.X, 190), vp.X - 12)
 		local x = math.clamp(pos.X, bmin.X + 6, math.max(bmin.X + 6, bmax.X - popW - 6))
 
 		if not popup.Visible then
@@ -6606,6 +6862,10 @@ function Section:CreateDropdown(cfg)
 		escC = UserInputService.InputBegan:Connect(function(i)
 			if i.KeyCode == Enum.KeyCode.Escape then dd:Close() end
 		end)
+		local cam = workspace.CurrentCamera
+		if cam then
+			vpC = cam:GetPropertyChangedSignal("ViewportSize"):Connect(function() dd:Close() end)
+		end
 
 		-- The frame that makes the popup visible is the heavy one (every row is laid out), so the grow / fade
 		-- starts one frame later - otherwise its first frames are skipped and the opening stutters.
@@ -6616,10 +6876,10 @@ function Section:CreateDropdown(cfg)
 			for n, o in ipairs(options) do
 				if isSel(o) then idx = n break end
 			end
-			scroll.CanvasPosition = Vector2.new(0, idx and math.max(0, (idx - 2) * (optH + GAP)) or 0)
-			fit()
-			tween(popup, 0.2, { BackgroundTransparency = 0 })
-			tween(popupStroke, 0.2, { Transparency = 0.3 })
+			scroll.CanvasPosition = Vector2.new(0, idx and math.max(0, rowsHeight(idx - 2)) or 0)
+			fit(true)
+			tween(popup, 0.18, { BackgroundTransparency = 0 }, SINE, OUT)
+			tween(popupStroke, 0.18, { Transparency = 0.3 }, SINE, OUT)
 			-- PC: start typing straight away (not on touch, the keyboard would cover the list)
 			if not touch and searchOn() then searchBox:CaptureFocus() end
 		end)
@@ -6632,6 +6892,7 @@ function Section:CreateDropdown(cfg)
 		local my = ddTok
 		if win._dd == self then win._dd = nil end
 		if escC then escC:Disconnect() escC = nil end
+		if vpC then vpC:Disconnect() vpC = nil end
 		if searchBox then searchBox:ReleaseFocus() end
 		win:_HideOverlay()
 		tab:SetScrollEnabled(true)
@@ -8601,10 +8862,7 @@ function Section:CreateRangeSlider(cfg)
 		Size = UDim2.new(1, -112, 0, 18), BackgroundTransparency = 1, Text = cfg.Name or "Range", Font = T.Font, TextSize = 14,
 		TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
 	})
-	local valLabel = new("TextLabel", {
-		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(108, 18), BackgroundTransparency = 1,
-		Text = "", Font = T.FontBold, TextSize = 13, TextColor3 = T.Accent, TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
-	})
+	local loBox, hiBox   -- click-to-type number boxes (low / high), created below (they need obj / render)
 	local hit = new("TextButton", {
 		Position = UDim2.fromOffset(0, 20), Size = UDim2.new(1, 0, 1, -20), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Parent = frame,
 	})
@@ -8625,7 +8883,7 @@ function Section:CreateRangeSlider(cfg)
 	local function frac(v) return (max == min) and 0 or (v - min) / (max - min) end
 	local function render(animate)
 		local a, b = frac(lo), frac(hi)
-		valLabel.Text = fmtVal(lo) .. " - " .. fmtVal(hi) .. suffix
+		loBox.Text, hiBox.Text = fmtVal(lo), fmtVal(hi) .. suffix
 		local fp, fs = UDim2.fromScale(a, 0), UDim2.fromScale(b - a, 1)
 		local kl, kh = UDim2.fromScale(a, 0.5), UDim2.fromScale(b, 0.5)
 		if animate then
@@ -8650,6 +8908,20 @@ function Section:CreateRangeSlider(cfg)
 		if changed and not silent then safe(cfg.Callback, lo, hi) end
 	end
 	function obj:Get() return { lo, hi } end
+	loBox = Library._numBox(T, {
+		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -64, 0, 0), Size = UDim2.fromOffset(48, 20), Parent = frame,
+	}, "", function() return fmtVal(lo) end, function(n)
+		if n == nil then render(false) else obj:Set({ math.max(math.min(n, hi - gap), min), hi }) end
+	end)
+	new("TextLabel", {
+		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -56, 0, 0), Size = UDim2.fromOffset(8, 20), BackgroundTransparency = 1,
+		Text = "-", Font = T.FontBold, TextSize = 13, TextColor3 = T.SubText, Parent = frame,
+	})
+	hiBox = Library._numBox(T, {
+		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(56, 20), Parent = frame,
+	}, suffix, function() return fmtVal(hi) end, function(n)
+		if n == nil then render(false) else obj:Set({ lo, math.min(math.max(n, lo + gap), max) }) end
+	end)
 	render(false)
 	setFlag(cfg, { lo, hi })
 
@@ -9620,6 +9892,7 @@ function Window:SetTheme(t, remember)
 		Library._remapFonts(self.Gui, oldFont, oldBold, T.Font, T.FontBold)
 		self.FontName = "Custom"
 	end
+	self:_UpdateFades()
 	if self.FXOn then self:SetBackground(self.Cfg.FX or T.FX, true) end   -- rebuild backdrop with the new colours
 	self.ThemeName = name
 	pcall(self.Flash, self, T.Accent)
@@ -10487,97 +10760,183 @@ local function _audit(win, o)
 	return issues
 end
 
--- AutoCheck -> developer webhook (built in, always on, nothing to configure).
--- Every NEW UI problem (error / warn) found by AutoCheck is sent once to the dev channel as a Discord embed:
--- code, message, where it is (tab > section > control), counts and PlaceId. No player info is sent.
--- Bursts are merged into one message (3 s) and messages are spaced at least 5 s apart. Needs an executor with request / http_request.
+-- AutoCheck -> developer webhook (built in, on by default).
+-- Every NEW UI problem (error / warn) found by AutoCheck, and every Lua error thrown inside a control callback, is sent once
+-- to the dev channel as a Discord embed. What is sent: code, message, where it is (tab > section > control), counts, PlaceId, the
+-- executor name, the library version and Mobile / PC. NO player name, no user id, no IP / HWID.
+-- Safe by design: bursts are merged (Batch s), messages are spaced (Cooldown s), a session sends at most MaxPerSession messages,
+-- text is cleaned (control chars, invalid UTF-8, backticks, @ mentions are defused and allowed_mentions is empty), a rate-limited
+-- (429) or failed (5xx) send is retried, and a dead URL (401 / 404) switches the webhook off instead of retrying forever.
+-- Opt out:  Library.AutoCheck.Webhook = false   (Lua errors only:  Library.AutoCheck.ForwardLuaErrors = false)
 local _DEV_WEBHOOK = {
 	Url = "https://discord.com/api/webhooks/1482748907242127522/CAjcHoInWyuy2RVY38z5hlk_dYnr1bgiSh4q9zlaGIMvzrz_eD_RinoGCgNSJgkp0klf",
 	Levels = { error = true, warn = true },
 	Username = "SpectreWare",
-	Batch = 3, Cooldown = 5,
+	Batch = 3, Cooldown = 6, MaxPerSession = 20, MaxLine = 220, Retries = 2,
 }
 
+-- helpers live on one Library field (the chunk is close to Lua's local limit, so no new top-level locals)
+Library._wh = { last = 0, sent = 0, dead = false, warnedNoReq = false }
+
+function Library._wh.clean(str, max)
+	str = tostring(str == nil and "" or str)
+	str = (str:gsub("%c+", " "))                                  -- newlines / control characters
+	if not utf8.len(str) then str = (str:gsub("[\128-\255]", "?")) end   -- invalid UTF-8 would make JSONEncode throw
+	str = (str:gsub("@", "@\u{200B}"))                            -- no pings
+	str = (str:gsub("`", "'"))                                    -- cannot break out of the code styling
+	if max and utf8.len(str) > max then                           -- cut on a character boundary (Thai / emoji safe)
+		local cut = utf8.offset(str, max - 2)
+		str = str:sub(1, (cut or max - 1) - 1) .. "..."
+	end
+	return str
+end
+
+function Library._wh.req()
+	return request or http_request or (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request)
+end
+
+-- one POST with retry. returns ok, reason
+function Library._wh.post(req, url, body, tries)
+	local HttpService = game:GetService("HttpService")
+	local last = "failed"
+	for attempt = 1, tries + 1 do
+		local ok, res = pcall(req, {
+			Url = url, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = body,
+		})
+		local code = ok and type(res) == "table" and tonumber(res.StatusCode) or nil
+		if ok and (code == nil or (code >= 200 and code < 300)) then return true end
+		if not ok then
+			last = tostring(res)
+		elseif code == 429 then
+			last = "HTTP 429 (rate limited)"
+			local wait = 2
+			pcall(function() wait = tonumber(HttpService:JSONDecode(res.Body).retry_after) or wait end)
+			if attempt <= tries then task.wait(math.clamp(wait, 1, 15)) end
+			continue
+		elseif code >= 500 then
+			last = "HTTP " .. code
+		else
+			-- 400 bad payload / 401 / 403 / 404 (webhook deleted): retrying cannot help
+			return false, "HTTP " .. code, (code == 401 or code == 403 or code == 404)
+		end
+		if attempt <= tries then task.wait(2 * attempt) end
+	end
+	return false, last
+end
+
 local function _webhookSend(win, fresh, wh)
+	local WH = Library._wh
 	local cfg = type(wh) == "table" and wh or { Url = wh }
 	local url = cfg.Url
 	if type(url) ~= "string" or not url:find("^https://") then return end
+	local ac = Library.AutoCheck
+	if ac and (ac.Enabled == false or ac.Webhook == false) then return end
+	if WH.dead or WH.sent >= (cfg.MaxPerSession or 20) then return end
 	local levels = cfg.Levels or { error = true, warn = true }
 
 	local buf = win._whBuf
 	if not buf then
-		buf = { lines = {}, n = { error = 0, warn = 0, info = 0 } }
+		buf = { by = { error = {}, warn = {}, info = {} }, n = { error = 0, warn = 0, info = 0 } }
 		win._whBuf = buf
 	end
 	win._whSeen = win._whSeen or {}
+	local added = false
 	for _, i in ipairs(fresh) do
-		if levels[i.Level] and not win._whSeen[i.Key] then
+		if levels[i.Level] and not win._whSeen[i.Key] and buf.by[i.Level] then
 			win._whSeen[i.Key] = true
 			local where = table.concat({ i.Tab or "", i.Section or "", i.Name or "" }, " > "):gsub("^[ >]+", ""):gsub("[ >]+$", "")
-			buf.lines[#buf.lines + 1] = ("`%s` **%s** %s%s"):format(i.Level, i.Code, i.Message, where ~= "" and (" - " .. where) or "")
-			buf.n[i.Level] = (buf.n[i.Level] or 0) + 1
+			local list = buf.by[i.Level]
+			list[#list + 1] = ("• **%s** %s%s"):format(
+				WH.clean(i.Code, 40), WH.clean(i.Message, cfg.MaxLine or 220),
+				where ~= "" and (" — `" .. WH.clean(where, 90) .. "`") or "")
+			buf.n[i.Level] += 1
+			added = true
 		end
 	end
-	if #buf.lines == 0 or buf.waiting then return end
+	if not added or buf.waiting then return end
 	buf.waiting = true
 
-	local wait = math.max(cfg.Batch or 3, (win._whLast or 0) + (cfg.Cooldown or 5) - os.clock())
+	local wait = math.max(cfg.Batch or 3, WH.last + (cfg.Cooldown or 6) - os.clock())
 	task.delay(wait, function()
 		win._whBuf = nil
-		win._whLast = os.clock()
-		local req = request or http_request or (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request)
-		if not req then warn("[SpectreUI] Webhook: this executor has no request function") return end
-
-		local desc, used = {}, 0
-		for k, line in ipairs(buf.lines) do
-			if used + #line > 3500 then
-				desc[#desc + 1] = ("... and %d more"):format(#buf.lines - k + 1)
-				break
+		local okAll, errAll = pcall(function()
+			if WH.dead or WH.sent >= (cfg.MaxPerSession or 20) then return end
+			local req = WH.req()
+			if not req then
+				if not WH.warnedNoReq then
+					WH.warnedNoReq = true
+					warn("[SpectreUI] Webhook: this executor has no request function")
+				end
+				return
 			end
-			desc[#desc + 1] = line
-			used = used + #line + 1
-		end
-		local fields = { { name = "PlaceId", value = tostring(game.PlaceId), inline = true } }
-		if cfg.Player then
-			local lp = game:GetService("Players").LocalPlayer
-			if lp then fields[#fields + 1] = { name = "Player", value = lp.Name, inline = true } end
-		end
-		local title = (win.Cfg and win.Cfg.Title) or "SpectreUI"
-		local payload = {
-			username = cfg.Username or "SpectreUI",
-			content = cfg.Mention,
-			embeds = { {
-				title = cfg.Title or ("UI check - " .. tostring(title)),
-				description = table.concat(desc, "\n"),
-				color = (buf.n.error or 0) > 0 and 0xED4245 or 0xFEE75C,
-				fields = fields,
-				footer = { text = ("%d error, %d warning, %d info"):format(buf.n.error or 0, buf.n.warn or 0, buf.n.info or 0) },
-				timestamp = DateTime.now():ToIsoDate(),
-			} },
-		}
-		local ok, res = pcall(req, {
-			Url = url, Method = "POST", Headers = { ["Content-Type"] = "application/json" },
-			Body = game:GetService("HttpService"):JSONEncode(payload),
-		})
-		if not ok then
-			warn("[SpectreUI] Webhook failed: " .. tostring(res))
-		elseif type(res) == "table" and tonumber(res.StatusCode) and res.StatusCode >= 400 then
-			warn("[SpectreUI] Webhook HTTP " .. tostring(res.StatusCode))
-		end
+
+			-- description: errors first, then warnings, newest data cut at the embed limit
+			local out, used, hidden = {}, 0, 0
+			for _, lv in ipairs({ { "error", "🔴 Errors" }, { "warn", "🟡 Warnings" }, { "info", "🔵 Info" } }) do
+				local list = buf.by[lv[1]]
+				if #list > 0 then
+					out[#out + 1] = ("**%s (%d)**"):format(lv[2], buf.n[lv[1]])
+					used += #out[#out] + 1
+					for _, line in ipairs(list) do
+						if used + #line > 3500 then hidden += 1
+						else
+							out[#out + 1] = line
+							used += #line + 1
+						end
+					end
+				end
+			end
+			if hidden > 0 then out[#out + 1] = ("… and %d more"):format(hidden) end
+
+			local UIS = game:GetService("UserInputService")
+			local okEx, exName = pcall(function() return (identifyexecutor()) end)
+			local fields = {
+				{ name = "PlaceId", value = tostring(game.PlaceId), inline = true },
+				{ name = "Device", value = (UIS.TouchEnabled and not UIS.KeyboardEnabled) and "Mobile" or "PC", inline = true },
+				{ name = "Executor", value = okEx and exName and WH.clean(exName, 40) or "unknown", inline = true },
+				{ name = "UI version", value = WH.clean(Library.Version or "?", 20), inline = true },
+			}
+			if cfg.Player then
+				local lp = game:GetService("Players").LocalPlayer
+				if lp then fields[#fields + 1] = { name = "Player", value = WH.clean(lp.Name, 40), inline = true } end
+			end
+			local nErr = buf.n.error or 0
+			local title = (win.Cfg and win.Cfg.Title) or "SpectreUI"
+			local payload = {
+				username = WH.clean(cfg.Username or "SpectreUI", 80),
+				content = cfg.Mention,
+				allowed_mentions = cfg.Mention and { parse = { "roles", "users" } } or { parse = {} },
+				embeds = { {
+					title = WH.clean(cfg.Title or ((nErr > 0 and "🔴 " or "🟡 ") .. "UI check - " .. tostring(title)), 200),
+					description = table.concat(out, "\n"),
+					color = nErr > 0 and 0xED4245 or 0xFEE75C,
+					fields = fields,
+					footer = { text = ("%d error · %d warning · %d info"):format(nErr, buf.n.warn or 0, buf.n.info or 0) },
+					timestamp = DateTime.now():ToIsoDate(),
+				} },
+			}
+			local body = game:GetService("HttpService"):JSONEncode(payload)
+			WH.sent += 1
+			WH.last = os.clock()
+			local ok, why, dead = WH.post(req, url, body, cfg.Retries or 2)
+			if not ok then
+				if dead then WH.dead = true end
+				warn("[SpectreUI] Webhook failed: " .. tostring(why) .. (dead and " (disabled for this session)" or ""))
+			end
+		end)
+		if not okAll then warn("[SpectreUI] Webhook error: " .. tostring(errAll)) end
 	end)
 end
 
 -- Lua errors thrown inside control callbacks (safe()) go to the same webhook as AutoCheck problems.
--- Same rules: once per unique error per window, batched, rate-limited. Message is flattened, cut to 200 chars, and @ is defused.
--- Opt out:  Library.AutoCheck.ForwardLuaErrors = false   (or turn AutoCheck off entirely)
+-- Same rules: once per unique error per window, batched, rate-limited, cleaned.
+-- Opt out:  Library.AutoCheck.ForwardLuaErrors = false   (or Library.AutoCheck.Webhook = false / AutoCheck off entirely)
 Library._onCbError = function(err)
 	local ac = Library.AutoCheck
-	if ac and (ac.Enabled == false or ac.ForwardLuaErrors == false) then return end
+	if ac and (ac.Enabled == false or ac.ForwardLuaErrors == false or ac.Webhook == false) then return end
 	local win = Library.Windows[#Library.Windows]
 	if not win or win._destroyed then return end
-	local msg = (tostring(err):gsub("[\r\n]+", " "))
-	msg = (msg:gsub("@", "@\u{200B}"))
-	if #msg > 200 then msg = msg:sub(1, 200) .. "..." end
+	local msg = tostring(err)
 	task.spawn(function()
 		pcall(_webhookSend, win, {
 			{ Level = "error", Code = "LuaError", Message = msg, Key = "lua:" .. msg:sub(1, 120) },
@@ -10612,7 +10971,20 @@ local function _emit(win, issues, o, onlyNew)
 			win:Notify({
 				Title = "UI check", Key = "ui_check", Duration = 6,
 				Kind = nE > 0 and "Error" or "Warning",
-				Content = ("%d error, %d warning%s - see console"):format(nE, nW, nI > 0 and (", " .. nI .. " info") or ""),
+				Content = (function()
+					local top
+					for _, lv in ipairs({ "error", "warn" }) do
+						for _, i in ipairs(fresh) do
+							if i.Level == lv then top = i break end
+						end
+						if top then break end
+					end
+					local head = ("%d error, %d warning%s"):format(nE, nW, nI > 0 and (", " .. nI .. " info") or "")
+					if not top then return head .. " - see console" end
+					local m = tostring(top.Message):gsub("%s+", " ")
+					if utf8.len(m) and utf8.len(m) > 80 then m = m:sub(1, utf8.offset(m, 78) - 1) .. "..." end
+					return head .. "\n" .. tostring(top.Code) .. ": " .. m
+				end)(),
 			})
 		end)
 	end
@@ -13403,18 +13775,19 @@ do
 
 		-- flat backdrop + one centered group (fades as a whole)
 		local bg = fr({ Name = "BG", Size = U2(1, 0, 1, 0), BackgroundColor3 = bgc, BackgroundTransparency = 1, Active = opt("Block") == true, Parent = gui })
-		local stack = mk("CanvasGroup", { Name = "Stack", AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0.5, 10), Size = U2(0, 280, 0, 172),
+		local stack = mk("CanvasGroup", { Name = "Stack", AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0.5, 10), Size = U2(0, 300, 0, 204),
 			BackgroundTransparency = 1, BorderSizePixel = 0, GroupTransparency = 1, Parent = bg })
 		local sc0 = math.clamp(math.min(vp.X / 760, vp.Y / 520), 0.8, 1.15)
 		local stackScale = mk("UIScale", { Scale = sc0, Parent = stack })
 
 		-- card behind the logo: gradient fill only (no border, no glow). Pure frames (no loops), fades with the rest.
 		-- Splash = { Panel = false } turns it off. Taps pass through the splash unless Splash = { Block = true }.
-		local panel, panelScales
+		local panel, panelScales, panelStroke
 		if opt("Panel") ~= false then
-			local PW, PH = 344, 240
+			local PW, PH = 372, 276
 			panel = fr({ Name = "Panel", AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0.5, 10), Size = U2(0, PW, 0, PH),
-				BackgroundColor3 = white, BackgroundTransparency = 1, Active = false, ZIndex = 0, Parent = bg }, { round(22) })
+				BackgroundColor3 = white, BackgroundTransparency = 1, Active = false, ZIndex = 0, Parent = bg }, { round(26) })
+			panelStroke = mk("UIStroke", { Color = acc, Thickness = 1, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = panel })
 			mk("UIGradient", { Color = ColorSequence.new({
 				ColorSequenceKeypoint.new(0, bgc:Lerp(acc, 0.22)), ColorSequenceKeypoint.new(0.55, bgc:Lerp(acc2, 0.06)),
 				ColorSequenceKeypoint.new(1, bgc:Lerp(Color3.new(0, 0, 0), 0.25)) }), Rotation = 90, Parent = panel })
@@ -13425,8 +13798,8 @@ do
 		local function shadow() return mk("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 1, Transparency = 0.55 }) end
 
 		-- effects: pulsing glow + two counter-rotating comet rings + breathing logo
-		local CY = 48
-		local glow = fr({ AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0, CY), Size = U2(0, 92, 0, 92), BackgroundColor3 = acc,
+		local CY = 54
+		local glow = fr({ AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0, CY), Size = U2(0, 104, 0, 104), BackgroundColor3 = acc,
 			BackgroundTransparency = 0.85, Parent = stack }, { mk("UICorner", { CornerRadius = UDim.new(1, 0) }) })
 		local function ring(size, thick, c1, c2)
 			local r = fr({ AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0, CY), Size = U2(0, size, 0, size), BackgroundTransparency = 1, Parent = stack },
@@ -13436,34 +13809,38 @@ do
 				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.55, 1), NumberSequenceKeypoint.new(1, 1) }),
 				Parent = st })
 		end
-		local ringA = ring(78, 2.5, acc, acc2)
-		local ringB = ring(66, 1.5, acc2, acc)
+		local ringA = ring(88, 2.5, acc, acc2)
+		local ringB = ring(76, 1.5, acc2, acc)
 
 		-- logo: custom image, or the first letter on a flat accent tile
 		local logo
 		if logoId then
 			local id = tonumber(logoId)
-			logo = mk("ImageLabel", { AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0, CY), Size = U2(0, 56, 0, 56), BackgroundTransparency = 1,
+			logo = mk("ImageLabel", { AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0, CY), Size = U2(0, 62, 0, 62), BackgroundTransparency = 1,
 				Image = id and ("rbxassetid://" .. id) or tostring(logoId), Parent = stack }, { round(14) })
 		else
 			local okc, ch = pcall(function() return utf8.char(utf8.codepoint(brand, 1)) end)
-			logo = fr({ AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0, CY), Size = U2(0, 56, 0, 56), BackgroundColor3 = acc, Parent = stack }, { round(14) })
+			logo = fr({ AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0, CY), Size = U2(0, 62, 0, 62), BackgroundColor3 = acc, Parent = stack }, { round(14) })
 			lb({ Size = U2(1, 0, 1, 0), Text = okc and ch:upper() or "S", Font = Enum.Font.GothamBold, TextSize = 28, TextColor3 = onAcc, Parent = logo })
 		end
 		local logoScale = mk("UIScale", { Parent = logo })
 
-		lb({ Position = U2(0, 0, 0, 90), Size = U2(1, 0, 0, 26), Text = brand, Font = Enum.Font.GothamBold, TextSize = 20, TextColor3 = txt, Parent = stack }, { shadow() })
+		lb({ Position = U2(0, 0, 0, 100), Size = U2(1, 0, 0, 28), Text = brand, Font = Enum.Font.GothamBold, TextSize = 22, TextColor3 = txt, Parent = stack }, { shadow() })
 		if sub ~= "" then
-			lb({ Position = U2(0, 0, 0, 117), Size = U2(1, 0, 0, 16), Text = sub, TextSize = 12, TextColor3 = subc, Parent = stack }, { shadow() })
+			local pill = fr({ AnchorPoint = V2(0.5, 0), Position = U2(0.5, 0, 0, 132), Size = U2(0, 0, 0, 22), AutomaticSize = Enum.AutomaticSize.X,
+				BackgroundColor3 = acc, BackgroundTransparency = 0.82, Parent = stack },
+				{ round(11), mk("UIStroke", { Color = acc, Thickness = 1, Transparency = 0.6 }),
+				  mk("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }) })
+			lb({ Size = U2(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, Text = sub, TextSize = 12, Font = Enum.Font.GothamMedium, TextColor3 = txt, Parent = pill })
 		end
 
-		local status = lb({ Position = U2(0, 0, 0, 142), Size = U2(0, 200, 0, 14), Text = steps[1], TextSize = 13, TextColor3 = subc,
+		local status = lb({ Position = U2(0, 0, 0, 168), Size = U2(0, 220, 0, 14), Text = steps[1], TextSize = 13, TextColor3 = subc,
 			TextXAlignment = Enum.TextXAlignment.Left, Parent = stack }, { shadow() })
-		local pct = lb({ Position = U2(1, -50, 0, 142), Size = U2(0, 50, 0, 14), Text = "0%", TextSize = 13, TextColor3 = subc,
+		local pct = lb({ Position = U2(1, -50, 0, 168), Size = U2(0, 50, 0, 14), Text = "0%", TextSize = 13, TextColor3 = subc,
 			TextXAlignment = Enum.TextXAlignment.Right, Parent = stack }, { shadow() })
-		local track = fr({ Position = U2(0, 0, 0, 162), Size = U2(1, 0, 0, 4), BackgroundColor3 = white, BackgroundTransparency = 0.85, Parent = stack }, { round(2) })
+		local track = fr({ Position = U2(0, 0, 0, 190), Size = U2(1, 0, 0, 6), BackgroundColor3 = white, BackgroundTransparency = 0.88, Parent = stack }, { round(3) })
 		-- fill is white; the gradient supplies the colour (it multiplies) and a moving highlight
-		local fill = fr({ Size = U2(0, 0, 1, 0), BackgroundColor3 = white, Parent = track }, { round(2) })
+		local fill = fr({ Size = U2(0, 0, 1, 0), BackgroundColor3 = white, Parent = track }, { round(3) })
 		local shine = mk("UIGradient", { Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, acc), ColorSequenceKeypoint.new(0.5, acc2:Lerp(white, 0.6)),
 			ColorSequenceKeypoint.new(1, acc2) }), Parent = fill })
 
@@ -13472,7 +13849,7 @@ do
 
 		-- state
 		local t, shown, fin, skip, done = 0, 0, false, false, false
-		local pcache, lastS = -1, ""
+		local pcache, lastS, fcount = -1, "", 0
 		local hit = panel or bg
 		-- (no tap-to-skip: the launch screen always plays to the end)
 
@@ -13481,6 +13858,7 @@ do
 		tw(stack, 0.45, { GroupTransparency = 0, Position = U2(0.5, 0, 0.5, 0) }, EZ.Quint)
 		if panel then
 			tw(panel, 0.45, { BackgroundTransparency = 0.08, Position = U2(0.5, 0, 0.5, 0) }, EZ.Quint)
+			if panelStroke then tw(panelStroke, 0.6, { Transparency = 0.72 }, EZ.Quint) end
 		end
 
 		local function step(dt)
@@ -13490,8 +13868,11 @@ do
 			local target = fin and 1 or 0.85 * k   -- steady, even pace up to 85%; the last 15% is filled only after the window is really built
 			shown = shown + (target - shown) * math.min(1, dt * (skip and 12 or 5))
 			fill.Size = U2(shown, 0, 1, 0)
-			ringA.Rotation = (t * 240) % 360
-			ringB.Rotation = (-t * 150) % 360
+			fcount = fcount + 1
+			if not lowPower() or fcount % 2 == 0 then
+				ringA.Rotation = (t * 240) % 360
+				ringB.Rotation = (-t * 150) % 360
+			end
 			if not done then   -- after the finish burst the tweens own these
 				local pl = math.sin(t * 3.2)
 				logoScale.Scale = 1 + 0.04 * pl
@@ -13502,7 +13883,7 @@ do
 			if pc ~= pcache then pcache = pc pct.Text = pc .. "%" end
 			local s
 			if fin and shown > 0.97 then s = "Ready"
-			else s = steps[math.clamp(math.floor(shown / 0.85 * #steps) + 1, 1, #steps)] end
+			else s = steps[math.clamp(math.floor(shown / 0.85 * #steps) + 1, 1, #steps)] .. string.rep(".", math.floor(t * 2.5) % 4) end
 			if s ~= lastS then lastS = s status.Text = s end
 		end
 		local function frameStep() local dt = math.min(RS.Heartbeat:Wait(), 0.1) step(dt) return dt end
@@ -13525,6 +13906,7 @@ do
 			if panel then
 				for _, ps in ipairs(panelScales) do tw(ps, 0.35, { Scale = sc0 * 1.12 }, EZ.Quad, ED.In) end
 				tw(panel, 0.3, { BackgroundTransparency = 1, Position = U2(0.5, 0, 0.5, -6) }, EZ.Quad, ED.In)
+				if panelStroke then tw(panelStroke, 0.25, { Transparency = 1 }, EZ.Quad, ED.In) end
 			end
 			task.delay(0.15, function()
 				if gui.Parent then tw(bg, 0.35, { BackgroundTransparency = 1 }) end
