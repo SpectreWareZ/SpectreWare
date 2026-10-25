@@ -1,279 +1,32 @@
 --[[
-    SpectreUI - dark/violet Roblox UI library  (soft rounded build: rounded window/tabs/toggles/dropdowns, no bevel)
-    smooth pass: ripple capped at 3 per button and cleaned up by its own tween (was a fixed delay that ignored Anim.Speed);
-                 slider drag applies one update per rendered frame and glides between notches on coarse sliders
-    Window / Sidebar tabs / Search / Sections / Toggle / Dropdown (+Multi) / Slider / Button / Label / Divider / Textbox / Keybind / ColorPicker / Paragraph / Notify / Toast / Dialog / Loading / Config
+	SpectreUI v3.17 - Roblox UI library (PC + mobile)
 
-    local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Tools/Ui/SpectreUI.lua"))()   -- or require(module)
-    local Window  = Library:CreateWindow({ Title = "SpectreWare | Anime Astral" })
-    local Tab     = Window:CreateTab({ Name = "Main", Icon = "M" })
-    local Section = Tab:CreateSection({ Name = "Settings" })
-    Section:CreateToggle({ Name = "Example", Default = false, Flag = "ex", Callback = function(v) end })
+	local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Tools/Ui/SpectreUI.lua"))()
+	local Window  = Library:CreateWindow({ Title = "SpectreWare | Anime Astral" })
+	local Tab     = Window:CreateTab({ Name = "Main", Icon = "lucide:home" })
+	local Section = Tab:CreateSection({ Name = "Settings", Column = 1 })
+	Section:CreateToggle({ Name = "Example", Default = false, Flag = "ex", Callback = function(v) end })
 
-    Window options : Title, Transparency (0..1, background see-through), Logo (asset id / "rbxassetid://.."), LogoSize (26 or {w,h}), LogoColor (Color3), LogoCorner (px), OpenLogoScale (0.58, floating button), Width, Height, ToggleKey (Enum.KeyCode), HideOpenButtonOnPC (true = no floating open button on PC, mobile keeps it), Theme (table), OnClose
-    Tab options    : Name, Icon (text glyph, asset id number / "rbxassetid://..", or an icon name like "lucide:home" / "home")
-    Section options: Name, Column (1|2), Collapsible (default true), Collapsed
-    Controls       : CreateToggle / CreateDropdown / CreateSlider / CreateButton / CreateLabel / CreateDivider
-                     CreateTextbox / CreateKeybind / CreateColorPicker / CreateParagraph
-    Every control  : Flag (stores value in Library.Flags[Flag]); returned object has :Set / :Get where it makes sense
+	Window   : Title, Transparency, Logo, Width, Height, ToggleKey, HideOpenButtonOnPC, Theme, FX, Resizable, TopMargin, SideMargin, OnClose
+           (phone edge gap for window / notifications / dialogs / HUD: Library.EdgeScale, default 1)
+	           SetTitle / GetTab / SetTab / SetSize / Center / Notify / Toast / Dialog / Loading / OpenPalette (Ctrl+K)
+	           SetShaded (roll up to the header; also: hold the title bar)
+	Tab      : Name, Icon, Locked, LockReason          Section: Name, Column (1|2), Collapsible, Collapsed
+	Controls : Toggle, Dropdown (Multi, Images), Slider, RangeSlider, Button, HoldButton, Label, Paragraph, Divider, Textbox,
+	           Keybind, ColorPicker, Segmented, TagInput, Graph, Console, Progress, Badge
+	Every control: Flag, Tooltip, :Set / :Get / :Reset / :SetVisible / :ShowIf / :Lock / :OnChange / :Destroy
+	Library  : SaveConfig / LoadConfig / ListConfigs / ExportConfig / ImportConfig, Undo / Redo, Snapshot / Restore, Watch, Unload
+	Themes   : Rose (default) | Violet | Cyber | Crimson | Matrix       Library:SetTheme(name) / RegisterTheme(name, tbl)
 
-    New API (v3)
-    - Dropdown   : Multi = true  -> pick many; Default = { "a", "b" }; :Get() returns an array; Callback(array)
-    - Textbox    : Name, Default, Placeholder, ClearOnFocus, Numeric, Min, Max, MaxLength, Live, EnterOnly, Callback(value)
-    - Keybind    : Name, Default (Enum.KeyCode | "F"), Mode = "Press" | "Hold" | "Toggle", Callback(...), Changed(key)
-                   click the button, press a key to bind (Esc = cancel, Backspace/Delete = clear)
-    - ColorPicker: Name, Default (Color3), Callback(Color3)   -> :Set(Color3) / :Get()
-    - Paragraph  : Title, Content   -> :Set(title, content)
-    - Library:SaveConfig(name) / LoadConfig(name) / DeleteConfig(name) / ListConfigs()   (needs writefile support)
-    - Library:ExportConfig() -> json string,  Library:ImportConfig(json)   (e.g. for the clipboard)
-    - Library:Unload()  destroys every window and clears Flags
-    - Config only stores controls that have a Flag.
+	v3.21 HUD pack: Brackets, Scanline, Neon, Trail, Scramble, Glitch, ShakeOnError (Library.Visual.<Name>; Window:SetBrackets/SetScanline/SetNeon/SetTrail/Scramble/Glitch/Shake)
+	v3.19/3.20 visuals (phones keep the cheap ones: taps, sweeps, title shine, scroll line, toggle sparkle): cursor Spotlight on section borders, RevealSweep on tab open, ThemeWave, ClickRing, TitleShine,
+	           ScrollBar line, Rainbow border (Window:SetRainbow). Toggle each with Library.Visual.<Name> = false.
 
-    New API (v3.1) — all work on mouse and touch
-    - Controls   : CreateBadge / CreateProgress / CreateSeparator / CreateKeybindToggle
-                   CreateLabel now takes Color, Bold, TextSize; CreateButton takes Color / Gradient / TextColor
-    - Window     : SetTitle("Brand | Sub") · GetTab(name) · SetTab(name) · SetSize(w, h) · Center() · Flash(color)
-                   Tooltip(frame, "text") · Success/Warning/Error/Info(title, content, dur)
-                   Notify({ Title, Content, Duration, Color, Flash })  -> click to dismiss
-    - Tab        : SetBadge("3")  -> a count pill on the sidebar tab
-    - Library    : Confirm({ Title, Content, Yes, No, OnYes, OnNo })   modal yes/no dialog
-                   Banner({ Title, Content, Duration, Color })          top toast, works while closed
-                   OnFlag(function(flag, value, prev))                  one handler for every flag change
-                   AutoloadConfig(name) / SaveAuto(name)                startup load / quick snapshot
-    - Every control returns a table with .Frame, so Window:Tooltip(obj.Frame, "...") works.
-
-    Theme additions (visual build)
-    - Theme.Accent2 (gradient partner), Theme.Sheen (highlight), Theme.Glow on/off, Theme.Animate shimmer
-    - Rounded 12 window with a soft accent halo, gradient headers, glowing toggles/sliders, gradient active tab.
-
-    New API (v3.5)
-    - Tab lock   : Window:CreateTab({ Name = "VIP", Locked = true, LockReason = "Premium only", OnLockedClick = fn(tab) })
-                   Tab:Lock(reason) / Tab:Unlock() / Tab:SetLocked(bool, reason) / Tab:IsLocked() / Tab:SetLockReason(text)
-                   Window:LockTab(nameOrTab, reason) / UnlockTab(nameOrTab) / IsTabLocked(nameOrTab)
-                   A locked tab shows a padlock, is dimmed and cannot be opened (click, SetTab, palette).
-                   If it was the open tab the window jumps to the first unlocked tab.  LockedNotify = false  -> no toast.
-                   v3.6: a locked tab can never be entered, also while the UI loads or when it is the only tab (a LOCKED cover
-                   is shown then). The sidebar button is dimmed with a soft shade + padlock + "LOCKED" pill, in the theme colours.
-                   Library.LockColor = Color3 overrides the lock colour (default: follows the theme).
-    - Dropdown images : options can carry a picture, in every Dropdown (single + Multi)
-                   Options = { { Name = "Sword", Image = 123456 }, { Name = "Bow", Image = "rbxassetid://789" }, "Plain text" }
-                   or  Images = { Sword = 123456, Bow = "lucide:target", Red = Color3.fromRGB(255,0,0) }
-                   Image = asset id | "rbxassetid://.." | https url | "lucide:name" icon | Color3 swatch.   ImageSize = 40 (optional)
-                   The selected option's picture is shown on the closed dropdown too.  Callback / Get() still return the Name.
-                   dd:Refresh(options, keep, imagesTable)   dd:SetImage(optionName, image)
-
-    Themes (default = Rose / sakura pink)
-    - Library:CreateWindow({ Theme = "Rose" | "Violet" | "Cyber" | "Crimson" | "Matrix" })
-    - Library:SetTheme("Cyber")      default for windows created afterwards
-    - Theme = { Accent = Color3..., Accent2 = ... }   override single colors on top of the default palette
-    - Library.Themes.MyTheme = { ...all colors... }   add your own preset
-
-    New API (v3.2)
-    - Every control (old + new) now also has:
-        :SetVisible(bool) / :IsVisible()        hide or show (works with the search filter)
-        :ShowIf("flag" [, value | fn(v, flags)]) / :ShowIf({ "a", "b" }, fn(flags))   conditional visibility
-        :SetEnabled(bool) / :Lock() / :Unlock()  dim + block input
-        :OnChange(fn(value, prev))               per-control watcher (needs Flag)
-        :Reset() / :IsModified()                 back to the value it was created with
-        :SetTooltip(text)  or  Tooltip = "..." in the config
-        :Destroy()
-      A small accent dot appears on a control whose value differs from its default.
-    - Right-click (PC) or hold a finger (mobile) on a control: Reset / Copy value / Lock / What is this?
-        extra items:  ContextMenu = { { Name = "x", Callback = function(obj) end } }   NoMenu = true to disable
-        Library:ShowMenu(items, anchorFrame)   Library.ContextMenu = false to turn it off globally
-    - Command palette  Window:OpenPalette()  /  Ctrl+K   (Library.PaletteKey)
-        fuzzy search over every control in every tab; toggles flip in place, buttons run, others jump + highlight
-        quick set:  "walkspeed = 50"  "esp = on"
-        Library:AddCommand({ Name, Desc, Keywords, Callback })     Window:Goto(obj | "flag" | "name")
-    - Undo / redo of setting changes (Ctrl+Z / Ctrl+Y)
-        Library:Undo() / Redo() / CanUndo() / CanRedo() / GetHistory() / ClearHistory() / Library.History.Max
-        Library:Transaction("label", fn)   many changes = one undo step (config loads already are)
-    - Library:ResetAll() / GetModified() / Tab:ResetAll() / Section:ResetAll()
-    - Library:Snapshot("a") / Restore("a") / Diff("a", "b"|nil)   in-memory profiles, no writefile needed
-    - Library:Watch("flag", fn(value, prev))
-    - New controls
-        CreateSegmented({ Name, Options, Default, Flag, Callback })
-        CreateRangeSlider({ Name, Min, Max, Increment, MinGap, Default = { lo, hi }, Flag, Callback(lo, hi) })
-        CreateTagInput({ Name, Default, Max, Lower, Flag, Callback(list) })     :Add / :Remove / :Has
-        CreateHoldButton({ Name, Duration, Color, Callback })                   hold to confirm
-        CreateGraph({ Name, Points, Height, Min, Max, Suffix })                 :Push(n) / :Clear()
-        CreateConsole({ Name, Height, MaxLines })                               :Print / :Info / :Warn / :Error / :Clear / :Copy
-
-    Performance / devices (v3.2.1)
-    - Library:SetQuality("low" | "high" | "auto")   low power also turns off the decorative background gradients
-    - PC: Up / Down + Enter in the command palette, drag the bottom-right corner to resize the window (Resizable = false to disable)
-    - Mobile: bigger touch rows in the palette / chips, shorter palette list, long-press menu only on touch devices
-    - Right-click hooks only on devices with a mouse; the "modified" dot is created lazily
-
-    Performance
-    - On mobile the library auto-enables low power (no shimmer, no halo rings, no open/close
-      scale tween, no tab slide) so the UI stays smooth on phones.
-    - Override at any time:  Library.Perf.LowPower = true / false   (nil = auto)
-
-    Backdrop FX + smooth motion (v3.3)
-    - Animated theme-matched backdrop behind the whole window (aurora wash + drifting particles):
-        Rose -> "petals"   Violet -> "orbs"   Cyber -> "grid"   Crimson -> "embers"   Matrix -> "rain"
-      Library:CreateWindow({ FX = "rain" })        pick a style for one window
-      Library:CreateWindow({ Background = false }) turn it off
-      Window:SetBackground("orbs" | false | nil)   change at runtime (nil = theme default)
-      Library.Themes.MyTheme = { ..., FX = "orbs" } for custom presets
-    - Lite version (fewer particles, one aurora band) in low power / mobile; Library.Perf.Backdrop = false disables it there. Paused while the window is closed (no idle cost).
-    - Motion: sine easing for fades / colors, quint for size / position, eased window drag (PC),
-      softer open / close / tab-switch, seamless looping tweens instead of re-chained ones.
-      Library.Anim.Speed = 1.25  -> every animation 25% slower (0.8 = faster)
-
-    Feedback UI (v3.4)  - every call returns a handle; all work on mouse + touch, PC + mobile
-    - Notify  : Window:Notify({ Title, Content, Kind = "Success"|"Warning"|"Error"|"Info", Duration, Icon, Color,
-                  Progress = true|false (countdown bar) | 0..1 (determinate), Key (same Key = update in place),
-                  Position = "BottomRight"|"TopCenter"|..., OnClick, OnClose(reason), Closable, Merge })
-                Duration = 0 / false / math.huge (or Dismiss = false) stays until dismissed. Success/Warning/Error/Info(title, content, dur) still work.
-                handle: :Update{...} :SetProgress(n) :Dismiss() :IsAlive() :OnClose(fn)     Window:DismissAll()
-                Hover pauses the countdown on PC; identical notifications merge into "x2"; max visible + queue; auto top-right on touch.
-    - Toast   : Window:Toast("Saved") / ("Saved", "Success") / ("Saved", 3) / ("Saved", { Kind, Duration, Icon })   small pill, bottom-center
-    - Banner  : Library:Banner({ Title, Content, Duration, Color })    top-center
-    - Loading : local l = Window:Loading({ Title, Text, Progress })   l:Set(0.5, "text") l:SetText(t) l:Complete(t, secs) l:Fail(t, secs) l:Close()
-    - Dialog  : Window:Dialog({ Title, Content, Kind, Buttons = { { Text, Value, Style = "Primary"|"Secondary"|"Danger", Callback, Close } },
-                  Input = true|{ Placeholder, Default, MaxLength, Numeric }, Build = function(container, theme, handle) end, Dismissable, OnClose })
-                handle: :Close(value) :Update{} :IsOpen() :GetInput() :Wait() -> value, input
-                Shortcuts: Confirm({ Title, Content, Yes, No, OnYes, OnNo, Danger })  Alert(title, content)  Prompt({ Title, Placeholder, OnSubmit(text) })
-    - Library:Notify / Toast / Banner / Loading / Dialog / Confirm / Alert / Prompt / DismissAll also work with no window yet.
-    - Library.NotifyConfig : Position, MaxVisible, Duration, Gap, Margin, Width, Merge, PauseOnHover, Animate
-    - Theme   : Library:RegisterTheme(name, tbl) / GetTheme(name?) / ListThemes() / SetStatusColors{ Success = c, ... } / GetStatusColor(kind)
-                Window:SetNotifyTheme("Cyber" | tbl | nil)   own palette for that window's notifications + dialogs
-    - Anim    : Library.Anim.Tween / Show(obj, { From, Distance, Time, Scale }) / Hide(obj, { To, Destroy }) / Pulse(obj) / Stop(obj)   (+ Speed)
-    - Responsive : Library.Responsive.IsTouch / Viewport(win) / Breakpoint(win) -> "phone"|"tablet"|"desktop" / Width(win, max, margin) / Touch(pc, touch) / Scale(n) / OnChange(win, fn)
-                   Window:OnResize(fn)
-    - Util    : Library.Util.Bag / Dispose / Opt / Debounce / Throttle / Round / FormatNumber / FormatTime / Truncate / Lighten / Darken / ToHex / FromHex / Contrast / Create
-    - Fixed   : cards no longer jump when one closes (slot collapses), Duration 0 no longer closes instantly, bad Duration / Title types no longer error,
-                stack can no longer grow off screen, notifications sit above dialogs, modal card no longer closes when you tap inside it,
-                Confirm overlay tap now counts as "No", Banners no longer overlap, every tween / connection / task is cleaned on close and on Unload.
-
-    Theme manager (v3.5)
-    - Window:SetTheme("Aurora" | { Accent = ... }, remember)   recolor the whole window LIVE (no rebuild)
-    - Library:RenameTheme("Rose", "Sakura Night")  /  Window:RenameTheme("new name")  -> ok, err   (renames the preset, windows follow)
-    - Library:CloneTheme("Rose", "My Pink", { Accent = Color3... })   Library:DeleteTheme(name)  (custom themes only)
-    - Window:GetThemeName() / Library.ThemeName / Library:OnThemeChange(function(event, a, b) end)
-    - Section:CreateThemeManager({ Name, Flag, Remember = true, Random = true, Delete = true })
-                  ready UI: dropdown + rename textbox + Rename / Duplicate / Random / Delete buttons  (Random / Delete = false hides them)
-    - Window:CycleTheme(dir, remember) (dir = 1 next / -1 previous)  Window:RandomTheme(remember)  Window:DeleteTheme(name?)  -> ok, err
-    - Names, custom themes and the chosen theme are saved to <ConfigFolder>/themes.json (writefile) and restored next launch
-      Library:SaveThemes() / LoadThemes()
-
-    Fonts
-    - Library:CreateWindow({ Font = "Nunito" })     font chosen when the window is created (name | Enum.Font | { Font, Bold })
-    - Window:SetFont("Ubuntu" | Enum.Font.Code | { Font = Enum.Font.X, Bold = Enum.Font.Y }, remember)
-                  changes the font of the WHOLE window live, like Window:SetTheme  -> ok, name | err
-    - Window:GetFontName() / Window:CycleFont(dir, remember) / Library:SetFont(font)   (Library:SetFont = default for windows created later)
-    - Library:RegisterFont("Mine", Enum.Font.Ubuntu, Enum.Font.Ubuntu)   Library:ListFonts()   Library.Fonts = the presets
-    - Section:CreateFontPicker({ Name, Flag, Remember = true })   ready dropdown (the Theme tab already contains it: CreateThemeTab({ Fonts = false }) hides it)
-    - The chosen font is saved next to the theme in themes.json and restored next launch
-    - Note: Roblox fonts only cover Latin text; Thai (and other scripts) always fall back to the default font
-    - Tab buttons are smaller on phones (38 px).  Window option TabHeight = <px> overrides the height.
-    - New presets: Aurora, Dracula, Nord, TokyoNight, Mocha, Synthwave, Jade, Gold, Lavender, Candy, Peach
-      (plus Midnight, Ocean, Sunset, Mono from before)
-
-    Ready-made tabs (v3.7)
-    - Window:CreateThemeTab({ Name, Icon, Text = {..}, Manager = {..}, Maker = false, Effects = false, Fonts = false, Keys = false })      -> tab, parts
-    - Window:CreateSettingsTab({ Name, Icon, Text = {..}, Sections = { Theme, Hotkeys, Interface, Config, Window, History = false } })   -- includes theme colors/font/effects      -> tab, parts
-    - Window:CreateDefaultTabs({ Theme = {..} | false, Settings = {..} | false })                                       -> themeTab, settingsTab
-      Text = { key = "..." } renames / translates any label (see README_SpectreUI_Tabs.md for the key list)
-
-    Icons (v3.8)  - icon packs from github.com/Footagesus/Icons (Main-v2)
-    - Packs: lucide (default) / solar / craft / geist / sfsymbols / gravity.   "lucide:home"  "solar:settings-bold"  or just "home" (default pack)
-    - Works in: Window:CreateTab({ Icon = "lucide:swords" }), Notify / Toast / Dialog / Confirm ({ Icon = "lucide:bell" }),
-      and the default Theme / Settings tabs (lucide:palette / lucide:settings).
-    - Loaded lazily on first use (6 packs = a few seconds once). If it fails or the name does not exist, the old text glyph is used.
-    - Library.IconLib.Default = "solar"      default pack for names without "pack:"
-      Library.IconLib.Url = "..."            another copy of Main-v2.lua
-      Library:PreloadIcons()                 download now, e.g. before creating the window
-      Library:SetIconModule(mod)             reuse a module you already loaded
-      Library:AddIcons("mine", { home = 123456 })  ->  Icon = "mine:home"
-      Library:ResolveIcon(name) / MakeIcon(desc, color)   raw helpers (ImageLabel with rect offsets)
-    - Section / Button:  Tab:CreateSection({ Name = "ESP", Icon = "lucide:eye" })   Section:CreateButton({ Name = "Save", Icon = "lucide:save" })
-      (a section with an Icon shows it instead of the accent dot; the button icon sits on the left)
-    - Ready-made tabs have icons on every section + button. Change or remove any of them:
-        Window:CreateSettingsTab({ Icons = { ThemeSection = "solar:palette-bold", Save = "lucide:download", Delete = false } })
-        keys: ThemeSection FontSection MakerSection FxSection CreateButton UISection InterfaceSection ConfigSection HistorySection WindowSection
-              Palette TestNotify Save Load Delete SaveAuto Copy Import Undo Redo Modified Snapshot Restore Center Unload
-    - Built-in glyphs still work: "check" "cross" "spinner" "!" "i" "M" ...
-
-    Load API (v3.9)
-    - Library:Load(source, opts) / Window:Load(source, opts) -> ok, result      source = url | file | raw Lua | function
-    - Library:LoadMany({ src, { Source = src, Name = "x" }, ... }, opts) -> ok, results
-    - opts: Name, Args, Retries, RetryDelay, Silent, Async, OnDone(ok, result), OnProgress(p, text), Cache, Title, SuccessText, FailText
-    - Shows a Loading card with progress (download -> compile -> run) and Complete / Fail at the end.
-
-    Auto UI check (v3.10)
-    - Runs by itself after the window is built / a tab switch / a resize. Reports only NEW problems (console + one card), silent when clean.
-    - Section:CreateDiscord({ Invite = "code" | url, Title, Button, Open = true, Refresh = 300, Icon, Banner, Description, Details, OnUpdate })   server card: logo, name, online/members, description, banner + Join button   :Refresh :SetInvite :Copy :Destroy :GetInfo
-    - Window:Audit({ Print, Notify, Visual, Fix, Skip }) -> issues     Library:Audit(opts)     Palette command: "Run UI check"
-    - Library.AutoCheck = { Enabled, Delay, Notify, Print, Visual, Fix, Skip }     CreateWindow({ AutoCheck = false | { ... } })
-    - Rules: Library.AuditCodes (DupFlag, DefaultName, BadCallback, BadDefault, BadRange, EmptyTab, EmptySection, LowContrast, Overflow, TextClip, Offscreen ...)
-
-    HUD + Tour (v3.11)
-    - Window:Watermark({ Text, Fields = { "FPS", "Ping", "Time", "Date", "Players", fn, { Name, Get } }, Position, Interval, Draggable }) -> handle
-        live FPS / ping pill, draggable, follows the theme.   :SetText :SetFields :AddField :SetVisible :Toggle :SetPosition :Destroy
-    - Window:KeybindList({ Title, Position, OnlyActive, HideWhenEmpty, IncludeUI, Draggable }) -> handle
-        lists every Keybind / KeybindToggle, active ones highlighted.   :Add(name, key, stateFn, mode) :Remove(id) :SetVisible :Toggle :Destroy
-    - Window:Tour({ { Target = "flag", Tab = "Main", Title, Content }, ... }, { Position, Keys, OnDone }) -> handle
-        guided tour: jumps to + highlights each control, step card with progress.   :Next :Prev :Goto(i) :Stop :Finish :IsRunning
-    - Library:Watermark / KeybindList / Tour(...) = same on the newest window.  Palette: "Toggle watermark", "Toggle keybind list".
-
-    Stepper + Stat (v3.12)
-    - Section:CreateStepper({ Name, Min, Max, Step, Default, Suffix, Wrap, Flag, Callback }) -> [ - ] value [ + ], hold to repeat.  :Set :Get :Increment(n) :SetRange(min, max)
-    - Section:CreateStat({ Name, Get = fn, Interval, Format, Prefix, Suffix, Color, Delta }) -> live read-out row.  :Refresh :SetGet(fn) :Get
-    - Both get the usual extras (ShowIf / OnChange / Reset / Tooltip / Destroy / right-click menu); Stepper is saved in configs, Stat is not.
-
-    Flags, hotkeys, theme sharing, text size (v3.13)
-    - Library:GetControl(flag) / SetFlag(flag, value, silent) / ToggleFlag(flag) / SetFlags({ flag = value, ... }, silent) / GetFlags()
-        SetFlags is ONE undo step.  GetFlags returns a copy of every flag (same as Snapshot()).
-    - Library:Hotkey(Enum.KeyCode.X, fn, { Ctrl, Shift, Alt, Desc, AllowTyping }) -> { Disconnect, SetKey, SetEnabled }   global hotkey, not tied to a control
-      Library:ListHotkeys() -> { { Key = "Ctrl+X", Desc = "..." } }
-    - Library:ExportTheme(nameOrTheme?) -> "SPT1:{...}" string   Library:ImportTheme(str, name?) -> ok, name | err   (registers + saves the theme)
-      Window:ExportTheme() / Window:ImportTheme(str, name, apply = true)
-    - Window:SetTextScale(0.7 .. 1.4, remember) / Window:GetTextScale()   scale every text in the window (call after the UI is built; the THEME tab has a "Text size" switch)
-
-    More controls + helpers (v3.14)
-    - Section:CreateButtonRow({ Buttons = { { Name, Callback, Color, TextColor, Bold }, ... } })     several buttons in one row   :SetText(i, text)
-    - Section:CreateInputButton({ Name, Placeholder, Button, ButtonWidth, Default, MaxLength, ClearOnSubmit, Trim, Flag, Callback(text) })
-        text box + submit button (Enter also submits)   :Get() last submitted  :GetText() typed now  :Set(text, silent)  :Clear()  :Focus()  :SetButtonText(t)
-    - Section:CreateKeyValue({ Name, Value, Color, Copyable = true })     "name ... value" row, tap to copy   :Set(v) :Get() :SetColor(c)
-    - Section:CreateCodeBlock({ Name, Text, Height, Copy = true, MaxChars, AutoScroll })     monospace box + Copy button   :Set :Get :Append(line) :Clear :Copy
-    - Section:CreateCountdown({ Name, Target = os.time() + n | Seconds = n, Format = fn(sec), ExpiredText, WarnAt, Color, OnDone(obj) })
-        live time-left row (key expiry ...)   :SetTarget(epoch) :SetSeconds(n) :Add(n) :Get() :IsExpired()
-    - Section:CreateListBox({ Name, Items, Height, Multi, Search, AllowDeselect, Default, Empty, Flag, Callback(value) })
-        scrolling pick list (saved in configs when it has a Flag)   :Get :Set(value, silent) :Clear :Refresh(items, keep) :Add :Remove :GetItems :Count
-    - Section:CreateTable({ Name, Columns = { "A", { Name = "B", Width = 0.3 } }, Rows, Height, RowHeight, Zebra, OnRowClick(row, i) })
-        :SetRows :AddRow :RemoveRow(i) :SetCell(i, col, v) :Clear :Count :GetRows
-    - Section:CreateImage({ Image = id | "rbxassetid://.." | "lucide:name", Name, Height, Fit = "Fit"|"Crop"|"Stretch", Corner, Color })     :Set(image) :Get()
-    - Section:CreateStatusCard({ Name, Image, Badge, BadgeColor, Color, IconSize, Bars = { { Label, Value, Max = 100, Color, Text }, ... } })
-        one rounded card per item: picture tile + title + status pill + slim meters (max 4)   :Set({ Name, Image, Badge, BadgeColor, Empty, Bars }) :SetTitle :SetImage :SetBadge(text, color) :SetBar(i, value, text, color) :SetEmpty(bool, text)
-    - Window:RemoveTab(nameOrTab) / RenameTab(nameOrTab, newName) / ListTabs()      Tab:Remove() / Tab:Rename(name)
-    - Window:SetToggleKey(Enum.KeyCode | "F4") / GetToggleKey()      Window:Open() / Close() / IsOpen()
-    - Library:Copy(text, title)   clipboard + "Copied" card
-    - The new controls get the usual extras too (ShowIf / SetVisible / Lock / Tooltip / Destroy / right-click menu).
-
-    Mobile (v3.18)
-    - On-screen keyboard: the window slides up so the TextBox you are typing in stays visible (CreateWindow({ KeyboardAvoid = false }) = off).
-    - Bigger touch targets on phones: Keybind / KeybindToggle chips, Console "Clear", CodeBlock "Copy".
-    - Section:CreateDivider() now returns a control table ({ Frame = ... }) like every other control.
-
-    v2 notes
-    - Window is draggable by its header (mouse + touch), clamped to the screen, position kept on resize / rotation.
-      On phones it also stays clear of the status bar / notch (CreateWindow({ TopMargin = n }) overrides, 0 = edge).
-    - The floating "open" button (shown while the window is closed) is draggable too; a tap still opens the window.
-      It stays where you drop it (no jump / snap). CreateWindow({ OpenSnap = true }) brings back the glide to the nearest screen edge.
-    - Everything is event-driven: only TweenService + input events (the only per-frame work is the tiny
-      frame-rate governor below, and the drag-follow loop while a drag is in progress).
-    - Smooth-motion engine (v3.5): while the window opens / closes / maximizes / switches tab, the looping
-      backdrop and the halo rings are paused for the length of that motion, so the transition owns the frame
-      budget; they fade back in right after.  Open = slide + fade (the scale "pop" is opt-in:
-      Library.Anim.Pop = true, it re-rasterizes every stroke each frame and is the usual cause of stutter).
-    - Frame-rate governor: if the window itself runs choppy (many slow frames over 2 s) it steps down by itself:
-      lite backdrop -> no backdrop -> no halo.  Library.Perf.Adaptive = false turns it off;
-      Library.Perf.SlowFrame (default 1/18 s) / Library.Perf.SlowShare (default 0.25) tune the trigger;
-      Library.Perf.Warmup (default 3 s) = grace period after the window is created / shown.
-      CreateWindow({ OnDegrade = function(level) end }) tells you when it steps down.
+	Performance
+	- Phones (touch only, no keyboard / mouse) start in low power: no shimmer, halo, scale tween or tab slide.
+	  Touch laptops are treated as PC. Override: Library:SetQuality("low" | "high" | "auto") or Library.Perf.LowPower = true / false.
+	- Frame governor steps the visuals down by itself when the window stutters (Library.Perf.Adaptive = false disables it).
+	- Library.Anim.Speed scales every animation (1.25 = 25% slower).
 ]]
 
 local Players = game:GetService("Players")
@@ -284,9 +37,44 @@ local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 
-local Library = { Flags = {}, Objects = {}, Windows = {}, ConfigFolder = "SpectreUI/configs", Version = "3.15", _flagCbs = {} }
+local Library = { Flags = {}, Objects = {}, Windows = {}, ConfigFolder = "SpectreUI/configs", Version = "3.17", _flagCbs = {} }
 Library.DiskWrites = false   -- false = ไม่เขียนไฟล์ลง workspace เอง (themes.json / SpectreUI_cache); SaveConfig ที่ผู้ใช้กดเองยังทำงาน
 Library.__index = Library
+
+-- Shared ticker: ONE Heartbeat connection drives every polling control (live read-out, countdown, HUD list)
+-- instead of one connection each. Returns an object with :Disconnect(), so it drops in where Connect() was.
+-- The connection only exists while at least one job is registered. Phones (low power) poll at most every 0.25 s.
+do
+	local jobs, hb = {}, nil
+	local function step(dt)
+		local dead = false
+		for i = 1, #jobs do
+			local j = jobs[i]
+			if not j.dead then
+				j.acc += dt
+				if j.acc >= j.every then
+					j.acc = 0
+					pcall(j.fn, j.every)
+				end
+			end
+			if j.dead then dead = true end
+		end
+		if dead then
+			for i = #jobs, 1, -1 do if jobs[i].dead then table.remove(jobs, i) end end
+			if #jobs == 0 and hb then hb:Disconnect() hb = nil end
+		end
+	end
+	function Library._tick(every, fn)
+		local P = Library.Perf
+		every = tonumber(every) or 0.5
+		if P and P.LowPower then every = math.max(every, 0.25) end
+		local job = { every = every, acc = 0, fn = fn, dead = false, Connected = true }
+		function job:Disconnect() self.dead = true self.Connected = false end
+		jobs[#jobs + 1] = job
+		if not hb then hb = RunService.Heartbeat:Connect(step) end
+		return job
+	end
+end
 
 -- Stability: parent a ScreenGui safely. gethui -> CoreGui -> PlayerGui, and never wait forever for PlayerGui.
 function Library._mount(gui)
@@ -311,7 +99,7 @@ do
 	local lp0 = Players.LocalPlayer
 	local pg0 = lp0 and lp0:FindFirstChildOfClass("PlayerGui")
 	if pg0 then table.insert(roots, pg0) end
-	local stale = { SpectreUI = true, SpectreUI_Notify = true, SpectreUI_Host = true, SpectreUI_HUD = true, SpectreUI_Splash = true }
+	local stale = { SpectreUI = true, SpectreUI_Notify = true, SpectreUI_Host = true, SpectreUI_HUD = true, SpectreUI_Splash = true, SpectreUI_Tap = true }
 	for _, r in ipairs(roots) do
 		pcall(function()
 			for _, c in ipairs(r:GetChildren()) do
@@ -539,15 +327,42 @@ function Library._topSafe(cfg, vp)
 	if cfg and type(cfg.TopMargin) == "number" then
 		t = math.max(cfg.TopMargin, 0)
 	elseif UserInputService.TouchEnabled then
-		t = 32   -- floor when the engine reports nothing
-		local gs = game:GetService("GuiService")
-		pcall(function() t = math.max(t, gs:GetGuiInset().Y) end)
-		pcall(function() t = math.max(t, gs.TopbarInset.Max.Y) end)   -- status bar + notch + Roblox top bar (newer clients)
+		-- no device API: a fixed share of the screen, enough to clear the status bar / notch / Roblox top bar
+		local ref = (vp and vp.Y > 0) and math.min(vp.X, vp.Y) or 390
+		t = math.clamp(math.floor(ref * 0.17 + 0.5), 62, 84)
 	else
 		return 0
 	end
 	if vp and vp.Y > 0 then t = math.min(t, vp.Y * 0.25) end
 	return math.floor(t + 0.5)
+end
+
+-- Left / right / bottom room kept free on TOUCH devices (landscape notch / camera cut-out, rounded corners, home bar),
+-- so the window never sits flush against the physical screen edge. Returns nil on PC (old 6 / 8 px margins stay).
+-- CreateWindow({ SideMargin = n }) overrides it (0 = allow the very edge).
+function Library._sideSafe(cfg, vp)
+	if cfg and type(cfg.SideMargin) == "number" then
+		local m = math.max(cfg.SideMargin, 0)
+		return { L = m, R = m, B = m }
+	end
+	return Library._edge(vp)
+end
+
+-- ONE edge rule for every UI (window, open button, notifications, dialogs, HUD). It does not ask the device for
+-- insets (phones report them unreliably): the gap is simply proportional to the screen, so nothing is ever flush
+-- against the edge. Touch devices only; PC returns nil and keeps its old margins.
+-- { L, R, B } = left / right / bottom gap in px.   Library.EdgeScale = 1 makes every gap bigger / smaller.
+Library.EdgeScale = 1
+Library.MaxMargin = nil   -- gap around a MAXIMIZED window in px (nil = 8 on phones, 12 on PC; 0 = touch the screen edges)
+function Library._edge(vp)
+	if not UserInputService.TouchEnabled then return nil end
+	if not vp or vp.X <= 0 or vp.Y <= 0 then
+		local cam = workspace.CurrentCamera
+		vp = cam and cam.ViewportSize or Vector2.new(844, 390)
+	end
+	local k = (type(Library.EdgeScale) == "number" and Library.EdgeScale or 1)
+	local sd = math.clamp(math.floor(math.min(vp.X, vp.Y) * 0.11 + 0.5), 30, 56) * k
+	return { L = math.floor(sd), R = math.floor(sd), B = math.floor(sd * 0.8) }
 end
 
 -- Popups (dropdown / colour picker) live in win.Gui but are placed from the AbsolutePosition of the control that opened
@@ -722,7 +537,7 @@ local AY = Enum.AutomaticSize.Y
 local AX = Enum.AutomaticSize.X
 local ANONE = Enum.AutomaticSize.None
 local LEFT = Enum.TextXAlignment.Left
-local HEADER_H, FOOT_H = 64, 54
+local HEADER_H, FOOT_H = UserInputService.TouchEnabled and 62 or 72, 54
 
 local QUINT, QUAD, BACK = Enum.EasingStyle.Quint, Enum.EasingStyle.Quad, Enum.EasingStyle.Back
 local SINE, LINEAR = Enum.EasingStyle.Sine, Enum.EasingStyle.Linear
@@ -733,7 +548,7 @@ local OUT, IN = Enum.EasingDirection.Out, Enum.EasingDirection.In
 -- re-rasterize every frame while the window moves, (3) glow frames redrawn on drag.
 -- On a phone (or when forced) the library takes the cheap path: no shimmer, no halo
 -- rings, no drag-time stroke animation. Everything still renders, just static.
-local IS_MOBILE = UserInputService.TouchEnabled
+local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and not UserInputService.MouseEnabled
 
 -- Library.Anim.Speed: global duration multiplier (1.25 = 25% slower / softer, 0.8 = snappier)
 -- Library.Anim.Intro = false (or CreateWindow({ Intro = false })) skips the launch animation
@@ -885,16 +700,28 @@ local function corner(r) return new("UICorner", { CornerRadius = UDim.new(0, r <
 ------------------------------------------------------------------ icon packs (Footagesus/Icons Main-v2)
 -- Lazy: the pack module (lucide / solar / craft / geist / sfsymbols / gravity) is only downloaded the
 -- first time a named icon is used. If the download fails everything falls back to the old text glyphs.
-Library.IconLib = { Url = "https://raw.githubusercontent.com/Footagesus/Icons/main/Main-v2.lua", Default = "lucide", Timeout = 8 }
+Library.IconLib = {
+	Url = "https://raw.githubusercontent.com/Footagesus/Icons/main/Main-v2.lua", Default = "lucide", Timeout = 10,
+	Mirrors = { "https://cdn.jsdelivr.net/gh/Footagesus/Icons@main/Main-v2.lua" },
+}
+Library._iconReady = {}   -- callbacks run once the pack arrives (late arrivals upgrade glyph placeholders to real icons)
 
 local iconState = { started = false, done = false, timedOut = false }
 local function iconLoad()
 	if iconState.started then return end
 	iconState.started = true
 	task.spawn(function()
-		local ok, mod = pcall(function()
-			return loadstring(game:HttpGet(Library.IconLib.Url))()
-		end)
+		local urls = { Library.IconLib.Url }
+		for _, u in ipairs(Library.IconLib.Mirrors or {}) do table.insert(urls, u) end
+		local ok, mod = false, nil
+		for attempt = 1, 2 do
+			for _, u in ipairs(urls) do
+				ok, mod = pcall(function() return loadstring(game:HttpGet(u))() end)
+				if ok and type(mod) == "table" and mod.Icon then break end
+			end
+			if ok and type(mod) == "table" and mod.Icon then break end
+			task.wait(0.6)
+		end
 		iconState.done = true
 		if ok and type(mod) == "table" and mod.Icon then
 			-- still installed when it arrives after the wait gave up, so icons built later are real icons
@@ -902,6 +729,8 @@ local function iconLoad()
 				Library._iconMod = mod
 				if mod.SetIconsType then pcall(mod.SetIconsType, Library.IconLib.Default or "lucide") end
 				Library._iconCache = {}   -- names cached as "missing" while the pack was still downloading
+				for _, fn in ipairs(Library._iconReady) do task.spawn(fn) end
+				Library._iconReady = {}
 			end
 		else
 			warn("[SpectreUI] icon library could not be loaded: " .. tostring(mod))
@@ -936,6 +765,9 @@ function Library:PreloadIcons(async)
 	if async then iconLoad() return true end   -- PreloadIcons(true): start now, do not wait
 	return iconModule() ~= nil
 end
+
+-- start the pack download right away so icons are ready by the time the first window is built
+task.defer(function() if not Library._iconUserSet then iconLoad() end end)
 
 -- Library:AddIcons("mypack", { home = 123456, ... })  -> then Icon = "mypack:home"
 function Library:AddIcons(pack, data)
@@ -1076,7 +908,7 @@ end
 
 local function v2(p) return Vector2.new(p.X, p.Y) end
 
-local function rowH() return UserInputService.TouchEnabled and 36 or 30 end
+local function rowH() return UserInputService.TouchEnabled and 38 or 34 end
 
 -- hover effects only make sense when the last input was NOT a touch
 local function usingTouch()
@@ -1179,14 +1011,40 @@ local function ripple(btn, pos)
 		local oldest = table.remove(live, 1)
 		if oldest.Parent then oldest:Destroy() end
 	end
-	local ap, sz = btn.AbsolutePosition, btn.AbsoluteSize
-	local base = math.max(sz.X, sz.Y)
+	-- the ripple lives in its own overlay that has the button's corner radius and clips to it. ClipsDescendants on the
+	-- button alone only clips to a plain rectangle, so the white circle used to stick out of the rounded corners (and
+	-- looked like a wrong-shaped background). Offsets are divided by every UIScale above the button (window scale,
+	-- press-spin scale), otherwise the circle starts away from the finger when the window is scaled.
+	local layer = btn:FindFirstChild("RippleLayer")
+	if not layer then
+		layer = new("Frame", {
+			Name = "RippleLayer", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0,
+			ClipsDescendants = true, Active = false, ZIndex = 0, Parent = btn,
+		})
+	end
+	local bc = btn:FindFirstChildOfClass("UICorner")
+	local lc = layer:FindFirstChildOfClass("UICorner")
+	if bc then
+		if not lc then lc = Instance.new("UICorner") lc.Parent = layer end
+		lc.CornerRadius = bc.CornerRadius
+	elseif lc then
+		lc:Destroy()
+	end
+	local sc = 1
+	local node = btn
+	while node and node ~= game do
+		local u = node:FindFirstChildOfClass("UIScale")
+		if u and u.Scale > 0.01 then sc *= u.Scale end
+		node = node.Parent
+	end
+	local ap, sz = layer.AbsolutePosition, layer.AbsoluteSize
+	local base = math.max(sz.X, sz.Y) / sc
 	local r = new("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromOffset(pos.X - ap.X, pos.Y - ap.Y),
+		Position = UDim2.fromOffset(math.clamp((pos.X - ap.X) / sc, 0, sz.X / sc), math.clamp((pos.Y - ap.Y) / sc, 0, sz.Y / sc)),
 		Size = UDim2.fromOffset(base * 0.5, base * 0.5),
 		BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.85,
-		BorderSizePixel = 0, ZIndex = 0, Parent = btn,
+		BorderSizePixel = 0, ZIndex = 0, Active = false, Parent = layer,
 	}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 	table.insert(live, r)
 	-- cleanup follows the tween itself: the old fixed task.delay(0.55) ignored Library.Anim.Speed, so on a slowed UI
@@ -1251,13 +1109,23 @@ end
 
 -- keep an element (centered by `c`, half-size `half`) fully inside the viewport `vp`
 -- `top` (optional) = extra room kept free above the element (phone status bar / notch), see Library._topSafe
-local function clampCenter(vp, half, c, top)
+local function clampCenter(vp, half, c, top, side, free)
 	local m = 6
+	if free then
+		-- phone, window dragged by the user: it may go anywhere (left / right / up / down) as long as a grab strip stays
+		-- on screen. Keeps >= 140 px of its width and the header strip visible, top edge never above the screen.
+		local keepX = math.min(half.X, 140)
+		local loX, hiX = keepX - half.X, vp.X + half.X - keepX
+		local loY, hiY = half.Y + m, vp.Y + half.Y - math.min(half.Y * 2, 72)
+		return Vector2.new(math.clamp(c.X, loX, hiX), math.clamp(c.Y, loY, math.max(loY, hiY)))
+	end
+	local mL, mR, mB = m, m, m
+	if side then mL, mR, mB = side.L, side.R, side.B end   -- phone: real left / right / bottom safe margins
 	local tm = math.max(m, top or 0)
-	local loX, hiX = half.X + m, vp.X - half.X - m
-	local loY, hiY = half.Y + tm, vp.Y - half.Y - m
-	local x = (loX > hiX) and vp.X / 2 or math.clamp(c.X, loX, hiX)
-	local y = (loY > hiY) and (tm + vp.Y - m) / 2 or math.clamp(c.Y, loY, hiY)
+	local loX, hiX = half.X + mL, vp.X - half.X - mR
+	local loY, hiY = half.Y + tm, vp.Y - half.Y - mB
+	local x = (loX > hiX) and (mL + vp.X - mR) / 2 or math.clamp(c.X, loX, hiX)
+	local y = (loY > hiY) and (tm + vp.Y - mB) / 2 or math.clamp(c.Y, loY, hiY)
 	return Vector2.new(x, y)
 end
 
@@ -1357,6 +1225,7 @@ local function makeDraggable(gui, handle, target, state)
 		if state.Half then halfSize = Vector2.new(state.Half, state.Half) end -- real size, ignores UIScale squish / pop tween
 		local thr = state.Threshold or 0
 		local topM = state.Top and state.Top() or 0 -- room kept free at the top (status bar / notch), read once per drag
+		local sideM = state.Side and state.Side() or nil -- left / right / bottom safe margins (phones)
 		stopFollow()
 		shown, lastPos = startC, nil
 		state.Center = startC -- never keep a stale center from the previous drag / an old viewport size
@@ -1379,7 +1248,7 @@ local function makeDraggable(gui, handle, target, state)
 				end
 				-- CatchUp: keep the full offset; the eased follow glides the last `thr` pixels instead of leaving the element behind the pointer
 			end
-			local c = clampCenter(vpSize, halfSize, startC + d, topM)
+			local c = clampCenter(vpSize, halfSize, startC + d, topM, sideM, state.Free)
 			if state.Clamp then c = state.Clamp(c, vpSize) end -- extra live limits (e.g. keep clear of the Roblox menu)
 			if c ~= state.Center then
 				state.Center = c
@@ -1438,9 +1307,10 @@ local function makeResizable(win, handle, mx, my)
 		local startSz = Vector2.new(ms.X.Scale * vp0.X + ms.X.Offset, ms.Y.Scale * vp0.Y + ms.Y.Offset)
 		local startC = Vector2.new(mp.X.Scale * vp0.X + mp.X.Offset, mp.Y.Scale * vp0.Y + mp.Y.Offset)
 		local tl = startC - startSz / 2
-		tl = Vector2.new(math.max(tl.X, 6), math.max(tl.Y, math.max(6, win:_Top()))) -- same margins clampCenter keeps
+		tl = Vector2.new(math.max(tl.X, 6), math.max(tl.Y, 6)) -- same margins clampCenter keeps
 		if win.Maximized then win:_SetMaxFlag(false) end
 		win.Cfg.Width, win.Cfg.Height = math.floor(startSz.X + 0.5), math.floor(startSz.Y + 0.5)
+		win._userSized = true
 
 		moveC = UserInputService.InputChanged:Connect(function(m)
 			if touch then
@@ -1451,13 +1321,14 @@ local function makeResizable(win, handle, mx, my)
 			local vp = win.Gui.AbsoluteSize
 			if vp.X <= 0 or vp.Y <= 0 then return end
 			local d = v2(m.Position) - startPt
-			local minW = math.min(win.Cfg.MinWidth or 700, vp.X - 16)
-			local topPad = math.max(8, win:_Top())
-			local minH = math.min(win.Cfg.MinHeight or 280, vp.Y - topPad - 8)
+			local sL, sR, sB = 8, 8, 8
+			local minW = math.min(win.Cfg.MinWidth or (UserInputService.TouchEnabled and 500 or 780), vp.X - sL - sR)
+			local topPad = 8
+			local minH = math.min(win.Cfg.MinHeight or 280, vp.Y - topPad - sB)
 			-- max = what _Fit allows (screen - 16) AND what fits right of / below the top-left corner,
 			-- so _Fit never has to shrink / shift the window behind the finger
-			local maxW = math.max(minW, math.min(vp.X - 16, vp.X - 8 - tl.X))
-			local maxH = math.max(minH, math.min(vp.Y - topPad - 8, vp.Y - 8 - tl.Y))
+			local maxW = math.max(minW, math.min(vp.X - sL - sR, vp.X - sR - tl.X))
+			local maxH = math.max(minH, math.min(vp.Y - topPad - sB, vp.Y - sB - tl.Y))
 			local w = math.clamp(startSz.X + d.X * mx, minW, maxW)
 			local h = math.clamp(startSz.Y + d.Y * my, minH, maxH)
 			win.Cfg.Width, win.Cfg.Height = math.floor(w + 0.5), math.floor(h + 0.5)
@@ -1965,7 +1836,7 @@ function Library:CreateWindow(cfg)
 
 	-- header cluster is bounded and clipped so a long brand / subtitle can never
 	-- slide under the close button (that was a real overlap on narrow screens)
-	local closeW = UserInputService.TouchEnabled and 40 or 34
+	local closeW = UserInputService.TouchEnabled and 40 or 38
 	local canResize = cfg.Resizable ~= false
 	local nBtns = canResize and 3 or 2
 	local btnArea = closeW * nBtns + 4 * (nBtns - 1) -- close + hide (+ maximize) buttons
@@ -1978,7 +1849,7 @@ function Library:CreateWindow(cfg)
 	win.Left = left
 	if cfg.Logo then
 		-- header logo: tweak with cfg.LogoSize (number or {w,h}), cfg.LogoColor (Color3), cfg.LogoCorner (px, 0 = square)
-		local ls = cfg.LogoSize or 26
+		local ls = cfg.LogoSize or 34
 		local lw, lh
 		if type(ls) == "table" then lw, lh = ls[1] or ls.X or 26, ls[2] or ls.Y or 26
 		elseif typeof(ls) == "Vector2" then lw, lh = ls.X, ls.Y
@@ -1994,20 +1865,53 @@ function Library:CreateWindow(cfg)
 		win.LogoImage = hlogo
 	else
 		new("Frame", {
-			LayoutOrder = 1, Size = UDim2.fromOffset(34, 34), BackgroundColor3 = Color3.new(1, 1, 1),
+			LayoutOrder = 1, Size = UDim2.fromOffset(42, 42), BackgroundColor3 = Color3.new(1, 1, 1),
 			BorderSizePixel = 0, Parent = left,
 		}, {
 			corner(10), gradient(T.Accent, T.Accent2, 45), stroke(T.Border, 1, 0.3),
 			Library._oa(new("TextLabel", {
 				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = brand:sub(1, 2),
-				Font = Enum.Font.GothamBlack, TextSize = 15, TextColor3 = Library.OnAccent(T),
+				Font = Enum.Font.GothamBlack, TextSize = 18, TextColor3 = Library.OnAccent(T),
 			})),
 		})
 	end
 	win.BrandLabel = new("TextLabel", {
 		LayoutOrder = 2, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, BackgroundTransparency = 1,
-		Text = brand, Font = T.FontBold, TextSize = 18, TextColor3 = T.Text, Parent = left,
+		Text = brand, Font = T.FontBold, TextSize = 21, TextColor3 = T.Text, Parent = left,
 	})
+
+	-- animated brand: soft fade + scale-in whenever the window opens, then a light sweep that
+	-- glides across the letters forever. One looping tween (stored in win._sheen, so the existing
+	-- _FXPause / _FXResume / Destroy already pause and clean it up).
+	do
+		local lbl = win.BrandLabel
+		local bscale = new("UIScale", { Scale = 1, Parent = lbl })
+		do   -- one tiny gradient tween on a single label: cheap enough to run on mobile too
+			local base, hi = Color3.fromRGB(150, 150, 170), Color3.new(1, 1, 1)
+			local grad = new("UIGradient", {
+				Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, base), ColorSequenceKeypoint.new(0.3, base),
+					ColorSequenceKeypoint.new(0.5, hi),
+					ColorSequenceKeypoint.new(0.7, base), ColorSequenceKeypoint.new(1, base),
+				}),
+				Offset = Vector2.new(-1, 0), Parent = lbl,
+			})
+			local sw = TweenService:Create(grad, TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, false), { Offset = Vector2.new(1, 0) })
+			win._sheen = sw
+			sw:Play()
+		end
+		function win:_BrandIntro()
+			if self._destroyed then return end
+			lbl.TextTransparency = 1
+			bscale.Scale = 0.88
+			nextFrame(function()
+				if win._destroyed then return end
+				tween(lbl, 0.5, { TextTransparency = 0 })
+				tween(bscale, 0.6, { Scale = 1 }, Enum.EasingStyle.Back)
+			end)
+		end
+		task.delay(0.25, function() if not win._destroyed then win:_BrandIntro() end end)
+	end
 	if sub then
 		win.SubSep = new("Frame", {   -- the pill (kept under the old name so compact mode still hides it)
 			LayoutOrder = 3, Size = UDim2.fromOffset(0, 24), AutomaticSize = AX, BackgroundColor3 = T.Accent,
@@ -2015,7 +1919,7 @@ function Library:CreateWindow(cfg)
 		}, { corner(12), stroke(T.Accent, 1, 0.5), padding(10, 0, 10, 0) })
 		win.SubLabel = new("TextLabel", {
 			Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, BackgroundTransparency = 1,
-			Text = sub, Font = T.Font, TextSize = 12, TextColor3 = T.Text, Parent = win.SubSep,
+			Text = sub, Font = T.Font, TextSize = 13, TextColor3 = T.Text, Parent = win.SubSep,
 		})
 	end
 
@@ -2083,7 +1987,7 @@ function Library:CreateWindow(cfg)
 			Text = "", AutoButtonColor = false, Parent = hcard,
 		}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 		local bar = new("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(12, 2),
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(15, 2),
 			BackgroundColor3 = T.SubText, BorderSizePixel = 0, Parent = hideB,
 		}, { corner(1) })
 		hideB.MouseEnter:Connect(function()
@@ -2111,23 +2015,46 @@ function Library:CreateWindow(cfg)
 			Size = UDim2.fromOffset(closeW, closeW), BackgroundColor3 = T.Control, BackgroundTransparency = win._rest,
 			Text = "", AutoButtonColor = false, Parent = hcard,
 		}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
-		local function sq(size)
-			return new("Frame", {
-				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(size, size),
-				BackgroundTransparency = 1, Parent = mxb,
-			}, { stroke(T.SubText, 1.6, 0), corner(2) })
+		-- icon drawn from 8 small rounded bars (no asset needed): four corner brackets.
+		--   maximize = brackets on the outside pointing inward (expand)   |   restore = brackets inside pointing outward (compress)
+		-- the bars glide between the two shapes when the window is maximized / restored.
+		local IT, IARM = 2, 5          -- bar thickness, arm length
+		local bars = {}
+		for _, cn in ipairs({ { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } }) do
+			for _, horiz in ipairs({ true, false }) do
+				bars[#bars + 1] = {
+					sx = cn[1], sy = cn[2], h = horiz,
+					f = new("Frame", {
+						AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = T.SubText, BorderSizePixel = 0, ZIndex = 3, Parent = mxb,
+					}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) }),
+				}
+			end
 		end
-		local front, back = sq(12), sq(10)
-		back.Visible = false
 		local function tint(c)
-			for _, f in ipairs({ front, back }) do f:FindFirstChildOfClass("UIStroke").Color = c end
+			for _, b in ipairs(bars) do b.f.BackgroundColor3 = c end
 		end
-		win._setMaxIcon = function(v)
-			back.Visible = v
-			front.Size = UDim2.fromOffset(v and 10 or 12, v and 10 or 12)
-			front.Position = UDim2.new(0.5, v and -2 or 0, 0.5, v and 2 or 0)
-			back.Position = UDim2.new(0.5, 2, 0.5, -2)
+		local function drawIcon(restore, instant)
+			local vd = restore and 2 or 7                   -- distance of the bracket corner from the centre
+			local dir = restore and 1 or -1                 -- arms point outward (restore) / inward (maximize)
+			for _, b in ipairs(bars) do
+				local vx, vy = b.sx * vd, b.sy * vd
+				local len = IARM + IT / 2
+				local cx, cy, w, h = vx, vy, IT, IT
+				if b.h then
+					cx, w = vx + b.sx * dir * (IARM - IT / 2) / 2, len
+				else
+					cy, h = vy + b.sy * dir * (IARM - IT / 2) / 2, len
+				end
+				local pos, size = UDim2.new(0.5, cx, 0.5, cy), UDim2.fromOffset(w, h)
+				if instant then
+					b.f.Position, b.f.Size = pos, size
+				else
+					tween(b.f, 0.2, { Position = pos, Size = size })
+				end
+			end
 		end
+		drawIcon(false, true)
+		win._setMaxIcon = function(v) drawIcon(v and true or false) end
 		mxb.MouseEnter:Connect(function()
 			if not usingTouch() then
 				tint(T.Accent)
@@ -2164,6 +2091,24 @@ function Library:CreateWindow(cfg)
 			end
 		end)
 	end
+	-- hold the title bar (~0.7 s, without moving) = roll the window up to just its header / unroll it again
+	do
+		local holdTok = 0
+		dragZone.InputBegan:Connect(function(i)
+			if not isPress(i) then return end
+			holdTok += 1
+			local tok = holdTok
+			task.delay(0.7, function()
+				if tok ~= holdTok or win._destroyed or not win.Visible then return end
+				if win._drag.Moved or win.Maximized or win._resizing then return end
+				win._drag.Stop()
+				win:SetShaded(not win._shaded)
+			end)
+		end)
+		dragZone.InputEnded:Connect(function(i)
+			if isPress(i) then holdTok += 1 end
+		end)
+	end
 	win._drag.OnStart = function()
 		win:CloseDropdowns()
 		-- ~25 looping tweens redraw the window every frame; freeze them while it is being moved
@@ -2179,14 +2124,17 @@ function Library:CreateWindow(cfg)
 		if not lowPower() then mainStroke.Color, mainStroke.Transparency = T.Border, 0.1 end
 	end
 	win._drag.Top = function() return win:_Top() end   -- never drag the header under the phone status bar / notch
+	win._drag.Side = function() return win:_Sides() end
+	win._drag.Free = UserInputService.TouchEnabled   -- phone: drag the window anywhere (left / right / up / down)
 	makeDraggable(gui, dragZone, main, win._drag)
 
 	---------------------------------------------------------- body / sidebar
 	local body = new("Frame", {
-		Position = UDim2.fromOffset(0, HEADER_H), Size = UDim2.new(1, 0, 1, -HEADER_H),
+		Name = "Body", Position = UDim2.fromOffset(0, HEADER_H), Size = UDim2.new(1, 0, 1, -HEADER_H),
 		BackgroundTransparency = 1, Parent = main,
 	})
-	local sidebar = new("Frame", { Size = UDim2.new(0, 164, 1, 0), BackgroundTransparency = 1, Parent = body })
+	win.Body = body
+	local sidebar = new("Frame", { Size = UDim2.new(0, UserInputService.TouchEnabled and 156 or 192, 1, 0), BackgroundTransparency = 1, Parent = body })
 	win.SidePanel = new("Frame", {
 		Name = "SidePanel", Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -19, 1, -10),
 		BackgroundColor3 = T.Control, BackgroundTransparency = glass(0.2), BorderSizePixel = 0, Parent = sidebar,
@@ -2196,7 +2144,7 @@ function Library:CreateWindow(cfg)
 		Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -19, 1, -FOOT_H - 10), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
 		CanvasSize = UDim2.new(), AutomaticCanvasSize = AY, ScrollingDirection = Enum.ScrollingDirection.Y,
 		ElasticBehavior = Enum.ElasticBehavior.Never, Parent = sidebar,
-	}, { list(UserInputService.TouchEnabled and 5 or 6), padding(8, 10, 8, 6) })
+	}, { list(UserInputService.TouchEnabled and 6 or 7), padding(8, 10, 8, 6) })
 
 	local footer = new("Frame", {
 		Position = UDim2.new(0, 10, 1, -FOOT_H - 10), Size = UDim2.new(1, -19, 0, FOOT_H), BackgroundTransparency = 1, Parent = sidebar,
@@ -2233,11 +2181,11 @@ function Library:CreateWindow(cfg)
 	}, { gradient(T.Accent, T.Accent2, 0) })
 	win.FooterSub = new("TextLabel", {
 		Position = UDim2.fromOffset(42, 28), Size = UDim2.new(1, -58, 0, 16), BackgroundTransparency = 1, Text = "@" .. userName,
-		Font = T.Font, TextSize = 12, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer,
+		Font = T.Font, TextSize = 13, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer,
 	})
 	win.FooterArrow = new("TextLabel", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -2, 0, 27), Size = UDim2.fromOffset(12, 12), BackgroundTransparency = 1,
-		Text = "\226\150\178", Font = T.FontBold, TextSize = 12, TextColor3 = T.SubText, Parent = footer,
+		Text = "\226\150\178", Font = T.FontBold, TextSize = 13, TextColor3 = T.SubText, Parent = footer,
 	})
 	win.Footer = footer
 	win:_BuildProfile()
@@ -2402,7 +2350,7 @@ function Library:CreateWindow(cfg)
 	if not UserInputService.TouchEnabled then
 		local chip = new("TextLabel", {
 			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), Size = UDim2.fromOffset(48, 22),
-			BackgroundColor3 = T.Panel, BackgroundTransparency = 0.2, Text = "Ctrl K", Font = T.FontBold, TextSize = 13,
+			BackgroundColor3 = T.Panel, BackgroundTransparency = 0.2, Text = "Ctrl K", Font = T.FontBold, TextSize = 14,
 			TextColor3 = T.SubText, Parent = searchBar,
 		}, { corner(11), stroke(T.Border, 1, 0.5) })
 		chip.Visible = false
@@ -2525,13 +2473,13 @@ function Library:CreateWindow(cfg)
 			end
 			new("TextLabel", {
 				Position = UDim2.fromOffset(12, 26), Size = UDim2.new(1, -110, 0, 16), BackgroundTransparency = 1, RichText = true,
-				Text = where, Font = T2.Font, TextSize = 13, TextColor3 = T2.SubText, TextXAlignment = LEFT,
+				Text = where, Font = T2.Font, TextSize = 14, TextColor3 = T2.SubText, TextXAlignment = LEFT,
 				TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 42, Parent = row,
 			})
 			new("TextLabel", {
 				AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(0, 22),
 				AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T2.AccentSoft, BorderSizePixel = 0,
-				Text = " " .. (e.GoTab and "TAB" or tostring(e.Kind):upper()) .. " ", Font = T2.FontBold, TextSize = 12,
+				Text = " " .. (e.GoTab and "TAB" or tostring(e.Kind):upper()) .. " ", Font = T2.FontBold, TextSize = 13,
 				TextColor3 = T2.Text, ZIndex = 42, Parent = row,
 			}, { corner(7) })
 			row.MouseEnter:Connect(function() tween(row, 0.12, { BackgroundColor3 = T2.Lift or T2.Control, BackgroundTransparency = 0 }) end)
@@ -2601,12 +2549,15 @@ function Library:CreateWindow(cfg)
 			Active = true, ZIndex = 30, Parent = main,
 		})
 		local ticks = {}
-		for _, d in ipairs({ 6, 11, 16 }) do
-			ticks[#ticks + 1] = new("Frame", {
-				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -(d / 2 + 4), 1, -(d / 2 + 4)),
-				Size = UDim2.fromOffset(d * 1.25, 2), Rotation = -45, BackgroundColor3 = T.SubText,
-				BackgroundTransparency = 0.35, BorderSizePixel = 0, ZIndex = 31, Parent = grip,
-			}, { corner(1) })
+		-- six dots in a triangle (bottom-right corner), a modern "grab here" mark instead of three plain lines
+		for ix = 0, 2 do
+			for iy = 0, 2 - ix do
+				ticks[#ticks + 1] = new("Frame", {
+					AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -(7 + ix * 5), 1, -(7 + iy * 5)),
+					Size = UDim2.fromOffset(3, 3), BackgroundColor3 = T.SubText,
+					BackgroundTransparency = 0.35, BorderSizePixel = 0, ZIndex = 31, Parent = grip,
+				}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+			end
 		end
 		local function tintTicks(c, tr)
 			for _, t in ipairs(ticks) do tween(t, 0.14, { BackgroundColor3 = c, BackgroundTransparency = tr }) end
@@ -2675,7 +2626,7 @@ function Library:CreateWindow(cfg)
 		tip = new("TextLabel", {
 			Name = "Tip", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(1, 10, 0.5, 0), Size = UDim2.fromOffset(0, 28),
 			AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.Panel, BackgroundTransparency = 0.05,
-			Text = "Open " .. brand .. "  [" .. toggleKey.Name .. "]", Font = T.FontBold, TextSize = 13,
+			Text = "Open " .. brand .. "  [" .. toggleKey.Name .. "]", Font = T.FontBold, TextSize = 14,
 			TextColor3 = T.Text, Visible = false, ZIndex = 3, Parent = ob,
 		}, { corner(8), stroke(T.Border, 1, 0.2), padding(10, 0, 10, 0) })
 	end
@@ -2800,6 +2751,99 @@ function Library:CreateWindow(cfg)
 		win._blurred = false
 		if win.Visible and not win._moving and not win._drag.Dragging then win:_FXResume() end
 	end))
+	---------------------------------------------------------- UI extras: tap ripple + back-to-top button
+	-- 1) every tap / click inside the window sends out a soft accent ring (one frame + one stroke, destroyed when done)
+	-- 2) a round "back to top" button fades in once the page is scrolled down, and glides both columns back up
+	do
+		-- text guard: fit every label after the build, and again whenever the window changes size
+		table.insert(win.Conns, main:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() win:_QueueFit(0.35) end))
+		for _, t in ipairs({ 1.5, 4, 8 }) do
+			task.delay(t, function() if not win._destroyed then win:_QueueFit(0.1) end end)
+		end
+		local rings = 0
+		-- the rings live in their own ScreenGui with the DEFAULT inset: InputObject.Position is expressed in exactly that
+		-- space (that is what every normal GuiButton hit-test uses), so a ring lands under the finger / cursor on phone and PC
+		local tapGui = new("ScreenGui", {
+			Name = "SpectreUI_Tap", ResetOnSpawn = false, DisplayOrder = 1000, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		})
+		Library._mount(tapGui)
+		win.TapGui = tapGui
+		table.insert(win.Conns, UserInputService.InputBegan:Connect(function(i)
+			local ut = i.UserInputType
+			if ut ~= Enum.UserInputType.MouseButton1 and ut ~= Enum.UserInputType.Touch then return end
+			if win._destroyed or not win.Visible or not main.Visible or not gui.Enabled or rings >= 5 or (win._qual or 0) >= 3 then return end
+			local p = Vector2.new(i.Position.X, i.Position.Y)
+			-- is the tap inside the window? (tap space -> window gui space)
+			local q = p + (tapGui.AbsolutePosition - gui.AbsolutePosition)
+			local mp, ms = main.AbsolutePosition, main.AbsoluteSize
+			if q.X < mp.X or q.Y < mp.Y or q.X > mp.X + ms.X or q.Y > mp.Y + ms.Y then return end
+			rings = rings + 1
+			local ring = new("Frame", {
+				Name = "TapRing", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(p.X, p.Y), Size = UDim2.fromOffset(10, 10),
+				BackgroundTransparency = 1, BorderSizePixel = 0, Active = false, ZIndex = 900, Parent = tapGui,
+			}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), new("UIStroke", { Color = (win.Theme or T).Accent, Thickness = 2, Transparency = 0.2 }) })
+			local info = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			TweenService:Create(ring:FindFirstChildOfClass("UIStroke"), info, { Transparency = 1 }):Play()
+			local tw = TweenService:Create(ring, info, { Size = UDim2.fromOffset(72, 72) })
+			tw.Completed:Connect(function() rings = rings - 1; ring:Destroy() end)
+			tw:Play()
+		end))
+
+		local topBtn = new("TextButton", {
+			Name = "ToTop", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -20, 1, -2), Size = UDim2.fromOffset(38, 38),
+			BackgroundColor3 = T.Accent, BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Visible = false, ZIndex = 24,
+			Parent = win.Pages,
+		}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), stroke(T.Border, 1, 0.3) })
+		local legs = {}
+		for _, d in ipairs({ { -4, -45 }, { 4, 45 } }) do
+			table.insert(legs, new("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, d[1], 0.5, 0), Size = UDim2.fromOffset(12, 3), Rotation = d[2],
+				BackgroundColor3 = Library.OnAccent(T), BorderSizePixel = 0, Active = false, ZIndex = 25, Parent = topBtn,
+			}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }) }))
+		end
+		local shown = false
+		local function setShown(v)
+			shown = v
+			local info = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			if v then
+				topBtn.Position = UDim2.new(1, -20, 1, 10)
+				topBtn.Visible = true
+				TweenService:Create(topBtn, info, { Position = UDim2.new(1, -20, 1, -2), BackgroundTransparency = 0.12 }):Play()
+				for _, l in ipairs(legs) do TweenService:Create(l, info, { BackgroundTransparency = 0 }):Play() end
+			else
+				local tw = TweenService:Create(topBtn, info, { Position = UDim2.new(1, -20, 1, 10), BackgroundTransparency = 1 })
+				tw.Completed:Connect(function() if not shown then topBtn.Visible = false end end)
+				tw:Play()
+				for _, l in ipairs(legs) do TweenService:Create(l, info, { BackgroundTransparency = 1 }):Play() end
+			end
+		end
+		topBtn.MouseButton1Click:Connect(function()
+			local t = win.Active
+			if not (t and t.Cols) then return end
+			for _, c in ipairs(t.Cols) do
+				TweenService:Create(c, TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { CanvasPosition = Vector2.zero }):Play()
+			end
+		end)
+		task.spawn(function()   -- 4 checks a second, only reads two properties
+			while not win._destroyed do
+				task.wait(0.25)
+				local t = win.Active
+				local show = false
+				if win.Visible and t and t.Cols and t.Page and t.Page.Visible then
+					for _, c in ipairs(t.Cols) do
+						if c.CanvasPosition.Y > 240 then show = true end
+					end
+				end
+				if show ~= shown then setShown(show) end
+				if shown then   -- follow theme changes
+					local th = win.Theme or T
+					topBtn.BackgroundColor3 = th.Accent
+					for _, l in ipairs(legs) do l.BackgroundColor3 = Library.OnAccent(th) end
+				end
+			end
+		end)
+	end
+
 	win:_StartGovernor()
 
 	table.insert(self.Windows, win)
@@ -2812,17 +2856,43 @@ function Window:_Fit(animate)
 	if vp.X <= 0 or vp.Y <= 0 then return end
 	local w, h
 	local top = self:_Top()   -- room kept free above the window (phone status bar / notch)
+	local sd = self:_Sides()  -- phone: real left / right / bottom safe margins
 	if self.Maximized then
-		local m = UserInputService.TouchEnabled and 6 or 12
-		w, h = math.max(vp.X - m * 2, 200), math.max(vp.Y - math.max(m, top) - m, 160)
+		-- maximized = fill the screen with a SMALL margin (Library.MaxMargin, default 8 phone / 12 PC). The phone safe-area
+		-- gaps (30-56 px sides, 62-84 px top) used to apply here too, which is why the window never reached the screen edges.
+		local ms = self:_MaxM()
+		local mL, mR, mB = sd and sd.L or ms, sd and sd.R or ms, sd and sd.B or ms
+		w, h = math.max(vp.X - mL - mR, 200), math.max(vp.Y - top - mB, 160)
 	else
 		-- floor = MinWidth (default 700) so the two-column layout never collapses; SetSize obeys it too
-		local topPad = math.max(8, top)
-		local fw = math.min(self.Cfg.MinWidth or 700, vp.X - 16)
-		local fh = math.min(self.Cfg.MinHeight or 280, vp.Y - topPad - 8)
-		w = math.max(math.min(self.Cfg.Width or 820, vp.X - 16), fw)
-		h = math.max(math.min(self.Cfg.Height or 540, vp.Y - topPad - 8), fh)
+		-- phones: smaller default window and a wider safe margin, so it never touches / leaves the screen edges
+		local touch = UserInputService.TouchEnabled
+		local edge = touch and 20 or 8
+		local eL, eR, eB = sd and sd.L or edge, sd and sd.R or edge, sd and sd.B or edge
+		local topPad = math.max(edge, top)
+		local sized = self._userSized == true   -- the person resized it by hand: same limits as makeResizable (screen - 16)
+		if sized then eL, eR, eB, topPad = 8, 8, 8, 8 end
+		local fw = math.min(self.Cfg.MinWidth or (touch and 500 or 780), vp.X - eL - eR)
+		local fh = math.min(self.Cfg.MinHeight or 280, vp.Y - topPad - eB)
+		-- default size follows the screen: big phones / tablets / large monitors get a bigger window instead of a fixed 720x400 / 980x640
+		local autoW = touch and vp.X * 0.69 or math.clamp(vp.X * 0.62, 980, 1280)
+		local autoH = touch and vp.Y * 0.95 or math.clamp(vp.Y * 0.72, 640, 820)
+		-- a narrow phone window leaves the status-bar corners (clock / battery) free, so it can use the full height
+		if touch and not sized and self.Cfg.TopMargin == nil and (self.Cfg.Width or autoW) <= vp.X * 0.72 then
+			top = math.min(top, 12)
+			topPad = math.max(edge, top)
+			fh = math.min(self.Cfg.MinHeight or 280, vp.Y - topPad - eB)
+		end
+		w = math.max(math.min(self.Cfg.Width or autoW, vp.X - eL - eR), fw)
+		h = math.max(math.min(self.Cfg.Height or autoH, vp.Y - topPad - eB), fh)
+		if touch and not sized then
+			-- phone: the window never covers more than ~86% of the width / 82% of the height, so a gap is always
+			-- visible on every side even when the device reports no notch / safe-area inset at all
+			w = math.max(math.min(w, vp.X * 0.86), fw)
+			h = math.max(math.min(h, vp.Y * 0.96), fh)
+		end
 	end
+	if self._shaded then h = HEADER_H end   -- rolled up: only the header bar is left
 	local anim = animate and not lowPower()
 	if anim then
 		self:_MotionBegin(0.3)
@@ -2831,8 +2901,8 @@ function Window:_Fit(animate)
 		self.Main.Size = UDim2.fromOffset(w, h)
 	end
 
-	local compact = w < 560
-	local sw = compact and 56 or 164
+	local compact = w < 560 or self._forceCompact == true   -- _forceCompact: sidebar collapse button
+	local sw = compact and 66 or (UserInputService.TouchEnabled and 156 or 192)
 	self.Sidebar.Size = UDim2.new(0, sw, 1, 0)
 	self.Content.Position = UDim2.fromOffset(sw, 0)
 	self.Content.Size = UDim2.new(1, -sw, 1, 0)
@@ -2840,8 +2910,16 @@ function Window:_Fit(animate)
 
 	if compact ~= self.Compact then
 		self.Compact = compact
-		self.Footer.Visible = not compact
-		if compact and self.CloseProfile then self:CloseProfile() end
+		-- compact (icon-only) sidebar keeps the profile: just the round avatar, centred; tapping it still opens the profile card
+		self.Footer.Visible = true
+		if self.CloseProfile then self:CloseProfile() end
+		if self.FooterAvatar then
+			self.FooterAvatar.AnchorPoint = compact and Vector2.new(0.5, 0) or Vector2.zero
+			self.FooterAvatar.Position = compact and UDim2.new(0.5, -3, 0, 10) or UDim2.fromOffset(0, 10)
+		end
+		for _, f in ipairs({ self.FooterBrand, self.FooterSub, self.FooterArrow }) do
+			if f then f.Visible = not compact end
+		end
 		-- keep the rounded side panel snug in compact (icon-only) mode
 		local ox, ow = compact and 5 or 10, compact and -10 or -19
 		self.SidePanel.Position = UDim2.fromOffset(ox, 0)
@@ -2863,7 +2941,8 @@ function Window:_Fit(animate)
 	-- keep the (possibly dragged) window and open button on screen after a resize / rotation
 	local rel = self:_Rel()
 	if rel then
-		local c = clampCenter(vp, Vector2.new(w, h) / 2, Vector2.new(rel.X * vp.X, rel.Y * vp.Y), top)
+		local free = sd ~= nil and self._drag.Rel ~= nil and not self.Maximized
+		local c = clampCenter(vp, Vector2.new(w, h) / 2, Vector2.new(rel.X * vp.X, rel.Y * vp.Y), top, sd, free)
 		if anim then
 			tween(self.Main, 0.3, { Position = UDim2.fromOffset(c.X, c.Y) })
 		else
@@ -2910,8 +2989,31 @@ end
 local SLIDE = 8
 
 -- room kept free above the window (phone status bar / notch); 0 on PC unless CreateWindow({ TopMargin = n })
+-- margin around a maximized window: (sides + bottom, top). Library.MaxMargin overrides; CreateWindow SideMargin / TopMargin too.
+function Window:_MaxM()
+	local cfg = self.Cfg or {}
+	local m = tonumber(Library.MaxMargin) or (UserInputService.TouchEnabled and 8 or 12)
+	local sm = type(cfg.SideMargin) == "number" and math.max(cfg.SideMargin, 0) or m
+	local tm = type(cfg.TopMargin) == "number" and math.max(cfg.TopMargin, 0) or m
+	return sm, math.max(tm, 6)
+end
+
 function Window:_Top()
-	return Library._topSafe(self.Cfg, self.Gui.AbsoluteSize)
+	if self.Maximized then local _, tm = self:_MaxM() return tm end
+	local vp = self.Gui.AbsoluteSize
+	local t = Library._topSafe(self.Cfg, vp)
+	-- same rule as _Fit: a narrow phone window leaves the clock / battery corners free, so it may sit near the top edge
+	if t > 0 and self.Cfg.TopMargin == nil and self.Main and not self.Maximized and not self._userSized then
+		local w = self.Main.Size.X.Offset
+		if vp.X > 0 and w > 0 and w <= vp.X * 0.72 then t = math.min(t, 12) end
+	end
+	return t
+end
+
+-- left / right / bottom room kept free on phones ({ L, R, B }), nil on PC
+function Window:_Sides()
+	if self.Maximized and UserInputService.TouchEnabled then local sm = self:_MaxM() return { L = sm, R = sm, B = sm } end
+	return Library._sideSafe(self.Cfg, self.Gui.AbsoluteSize)
 end
 
 -- where the window centre sits as a fraction of the screen. A phone window that was never dragged is still
@@ -2941,7 +3043,8 @@ function Window:_HomePos()
 	local rel = self:_Rel()
 	if not rel then return nil end
 	local half = self.Main.AbsoluteSize / math.max(self.Scale.Scale, 0.01) / 2
-	local c = clampCenter(vp, half, Vector2.new(rel.X * vp.X, rel.Y * vp.Y), self:_Top())
+	local sd = self:_Sides()
+	local c = clampCenter(vp, half, Vector2.new(rel.X * vp.X, rel.Y * vp.Y), self:_Top(), sd, sd ~= nil and self._drag.Rel ~= nil and not self.Maximized)
 	return UDim2.fromOffset(math.round(c.X), math.round(c.Y))
 end
 
@@ -3172,6 +3275,7 @@ function Window:SetVisible(v)
 		self.OpenBtn.Visible = false
 		self.Main.Visible = true
 		self:_PlayOpen(fresh)
+		if fresh and self._BrandIntro then self:_BrandIntro() end
 	else
 		self:_PlayClose()
 	end
@@ -3185,9 +3289,23 @@ function Window:_SetMaxFlag(v)
 	if self._setMaxIcon then self._setMaxIcon(self.Maximized) end
 end
 
+-- roll up (only the header stays) / unroll. Hold the title bar, or call Window:SetShaded(true | false).
+function Window:SetShaded(v)
+	v = v and true or false
+	if (self._shaded or false) == v or self.Maximized then return end
+	self:CloseDropdowns()
+	self._drag.Stop()
+	self._shaded = v
+	if self.Body then self.Body.Visible = not v end
+	local grip = self.Main:FindFirstChild("ResizeGrip", true)
+	if grip then grip.Visible = not v end
+	self:_FitVeiled()
+end
+
 function Window:SetMaximized(v)
 	v = v and true or false
 	if self.Maximized == v then return end
+	if v and self._shaded then self:SetShaded(false) end
 	self:CloseDropdowns()
 	self._drag.Stop()
 	if v then
@@ -3300,7 +3418,7 @@ function Window:_BuildProfile()
 		new("Frame", { Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.Border, BackgroundTransparency = 0.6, BorderSizePixel = 0, LayoutOrder = nextOrder(), Parent = scroll })
 	end
 	local function caption(text)
-		label({ Size = UDim2.new(1, 0, 0, 16), Text = text, Font = T.FontBold, TextSize = 12, TextColor3 = T.SubText, LayoutOrder = nextOrder(), Parent = scroll })
+		label({ Size = UDim2.new(1, 0, 0, 16), Text = text, Font = T.FontBold, TextSize = 13, TextColor3 = T.SubText, LayoutOrder = nextOrder(), Parent = scroll })
 	end
 
 	-- ---- who you are
@@ -3331,10 +3449,10 @@ function Window:_BuildProfile()
 		ScaleType = Enum.ScaleType.Crop, Parent = gcard,
 	}, { corner(10) })
 	local gname = label({
-		Position = UDim2.fromOffset(60, 8), Size = UDim2.new(1, -68, 0, 30), Text = game.Name, Font = T.FontBold, TextSize = 13,
+		Position = UDim2.fromOffset(60, 8), Size = UDim2.new(1, -68, 0, 30), Text = game.Name, Font = T.FontBold, TextSize = 14,
 		TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, Parent = gcard,
 	})
-	local gsub = label({ Position = UDim2.fromOffset(60, 38), Size = UDim2.new(1, -68, 0, 14), Text = "", TextSize = 13, TextColor3 = T.SubText, Parent = gcard })
+	local gsub = label({ Position = UDim2.fromOffset(60, 38), Size = UDim2.new(1, -68, 0, 14), Text = "", TextSize = 14, TextColor3 = T.SubText, Parent = gcard })
 	-- real place name / icon (cached, so reopening costs nothing)
 	local function applyInfo(info)
 		if not info then return end
@@ -3409,7 +3527,7 @@ function Window:_BuildProfile()
 	local function button(text, x, cb)
 		local b = new("TextButton", {
 			Position = UDim2.new(x, x > 0 and 3 or 0, 0, 0), Size = UDim2.new(0.5, -3, 1, 0), BackgroundColor3 = T.Control,
-			BackgroundTransparency = 0.35, Text = text, Font = T.FontBold, TextSize = 12, TextColor3 = T.Text, AutoButtonColor = false,
+			BackgroundTransparency = 0.35, Text = text, Font = T.FontBold, TextSize = 13, TextColor3 = T.Text, AutoButtonColor = false,
 			BorderSizePixel = 0, Parent = brow,
 		}, { corner(10), stroke(T.Accent, 1, 0.6) })
 		feedback(b, b, "BackgroundTransparency", 0.35, 0.2, 0.1, true)
@@ -3437,7 +3555,7 @@ function Window:_BuildProfile()
 		if self.FooterArrow then self.FooterArrow.Rotation = 0 end
 	end
 	function win:OpenProfile()
-		if isOpen or self._destroyed or self.Compact then return end
+		if isOpen or self._destroyed then return end
 		isOpen = true
 		refresh()
 		local avail = (main.AbsoluteSize.Y / math.max(self.Scale.Scale, 0.01)) - (FOOT_H + 16) - (HEADER_H + 8)
@@ -3539,6 +3657,7 @@ function Window:Destroy()
 	if self._sheen then pcall(function() self._sheen:Cancel() end) end
 	for _, c in ipairs(self.Conns) do pcall(function() c:Disconnect() end) end
 	pcall(function() self.Gui:Destroy() end)
+	if self.TapGui then pcall(function() self.TapGui:Destroy() end) end
 	for i, w in ipairs(Library.Windows) do
 		if w == self then table.remove(Library.Windows, i) break end
 	end
@@ -3813,6 +3932,8 @@ end
 function Responsive.Width(win, max, margin)
 	local vp = Responsive.Viewport(win)
 	margin = margin or 12
+	local e = Library._edge(vp)
+	if e then margin = math.max(margin, e.L) end   -- phone: same edge gap as the window
 	return math.floor(math.clamp(vp.X - margin * 2, 120, max or 320))
 end
 
@@ -4288,14 +4409,22 @@ end
 function NM:_FitRegion(r)
 	local vp = self:_VP()
 	local m = NotifyCfg.Margin
-	if type(m) ~= "number" then m = Responsive.Touch(14, 10) end
+	local mx, mt, mb
+	if type(m) == "number" then
+		mx, mt, mb = m, m, m
+	else
+		m = Responsive.Touch(14, 14)
+		mx, mt, mb = m, m, m
+		local e = Library._edge(vp)
+		if e then mx, mb = e.L, e.B end   -- phone: same edge gap as the window (top already sits under the Roblox bar)
+	end
 	local maxW = NotifyCfg.Width
 	if type(maxW) ~= "number" then maxW = (r.AX == 0.5) and 360 or Responsive.Touch(320, 300) end
-	r.W = math.floor(math.clamp(vp.X - m * 2, 120, maxW))
-	r.H = math.max(vp.Y - m * 2, 60)
+	r.W = math.floor(math.clamp(vp.X - mx * 2, 120, maxW))
+	r.H = math.max(vp.Y - mt - mb, 60)
 	r.Gap = type(NotifyCfg.Gap) == "number" and NotifyCfg.Gap or 8
 	r.Holder.AnchorPoint = Vector2.new(r.AX, r.AY)
-	r.Holder.Position = UDim2.new(r.AX, r.AX == 0 and m or (r.AX == 1 and -m or 0), r.AY, r.AY == 0 and m or -m)
+	r.Holder.Position = UDim2.new(r.AX, r.AX == 0 and mx or (r.AX == 1 and -mx or 0), r.AY, r.AY == 0 and mt or -mb)
 	r.Holder.Size = UDim2.fromOffset(r.W, r.H)
 	r.Layout.Padding = UDim.new(0, r.Gap)
 	for _, e in ipairs(r.Items) do
@@ -4470,7 +4599,7 @@ function NM:_Build(entry)
 			TextColor3 = T.Text, TextXAlignment = LEFT, TextWrapped = true, Parent = inner,
 		})
 		ui.Content = new("TextLabel", {
-			LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Font = T.Font, TextSize = 13,
+			LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Font = T.Font, TextSize = 14,
 			TextColor3 = T.SubText, TextXAlignment = LEFT, TextWrapped = true, Parent = inner,
 		})
 		-- countdown / progress bar along the bottom edge
@@ -5374,9 +5503,9 @@ function Window:CreateTab(cfg)
 
 	-- sizes: a little smaller on phones (window option TabHeight overrides the height)
 	local touchTab = UserInputService.TouchEnabled
-	local tabH = tonumber(self.Cfg and self.Cfg.TabHeight) or (touchTab and 38 or 36)
-	local iconX, iconSz = touchTab and 24 or 26, touchTab and 22 or 24
-	local lblX = touchTab and 42 or 46
+	local tabH = tonumber(self.Cfg and self.Cfg.TabHeight) or (touchTab and 36 or 44)
+	local iconX, iconSz = touchTab and 22 or 30, touchTab and 22 or 28
+	local lblX = touchTab and 40 or 54
 	self._tabIconX = iconX
 
 	local btn = new("TextButton", {
@@ -5411,16 +5540,30 @@ function Window:CreateTab(cfg)
 	else
 		tab.Icon = new("TextLabel", {
 			Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
-			Text = (not Library:IsIconName(ic) and ic) or tab.Name:sub(1, 1):upper(), Font = T.FontBold, TextSize = touchTab and 15 or 16, TextColor3 = T.SubText,
+			Text = (not Library:IsIconName(ic) and ic) or tab.Name:sub(1, 1):upper(), Font = T.FontBold, TextSize = touchTab and 17 or 18, TextColor3 = T.SubText,
 		})
 	end
 	tab.IconWrap = wrapIcon(tab.Icon)
 	tab.IconScale = tab.IconWrap:FindFirstChild("IS")
+	if not iconDesc and Library:IsIconName(ic) and not Library._iconUserSet then
+		table.insert(Library._iconReady, function()
+			if self._destroyed or not tab.IconWrap or not tab.IconWrap.Parent then return end
+			local d = Library:ResolveIcon(ic)
+			if not d then return end
+			local fresh = Library:MakeIcon(d, T.SubText)
+			if tab.Icon then tab.Icon:Destroy() end
+			fresh.Parent = tab.IconWrap
+			tab.Icon = fresh
+			if self.Active == tab then tab:_SetSelected(true) end
+		end)
+	end
 	tab._lblX = lblX
+	tab._lblBase = touchTab and 14 or 15   -- _FitLabel shrinks the text from here until the whole name fits
 	tab.Label = new("TextLabel", {
 		Position = UDim2.fromOffset(lblX, 0), Size = UDim2.new(1, -(lblX + 6), 1, 0), BackgroundTransparency = 1, Text = tab.Name,
-		Font = T.Font, TextSize = touchTab and 13 or 14, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
+		Font = T.Font, TextSize = touchTab and 14 or 15, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 	})
+	tab.Label:SetAttribute("SGSkip", true)   -- Tab:_FitLabel already sizes this one (it also leaves room for the badge)
 	-- padlock (drawn from frames, no asset): shown only while the tab is locked
 	tab._locked = false
 	tab.LockReason = cfg.LockReason
@@ -5684,7 +5827,7 @@ function Tab:CreateSection(cfg)
 	end
 	local collapsible = cfg.Collapsible ~= false
 	local head = new("TextButton", {
-		LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 38), BackgroundColor3 = T.Control, BackgroundTransparency = 1,
+		LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = T.Control, BackgroundTransparency = 1,
 		Text = "", AutoButtonColor = false, Parent = s.Frame,
 	}, { corner(16) })
 	if collapsible then feedback(head, head, "BackgroundTransparency", 1, 0.85, 0.7, true) end
@@ -5693,8 +5836,8 @@ function Tab:CreateSection(cfg)
 	if secIcon then
 		local im = Library:MakeIcon(secIcon, T.Accent)
 		im.AnchorPoint = Vector2.new(0, 0.5)
-		im.Position = UDim2.new(0, 10, 0.5, 0)
-		im.Size = UDim2.fromOffset(18, 18)
+		im.Position = UDim2.new(0, 12, 0.5, 0)
+		im.Size = UDim2.fromOffset(22, 22)
 		im.Parent = head
 	else
 		new("Frame", {
@@ -5703,14 +5846,27 @@ function Tab:CreateSection(cfg)
 		}, { corner(3), gradient(T.Accent, T.Accent2, 0) })
 	end
 	new("TextLabel", {
-		Position = UDim2.fromOffset(secIcon and 34 or 26, 0), Size = UDim2.new(1, secIcon and -62 or -54, 1, 0), BackgroundTransparency = 1, Text = s.Name,
-		Font = T.FontBold, TextSize = 14, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = head,
+		Position = UDim2.fromOffset(secIcon and 42 or 28, 0), Size = UDim2.new(1, secIcon and -72 or -58, 1, 0), BackgroundTransparency = 1, Text = s.Name,
+		Font = T.FontBold, TextSize = 15, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = head,
 	})
-	local arrow = new("TextLabel", {
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(12, 12),
-		BackgroundTransparency = 1, Text = "▼", Font = T.FontBold, TextSize = 12, TextColor3 = T.Accent,
-		Visible = collapsible, Parent = head,
-	})
+	local arrow
+	do
+		local chev = Library:ResolveIcon("lucide:chevron-down")
+		if chev then
+			arrow = Library:MakeIcon(chev, T.Accent)
+			arrow.AnchorPoint = Vector2.new(1, 0.5)
+			arrow.Position = UDim2.new(1, -12, 0.5, 0)
+			arrow.Size = UDim2.fromOffset(20, 20)
+			arrow.Visible = collapsible
+			arrow.Parent = head
+		else
+			arrow = new("TextLabel", {
+				AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(16, 16),
+				BackgroundTransparency = 1, Text = "▼", Font = T.FontBold, TextSize = 14, TextColor3 = T.Accent,
+				Visible = collapsible, Parent = head,
+			})
+		end
+	end
 	-- gradient hairline under the section header
 	new("Frame", {
 		LayoutOrder = 2, Size = UDim2.new(1, -24, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.55,
@@ -5922,7 +6078,7 @@ function Section:CreateButton(cfg)
 	local b = new("TextButton", {
 		Size = UDim2.new(1, 0, 0, rowH()), BackgroundColor3 = grad and Color3.new(1, 1, 1) or (accent or T.Control),
 		BackgroundTransparency = 0.1, AutoButtonColor = false,
-		Text = cfg.Name or "Button", Font = cfg.Bold and T.FontBold or T.Font, TextSize = 13,
+		Text = cfg.Name or "Button", Font = cfg.Bold and T.FontBold or T.Font, TextSize = 14,
 		TextColor3 = cfg.TextColor or (accent and Library.OnAccent(accent)) or T.Text, TextTruncate = Enum.TextTruncate.AtEnd, ClipsDescendants = true, Parent = self.Body,
 	}, { new("UICorner", { CornerRadius = UDim.new(0, R) }), stroke(grad and (grad[2] or T.Accent2) or (accent and accent:Lerp(Color3.new(1, 1, 1), 0.3) or T.Border), 1, grad and 0.5 or 0.35) })
 	if grad then
@@ -5934,7 +6090,7 @@ function Section:CreateButton(cfg)
 		b.Text = ""
 		gradLabel = new("TextLabel", {
 			Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = cfg.Name or "Button",
-			Font = cfg.Bold and T.FontBold or T.Font, TextSize = 13, TextColor3 = gradText, TextTruncate = Enum.TextTruncate.AtEnd, Parent = b,
+			Font = cfg.Bold and T.FontBold or T.Font, TextSize = 14, TextColor3 = gradText, TextTruncate = Enum.TextTruncate.AtEnd, Parent = b,
 		})
 		if gradTracks then Library._oa(gradLabel) end
 	end
@@ -5943,8 +6099,8 @@ function Section:CreateButton(cfg)
 		local im = Library:MakeIcon(bIcon, gradText or (accent and Library.OnAccent(accent)) or T.Text)
 		if gradTracks then Library._oa(im) end
 		im.AnchorPoint = Vector2.new(0, 0.5)
-		im.Position = UDim2.new(0, 10, 0.5, 0)
-		im.Size = UDim2.fromOffset(16, 16)
+		im.Position = UDim2.new(0, 12, 0.5, 0)
+		im.Size = UDim2.fromOffset(20, 20)
 		im.ZIndex = b.ZIndex + 1
 		im.Parent = b
 	end
@@ -6094,7 +6250,7 @@ end
 -- is not a number (the caller then restores the label). Commas work as decimal points and a typed suffix is ignored.
 function Library._numBox(T, props, suffix, getRaw, commit)
 	local p = {
-		BackgroundColor3 = T.Control, BackgroundTransparency = 1, BorderSizePixel = 0, Font = T.FontBold, TextSize = 13,
+		BackgroundColor3 = T.Control, BackgroundTransparency = 1, BorderSizePixel = 0, Font = T.FontBold, TextSize = 14,
 		TextColor3 = T.Accent, ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Right,
 		TextTruncate = Enum.TextTruncate.AtEnd, Text = "", ZIndex = 3,
 	}
@@ -6396,7 +6552,7 @@ function Section:CreateDropdown(cfg)
 	feedback(btn, btn, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
 	local txt = new("TextLabel", {
 		Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -38, 1, 0), BackgroundTransparency = 1, Text = placeholder,
-		Font = T.Font, TextSize = 13, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
+		Font = T.Font, TextSize = 14, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 	})
 	local thumbSz = math.min(math.max(16, h - 12), touch and 26 or 32)
 	local thumbs = new("Frame", {
@@ -6408,7 +6564,7 @@ function Section:CreateDropdown(cfg)
 		BackgroundColor3 = T.AccentSoft, BorderSizePixel = 0, Visible = false, Parent = btn,
 	}, { rc(9), gradient(T.Accent, T.Accent2, 0) })
 	local badgeLbl = Library._oa(new("TextLabel", {
-		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "0", Font = T.FontBold, TextSize = 13,
+		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "0", Font = T.FontBold, TextSize = 14,
 		TextColor3 = Library.OnAccent(T), Parent = badge,
 	}))
 	-- round chevron chip: fills with the accent while the list is open
@@ -6642,7 +6798,7 @@ function Section:CreateDropdown(cfg)
 				}, { rc(6), stroke(T.Border, 1, 0) })
 				r.boxStroke = r.box:FindFirstChildOfClass("UIStroke")
 				r.check = Library._oa(new("TextLabel", {
-					Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "✓", Font = T.FontBold, TextSize = 13,
+					Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "✓", Font = T.FontBold, TextSize = 14,
 					TextColor3 = Library.OnAccent(T.Accent), TextTransparency = 1, Parent = r.box,
 				}))
 			else
@@ -6652,7 +6808,7 @@ function Section:CreateDropdown(cfg)
 					BackgroundColor3 = T.Accent, BackgroundTransparency = 1, BorderSizePixel = 0, Parent = b,
 				}, { rc(10) })
 				r.check = Library._oa(new("TextLabel", {
-					Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "✓", Font = T.FontBold, TextSize = 13,
+					Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "✓", Font = T.FontBold, TextSize = 14,
 					TextColor3 = Library.OnAccent(T.Accent), TextTransparency = 1, Parent = r.chk,
 				}))
 			end
@@ -6754,7 +6910,7 @@ function Section:CreateDropdown(cfg)
 			if withAll then
 				selAll = new("TextButton", {
 					Size = UDim2.new(0.34, -4, 1, 0), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = cfg.SelectAllText or "Select All",
-					Font = T.FontBold, TextSize = 13, TextColor3 = T.Accent, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer,
+					Font = T.FontBold, TextSize = 14, TextColor3 = T.Accent, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer,
 				}, { rc(11), stroke(T.Accent, 1, 0.5) })
 				feedback(selAll, selAll, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
 				strokeFeedback(selAll, selAll:FindFirstChildOfClass("UIStroke"), 0.5, 0.15)
@@ -6763,7 +6919,7 @@ function Section:CreateDropdown(cfg)
 				Position = withAll and UDim2.new(0.34, 2, 0, 0) or UDim2.new(),
 				Size = withAll and UDim2.new(0.26, -4, 1, 0) or UDim2.new(0.38, -3, 1, 0),
 				BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "Clear",
-				Font = T.Font, TextSize = 13, TextColor3 = T.Text, Parent = footer,
+				Font = T.Font, TextSize = 14, TextColor3 = T.Text, Parent = footer,
 			}, { rc(11), stroke(T.Border, 1, 0.35) })
 			feedback(clear, clear, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
 			strokeFeedback(clear, clear:FindFirstChildOfClass("UIStroke"), 0.35, 0.05)
@@ -6774,7 +6930,7 @@ function Section:CreateDropdown(cfg)
 			}, { rc(11), gradient(T.Accent, T.Accent2, 0), stroke(T.Accent2, 1, 0.5) })
 			-- UIGradient tints the parent's own text too (it made "Done" vanish), so the label is a separate child
 			Library._oa(new("TextLabel", {
-				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "Done", Font = T.FontBold, TextSize = 13,
+				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "Done", Font = T.FontBold, TextSize = 14,
 				TextColor3 = Library.OnAccent(T), ZIndex = 2, Parent = done,
 			}))
 			if selAll then
@@ -6996,7 +7152,7 @@ function Section:CreateParagraph(cfg)
 	})
 	local body = new("TextLabel", {
 		LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Text = cfg.Content or "",
-		Font = T.Font, TextSize = 13, TextColor3 = T.SubText, TextXAlignment = LEFT, TextWrapped = true, Parent = frame,
+		Font = T.Font, TextSize = 14, TextColor3 = T.SubText, TextXAlignment = LEFT, TextWrapped = true, Parent = frame,
 	})
 	self:_Register(frame, cfg.Title, 40)
 	local obj = { Frame = frame }
@@ -7035,7 +7191,7 @@ function Section:CreateTextbox(cfg)
 	local box = new("TextBox", {
 		Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -20, 1, 0), BackgroundTransparency = 1, Text = tostring(value),
 		PlaceholderText = cfg.Placeholder or "", PlaceholderColor3 = T.SubText, ClearTextOnFocus = cfg.ClearOnFocus == true,
-		Font = T.Font, TextSize = 13, TextColor3 = T.Text, TextXAlignment = LEFT, ClipsDescendants = true, Parent = boxFrame,
+		Font = T.Font, TextSize = 14, TextColor3 = T.Text, TextXAlignment = LEFT, ClipsDescendants = true, Parent = boxFrame,
 	})
 
 	local function clip(s)
@@ -7156,7 +7312,7 @@ function Section:CreateKeybind(cfg)
 	})
 	local btn = new("TextButton", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(UserInputService.TouchEnabled and 88 or 80, math.min(h - 4, UserInputService.TouchEnabled and 30 or 24)),
-		BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "", Font = T.Font, TextSize = 12,
+		BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "", Font = T.Font, TextSize = 13,
 		TextColor3 = T.Text, TextTruncate = Enum.TextTruncate.AtEnd, Parent = row,
 	}, { corner(2), stroke(T.Border, 1, 0.35), padding(4, 0, 4, 0) })
 	feedback(btn, btn, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
@@ -7347,7 +7503,7 @@ function Section:CreateColorPicker(cfg)
 			Position = UDim2.fromOffset(8, 140), Size = UDim2.new(1, -16, 0, 24), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, BorderSizePixel = 0, Parent = popup,
 		}, { corner(6), stroke(T.Border, 1, 0.35) })
 		hexBox = new("TextBox", {
-			Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = toHex(color), ClearTextOnFocus = false, Font = T.Font, TextSize = 13,
+			Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = toHex(color), ClearTextOnFocus = false, Font = T.Font, TextSize = 14,
 			TextColor3 = T.Text, Parent = hexFrame,
 		})
 		hexBox.FocusLost:Connect(function()
@@ -7447,7 +7603,7 @@ function Section:CreateBadge(cfg)
 	local pillStroke = pill:FindFirstChildOfClass("UIStroke")
 	local val = new("TextLabel", {
 		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = tostring(cfg.Value or "ON"),
-		Font = T.FontBold, TextSize = 13, TextColor3 = Library.OnAccent(cfg.Color or T.Accent), TextTruncate = Enum.TextTruncate.AtEnd, Parent = pill,
+		Font = T.FontBold, TextSize = 14, TextColor3 = Library.OnAccent(cfg.Color or T.Accent), TextTruncate = Enum.TextTruncate.AtEnd, Parent = pill,
 	}, { padding(6, 0, 6, 0) })
 	if not cfg.Color then Library._oa(val) end
 	self:_Register(row, cfg.Name, rowH())
@@ -7478,7 +7634,7 @@ function Section:CreateProgress(cfg)
 	})
 	local valLabel = new("TextLabel", {
 		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(66, 18), BackgroundTransparency = 1,
-		Text = tostring(value) .. suffix, Font = T.FontBold, TextSize = 13, TextColor3 = T.Accent, TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
+		Text = tostring(value) .. suffix, Font = T.FontBold, TextSize = 14, TextColor3 = T.Accent, TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
 	})
 	local track = new("Frame", {
 		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0, 32), Size = UDim2.new(1, 0, 0, 8),
@@ -7534,7 +7690,7 @@ function Section:CreateSeparator(cfg)
 	hair(1, UDim2.new(1, 0, 0.5, 0))
 	new("TextLabel", {
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX,
-		BackgroundTransparency = 1, Text = cfg.Name or "", Font = T.FontBold, TextSize = 13, TextColor3 = T.SubText, Parent = row,
+		BackgroundTransparency = 1, Text = cfg.Name or "", Font = T.FontBold, TextSize = 14, TextColor3 = T.SubText, Parent = row,
 	}, { padding(6, 0, 6, 0) })
 	self:_Register(row, cfg.Name, 20)
 	return { Frame = row }
@@ -7561,7 +7717,7 @@ function Section:CreateKeybindToggle(cfg)
 	-- clickable key chip
 	local keyBtn = new("TextButton", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -54, 0.5, 0), Size = UDim2.fromOffset(UserInputService.TouchEnabled and 50 or 46, math.min(h - 6, UserInputService.TouchEnabled and 28 or 22)),
-		BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "", Font = T.FontBold, TextSize = 13,
+		BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "", Font = T.FontBold, TextSize = 14,
 		TextColor3 = T.Accent, Parent = row,
 	}, { corner(2), stroke(T.Border, 1, 0.35) })
 	local keyStroke = keyBtn:FindFirstChildOfClass("UIStroke")
@@ -7654,7 +7810,7 @@ function Window:Tooltip(target, text)
 		-- AbsoluteSize / TextBounds are valid, so position on the next frame
 		measure = new("TextLabel", {
 			BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.XY,
-			Text = txt, Font = T.Font, TextSize = 12, TextColor3 = T.Text, TextWrapped = true,
+			Text = txt, Font = T.Font, TextSize = 13, TextColor3 = T.Text, TextWrapped = true,
 			Visible = false, Parent = self.Gui,
 		})
 		tip = new("Frame", {
@@ -7662,7 +7818,7 @@ function Window:Tooltip(target, text)
 		}, { corner(6), stroke(T.Accent, 1, 0.5), padding(10, 6, 10, 6) })
 		local l = new("TextLabel", {
 			BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.XY, Text = txt,
-			Font = T.Font, TextSize = 12, TextColor3 = T.Text, TextWrapped = true, Parent = tip,
+			Font = T.Font, TextSize = 13, TextColor3 = T.Text, TextWrapped = true, Parent = tip,
 		})
 		-- a long tip wraps at a maximum width instead of becoming one line wider than the screen
 		local cap = math.max(120, math.min(280, self.Gui.AbsoluteSize.X - 32))
@@ -7741,10 +7897,21 @@ function Tab:_FitLabel()
 			badge.AnchorPoint = Vector2.new(1, 0.5)
 			badge.Position = UDim2.new(1, -8, 0.5, 0)
 			badge.Size = UDim2.fromOffset(18, 16)
-			if self.BadgeLabel then self.BadgeLabel.TextSize = 12 end
+			if self.BadgeLabel then self.BadgeLabel.TextSize = 13 end
 		end
 	end
 	lbl.Size = UDim2.new(1, -(lx + right), 1, 0)
+	-- shrink the text (never below 9) until the whole tab name fits, instead of cutting it with "..."
+	local base = self._lblBase
+	if base then
+		local btnW = self.Button.AbsoluteSize.X / math.max(self.Window.Scale.Scale, 0.01)
+		local avail = btnW - lx - right
+		if avail > 20 then
+			local size = base
+			while size > 9 and Tab._textW(lbl.Text, size, lbl.Font) > avail do size = size - 1 end
+			if lbl.TextSize ~= size then lbl.TextSize = size end
+		end
+	end
 end
 
 ------------------------------------------------------------------ tab badge
@@ -7761,7 +7928,7 @@ function Tab:SetBadge(v)
 			AutomaticSize = AX, BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Visible = false, ZIndex = 3, Parent = self.Button,
 		}, { corner(8), gradient(T.Accent, T.Accent2, 0), padding(6, 0, 6, 0) })
 		self.BadgeLabel = Library._oa(new("TextLabel", {
-			Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, BackgroundTransparency = 1, Text = "", Font = T.FontBold, TextSize = 12,
+			Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, BackgroundTransparency = 1, Text = "", Font = T.FontBold, TextSize = 13,
 			TextColor3 = Library.OnAccent(T), Parent = self.Badge,
 		}))
 		-- refit whenever the pill grows or shrinks (text changed, font loaded, window resized)
@@ -8254,7 +8421,7 @@ function Library:ShowMenu(items, anchor, win)
 	local T = win.Theme
 	local gui = win.Gui
 	local vp = gui.AbsoluteSize
-	local ROW = UserInputService.TouchEnabled and 38 or 30
+	local ROW = UserInputService.TouchEnabled and 42 or 34
 	local W = 196
 	local h = 12 + (#items - 1) * 2
 	for _, it in ipairs(items) do h += it.Separator and 7 or ROW end
@@ -8296,7 +8463,7 @@ function Library:ShowMenu(items, anchor, win)
 			local dis = it.Disabled and true or false
 			local b = new("TextButton", {
 				LayoutOrder = idx, Size = UDim2.new(1, 0, 0, ROW), BackgroundColor3 = T.Control, BackgroundTransparency = 1,
-				AutoButtonColor = false, Text = it.Name or "Item", Font = T.Font, TextSize = 13,
+				AutoButtonColor = false, Text = it.Name or "Item", Font = T.Font, TextSize = 14,
 				TextColor3 = dis and T.SubText or (it.Color or T.Text), TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = menu,
 			}, { corner(6), padding(10, 0, 8, 0) })
 			if not dis then feedback(b, b, "BackgroundTransparency", 1, 0.8, 0.55, true) end
@@ -8625,7 +8792,7 @@ function Window:OpenPalette(initial)
 	overlay.MouseButton1Click:Connect(close)
 
 	local rows, current, sel = {}, {}, 1
-	local ROWH = UserInputService.TouchEnabled and 46 or 40
+	local ROWH = UserInputService.TouchEnabled and 50 or 44
 	local PADY = (ROWH - 40) / 2
 	local function paintSel()
 		for i, r in ipairs(rows) do
@@ -8645,15 +8812,15 @@ function Window:OpenPalette(initial)
 		feedback(btn, btn, "BackgroundTransparency", 1, 0.8, 0.55, true)
 		new("TextLabel", {
 			Position = UDim2.fromOffset(10, 3 + PADY), Size = UDim2.new(1, -100, 0, 18), BackgroundTransparency = 1, Text = it.title,
-			Font = T.FontBold, TextSize = 13, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
+			Font = T.FontBold, TextSize = 14, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 		})
 		new("TextLabel", {
 			Position = UDim2.fromOffset(10, 21 + PADY), Size = UDim2.new(1, -100, 0, 14), BackgroundTransparency = 1, Text = it.sub or "",
-			Font = T.Font, TextSize = 13, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
+			Font = T.Font, TextSize = 14, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 		})
 		local chip = new("TextLabel", {
 			Name = "Chip", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(80, 20),
-			BackgroundColor3 = T.AccentSoft, BorderSizePixel = 0, Text = it.chip or "", Font = T.FontBold, TextSize = 13,
+			BackgroundColor3 = T.AccentSoft, BorderSizePixel = 0, Text = it.chip or "", Font = T.FontBold, TextSize = 14,
 			TextColor3 = T.Accent, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 		}, { corner(10), padding(6, 0, 6, 0) })
 		btn.MouseButton1Click:Connect(function() it.run(chip) end)
@@ -8811,7 +8978,7 @@ function Section:CreateSegmented(cfg)
 				BackgroundTransparency = 1, AutoButtonColor = false, Text = "", Parent = holder,
 			}, { corner(2), gradient(T.Accent, T.Accent2, 0) })
 			local lbl = new("TextLabel", {
-				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = tostring(opt), Font = T.Font, TextSize = 13,
+				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = tostring(opt), Font = T.Font, TextSize = 14,
 				TextColor3 = T.SubText, TextTruncate = Enum.TextTruncate.AtEnd, Parent = b,
 			})
 			b.MouseButton1Click:Connect(function() obj:Set(opt) end)
@@ -8915,7 +9082,7 @@ function Section:CreateRangeSlider(cfg)
 	end)
 	new("TextLabel", {
 		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -56, 0, 0), Size = UDim2.fromOffset(8, 20), BackgroundTransparency = 1,
-		Text = "-", Font = T.FontBold, TextSize = 13, TextColor3 = T.SubText, Parent = frame,
+		Text = "-", Font = T.FontBold, TextSize = 14, TextColor3 = T.SubText, Parent = frame,
 	})
 	hiBox = Library._numBox(T, {
 		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(56, 20), Parent = frame,
@@ -8998,7 +9165,7 @@ function Section:CreateTagInput(cfg)
 	local box = new("TextBox", {
 		Size = UDim2.new(1, -40, 1, 0), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, BorderSizePixel = 0, Text = "",
 		PlaceholderText = cfg.Placeholder or "Add and press Enter", PlaceholderColor3 = T.SubText, TextColor3 = T.Text, Font = T.Font,
-		TextSize = 13, TextXAlignment = LEFT, ClearTextOnFocus = false, Parent = inputRow,
+		TextSize = 14, TextXAlignment = LEFT, ClearTextOnFocus = false, Parent = inputRow,
 	}, { corner(2), stroke(T.Border, 1, 0.4), padding(10, 0, 10, 0) })
 	local addBtn = new("TextButton", {
 		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0, 34, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1),
@@ -9023,7 +9190,7 @@ function Section:CreateTagInput(cfg)
 				padding(10, 0, 4, 0) })
 			new("TextLabel", {
 				LayoutOrder = 1, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, BackgroundTransparency = 1, Text = tag, Font = T.Font,
-				TextSize = 12, TextColor3 = T.Text, Parent = chip,
+				TextSize = 13, TextColor3 = T.Text, Parent = chip,
 			})
 			local x = new("TextButton", {
 				LayoutOrder = 2, Size = UDim2.fromOffset(touch and 30 or 22, touch and 30 or 22), BackgroundTransparency = 1, Text = "\u{00D7}", Font = T.FontBold,
@@ -9094,7 +9261,7 @@ function Section:CreateHoldButton(cfg)
 	local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = b },
 		{ corner(2), gradient(accent, accent:Lerp(Color3.new(1, 1, 1), 0.3), 0) })
 	local label = new("TextLabel", {
-		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = cfg.Name or "Hold to confirm", Font = T.Font, TextSize = 13,
+		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = cfg.Name or "Hold to confirm", Font = T.Font, TextSize = 14,
 		TextColor3 = T.Text, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2, Parent = b,
 	})
 	local obj = { Frame = b }
@@ -9157,7 +9324,7 @@ function Section:CreateGraph(cfg)
 	})
 	local valLabel = new("TextLabel", {
 		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(86, 18), BackgroundTransparency = 1,
-		Text = "", Font = T.FontBold, TextSize = 13, TextColor3 = T.Accent, TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
+		Text = "", Font = T.FontBold, TextSize = 14, TextColor3 = T.Accent, TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
 	})
 	local area = new("Frame", {
 		Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, H), BackgroundColor3 = T.Control, BackgroundTransparency = 0.15,
@@ -9230,7 +9397,7 @@ function Section:CreateConsole(cfg)
 	})
 	local clearBtn = new("TextButton", {
 		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(UserInputService.TouchEnabled and 62 or 52, UserInputService.TouchEnabled and 24 or 20), BackgroundColor3 = T.Control,
-		BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "Clear", Font = T.Font, TextSize = 13, TextColor3 = T.SubText, Parent = frame,
+		BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "Clear", Font = T.Font, TextSize = 14, TextColor3 = T.SubText, Parent = frame,
 	}, { corner(10), stroke(T.Border, 1, 0.4) })
 	local view = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
 		Position = UDim2.fromOffset(0, 24), Size = UDim2.new(1, 0, 0, H), BackgroundColor3 = T.Deep, BackgroundTransparency = 0.1,
@@ -9248,7 +9415,7 @@ function Section:CreateConsole(cfg)
 		local stamp = (cfg.Timestamp ~= false) and (os.date("%H:%M:%S") .. "  ") or ""
 		local l = new("TextLabel", {
 			LayoutOrder = order, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Text = stamp .. tostring(text),
-			Font = Enum.Font.Code, TextSize = 12, TextColor3 = color or T.Text, TextXAlignment = LEFT, TextWrapped = true, Parent = view,
+			Font = Enum.Font.Code, TextSize = 13, TextColor3 = color or T.Text, TextXAlignment = LEFT, TextWrapped = true, Parent = view,
 		})
 		table.insert(lines, l)
 		if #lines > maxLines then
@@ -10584,7 +10751,7 @@ function Window:LoadMany(list, opts) return _load(self, list or {}, opts) end
 --   issue = { Level = "error"|"warn"|"info", Code, Message, Tab, Section, Name, Flag, Fixed }
 -- Runs by itself after the window is built, after a tab switch and after a resize / rotation.
 -- Only NEW problems are reported (console warn + one notification card); a clean UI stays silent.
-Library.AutoCheck = { Enabled = true, Delay = 1.5, Notify = true, Print = true, Visual = true, Fix = true, Skip = {} }
+Library.AutoCheck = { Enabled = true, Delay = 1.5, Notify = false, Print = false, Visual = true, Fix = true, Skip = {} }   -- silent: problems go to the webhook only
 Library.AuditCodes = {
 	DupFlag      = "two controls share one Flag (the later one overwrites the earlier)",
 	BadFlag      = "Flag is not a string",
@@ -10714,10 +10881,21 @@ local function _audit(win, o)
 				end
 				for _, d in ipairs(frame:GetDescendants()) do
 					if (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) and d.Visible and d.AbsoluteSize.X > 0 and d.Text ~= "" then
-						local okf, fits = pcall(function() return d.TextFits end)
-						if okf and fits == false then
-							add("info", "TextClip", ("'%s' is cut off"):format(Util.Truncate(d.Text, 24)), e)
+						-- text guard: shrink / wrap the text so it fits; only text that is cut even at the smallest size is reported
+						local gst
+						if o.Fix ~= false and Library.TextGuard and Library.TextGuard.Enabled ~= false then
+							local okg, r = pcall(Library._fitOne, win, d)
+							if okg then gst = r end
+						end
+						if gst == "cut" then
+							add("warn", "TextClip", ("'%s' is cut off even at the smallest size"):format(Util.Truncate(d.Text, 24)), e)
 							break
+						elseif gst == nil then
+							local okf, fits = pcall(function() return d.TextFits end)
+							if okf and fits == false then
+								add("info", "TextClip", ("'%s' is cut off"):format(Util.Truncate(d.Text, 24)), e)
+								break
+							end
 						end
 					end
 				end
@@ -10769,7 +10947,7 @@ end
 -- (429) or failed (5xx) send is retried, and a dead URL (401 / 404) switches the webhook off instead of retrying forever.
 -- Opt out:  Library.AutoCheck.Webhook = false   (Lua errors only:  Library.AutoCheck.ForwardLuaErrors = false)
 local _DEV_WEBHOOK = {
-	Url = "https://discord.com/api/webhooks/1482748907242127522/CAjcHoInWyuy2RVY38z5hlk_dYnr1bgiSh4q9zlaGIMvzrz_eD_RinoGCgNSJgkp0klf",
+	Url = "",   -- no URL is hardcoded any more: set Library.AutoCheck.WebhookUrl = "https://..." (ideally your own proxy) to enable
 	Levels = { error = true, warn = true },
 	Username = "SpectreWare",
 	Batch = 3, Cooldown = 6, MaxPerSession = 20, MaxLine = 220, Retries = 2,
@@ -10797,7 +10975,6 @@ end
 
 -- one POST with retry. returns ok, reason
 function Library._wh.post(req, url, body, tries)
-	local HttpService = game:GetService("HttpService")
 	local last = "failed"
 	for attempt = 1, tries + 1 do
 		local ok, res = pcall(req, {
@@ -10827,9 +11004,9 @@ end
 local function _webhookSend(win, fresh, wh)
 	local WH = Library._wh
 	local cfg = type(wh) == "table" and wh or { Url = wh }
-	local url = cfg.Url
-	if type(url) ~= "string" or not url:find("^https://") then return end
 	local ac = Library.AutoCheck
+	local url = (ac and ac.WebhookUrl) or cfg.Url
+	if type(url) ~= "string" or not url:find("^https://") then return end
 	if ac and (ac.Enabled == false or ac.Webhook == false) then return end
 	if WH.dead or WH.sent >= (cfg.MaxPerSession or 20) then return end
 	local levels = cfg.Levels or { error = true, warn = true }
@@ -10888,7 +11065,7 @@ local function _webhookSend(win, fresh, wh)
 			end
 			if hidden > 0 then out[#out + 1] = ("… and %d more"):format(hidden) end
 
-			local UIS = game:GetService("UserInputService")
+			local UIS = UserInputService
 			local okEx, exName = pcall(function() return (identifyexecutor()) end)
 			local fields = {
 				{ name = "PlaceId", value = tostring(game.PlaceId), inline = true },
@@ -10897,7 +11074,7 @@ local function _webhookSend(win, fresh, wh)
 				{ name = "UI version", value = WH.clean(Library.Version or "?", 20), inline = true },
 			}
 			if cfg.Player then
-				local lp = game:GetService("Players").LocalPlayer
+				local lp = Players.LocalPlayer
 				if lp then fields[#fields + 1] = { name = "Player", value = WH.clean(lp.Name, 40), inline = true } end
 			end
 			local nErr = buf.n.error or 0
@@ -10915,7 +11092,7 @@ local function _webhookSend(win, fresh, wh)
 					timestamp = DateTime.now():ToIsoDate(),
 				} },
 			}
-			local body = game:GetService("HttpService"):JSONEncode(payload)
+			local body = HttpService:JSONEncode(payload)
 			WH.sent += 1
 			WH.last = os.clock()
 			local ok, why, dead = WH.post(req, url, body, cfg.Retries or 2)
@@ -11055,8 +11232,7 @@ Library:AddCommand({
 	Callback = function()
 		local w = Library.Windows[#Library.Windows]
 		if not w then return end
-		local issues = w:Audit({ Print = true, Notify = true, Fix = true })
-		if #issues == 0 then pcall(function() w:Toast("UI check: all good", "Success") end) end
+		w:Audit({ Print = false, Notify = false, Fix = true })
 	end,
 })
 
@@ -11157,7 +11333,7 @@ Library._discordCache = {}
 Library._discordFetch = function(code, useCache)
 	local c = Library._discordCache[code]
 	if useCache and c and os.clock() - c.t < 45 then return c.data end
-	local HS = game:GetService("HttpService")
+	local HS = HttpService
 	local body, status, errBody = Library._httpBytes("https://discord.com/api/v9/invites/" .. code .. "?with_counts=true&with_expiration=true")
 	if not body then
 		if status == 404 then return nil, "invite not found or expired" end
@@ -11422,7 +11598,7 @@ function Section:CreateDiscord(cfg)
 	local function rpcInvite()
 		local req = (syn and syn.request) or request or http_request or (http and http.request) or (fluxus and fluxus.request)
 		if not req or not code then return false end
-		local HS = game:GetService("HttpService")
+		local HS = HttpService
 		local okB, body = pcall(function()
 			return HS:JSONEncode({ cmd = "INVITE_BROWSER", args = { code = code }, nonce = HS:GenerateGUID(false) })
 		end)
@@ -11508,7 +11684,16 @@ do
 		if type(pos) == "string" then k = (pos:gsub("[%s_%-]", "")):lower() end
 		local s = SIDES[k] or SIDES[default]
 		frame.AnchorPoint = s[1]
-		frame.Position = s[2]
+		local p2 = s[2]
+		local cam = workspace.CurrentCamera
+		local e = Library._edge(cam and cam.ViewportSize)
+		if e then   -- phone: same edge gap as the window
+			local x, y = p2.X.Offset, p2.Y.Offset
+			if s[1].X == 0 then x = e.L elseif s[1].X == 1 then x = -e.R end
+			if s[1].Y == 1 then y = -e.B end
+			p2 = UDim2.new(p2.X.Scale, x, p2.Y.Scale, y)
+		end
+		frame.Position = p2
 	end
 
 	-- the HUD lives in its own ScreenGui so it stays visible while the menu is closed
@@ -11754,7 +11939,7 @@ do
 		sk.Parent = frame
 		local head = new("TextLabel", {
 			Name = "Head", Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, Text = tostring(cfg.Title or "Keybinds"),
-			Font = T.FontBold, TextSize = 13, TextColor3 = T.Text, ZIndex = 3, Parent = frame,
+			Font = T.FontBold, TextSize = 14, TextColor3 = T.Text, ZIndex = 3, Parent = frame,
 		})
 		local bar = new("Frame", {
 			Position = UDim2.new(0, 8, 0, 23), Size = UDim2.new(1, -16, 0, 2), BackgroundColor3 = Color3.new(1, 1, 1),
@@ -11812,12 +11997,12 @@ do
 				}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 				new("TextLabel", {
 					Position = UDim2.fromOffset(13, 0), Size = UDim2.new(1, -66, 1, 0), BackgroundTransparency = 1, Text = it.Name,
-					Font = TH.Font, TextSize = 13, TextColor3 = it.On and TH.Text or TH.SubText, TextXAlignment = Enum.TextXAlignment.Left,
+					Font = TH.Font, TextSize = 14, TextColor3 = it.On and TH.Text or TH.SubText, TextXAlignment = Enum.TextXAlignment.Left,
 					TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3, Parent = row,
 				})
 				new("TextLabel", {
 					AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0, 54, 1, 0), BackgroundTransparency = 1,
-					Text = "[" .. it.Key .. "]", Font = TH.FontBold, TextSize = 12, TextColor3 = it.On and TH.Accent or TH.SubText,
+					Text = "[" .. it.Key .. "]", Font = TH.FontBold, TextSize = 13, TextColor3 = it.On and TH.Accent or TH.SubText,
 					TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3, Parent = row,
 				})
 				rows[#rows + 1] = row
@@ -11843,13 +12028,7 @@ do
 			frame.Visible = wantVisible and (#items > 0 or cfg.HideWhenEmpty == false)
 		end
 
-		local acc = 0
-		table.insert(conns, RunService.Heartbeat:Connect(function(dt)
-			acc += dt
-			if acc < interval then return end
-			acc = 0
-			refresh()
-		end))
+		table.insert(conns, Library._tick(interval, refresh))
 		if cfg.Draggable ~= false then
 			for _, c in ipairs(dragify(frame)) do table.insert(conns, c) end
 		end
@@ -12066,7 +12245,7 @@ do
 		local minus, plus = mkBtnB("-", true), mkBtnB("+", false)
 		local valLabel = new("TextLabel", {
 			Position = UDim2.fromOffset(btnW, 0), Size = UDim2.new(1, -btnW * 2, 1, 0), BackgroundTransparency = 1, Text = "",
-			Font = T.FontBold, TextSize = 13, TextColor3 = T.Text, TextTruncate = Enum.TextTruncate.AtEnd, Parent = box,
+			Font = T.FontBold, TextSize = 14, TextColor3 = T.Text, TextTruncate = Enum.TextTruncate.AtEnd, Parent = box,
 		})
 
 		local obj = {}
@@ -12193,14 +12372,10 @@ do
 		function obj:SetGet(fn) getter = fn prev, last = nil, nil obj:Refresh() end
 		function obj:Get() return last end
 
-		local acc = 0
 		local conn
-		conn = RunService.Heartbeat:Connect(function(dt)
+		conn = Library._tick(interval, function()
 			if not frame.Parent then conn:Disconnect() return end
 			if not win.Visible then return end
-			acc += dt
-			if acc < interval then return end
-			acc = 0
 			pcall(obj.Refresh, obj)
 		end)
 		table.insert(win.Conns, conn)
@@ -12499,7 +12674,7 @@ do
 			}),
 		})
 		local empty = new("TextLabel", {
-			LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 32), BackgroundTransparency = 1, Text = cfg.Empty or "", Font = T.Font, TextSize = 13,
+			LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 32), BackgroundTransparency = 1, Text = cfg.Empty or "", Font = T.Font, TextSize = 14,
 			TextColor3 = T.SubText, Visible = false, Parent = frame,
 		})
 		self:_Register(frame, cfg.Name, CH + 20)
@@ -12568,13 +12743,13 @@ do
 			local badge = new("TextLabel", {
 				Name = "Badge", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -3, 0, 3), Size = UDim2.fromOffset(0, 18),
 				AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.Accent, BackgroundTransparency = 0.25, BorderSizePixel = 0,
-				Font = T.FontBold, TextSize = 13, TextColor3 = Library.OnAccent(T.Accent), Text = "",
+				Font = T.FontBold, TextSize = 14, TextColor3 = Library.OnAccent(T.Accent), Text = "",
 				Parent = box,
 			}, { corner(9), padding(6, 0, 6, 0) })
 			Library._oa(badge)
 			new("TextLabel", {
 				Position = UDim2.fromOffset(4, 58), Size = UDim2.new(1, -8, 0, 36), BackgroundTransparency = 1, Text = tostring(item.Name),
-				Font = T.FontMedium or T.Font, TextSize = 12, TextColor3 = T.Text, TextWrapped = true, TextTruncate = Enum.TextTruncate.AtEnd, Parent = card,
+				Font = T.FontMedium or T.Font, TextSize = 13, TextColor3 = T.Text, TextWrapped = true, TextTruncate = Enum.TextTruncate.AtEnd, Parent = card,
 			})
 			feedback(card, card, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft, true)
 			strokeFeedback(card, card:FindFirstChildOfClass("UIStroke"), 0.4, 0.05)
@@ -12700,7 +12875,7 @@ end
 local function caption(parent, T, text)
 	return new("TextLabel", {
 		Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 0, 16), BackgroundTransparency = 1, Text = tostring(text),
-		Font = T.Font, TextSize = 13, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = parent,
+		Font = T.Font, TextSize = 14, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = parent,
 	})
 end
 
@@ -12722,7 +12897,7 @@ function Section:CreateButtonRow(cfg)
 		local b = new("TextButton", {
 			LayoutOrder = i, Size = UDim2.new(1 / n, -math.floor(gap * (n - 1) / n), 1, 0),
 			BackgroundColor3 = color or T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false,
-			Text = d.Name or "Button", Font = d.Bold and T.FontBold or T.Font, TextSize = 13,
+			Text = d.Name or "Button", Font = d.Bold and T.FontBold or T.Font, TextSize = 14,
 			TextColor3 = d.TextColor or (color and Library.OnAccent(color)) or T.Text,
 			TextTruncate = Enum.TextTruncate.AtEnd, ClipsDescendants = true, Parent = row,
 		}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }), stroke(color and color:Lerp(Color3.new(1, 1, 1), 0.3) or T.Border, 1, color and 0.5 or 0.35) })
@@ -12776,12 +12951,12 @@ function Section:CreateInputButton(cfg)
 	local boxStroke = boxFrame:FindFirstChildOfClass("UIStroke")
 	local box = new("TextBox", {
 		Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -20, 1, 0), BackgroundTransparency = 1, Text = tostring(cfg.Default or ""),
-		PlaceholderText = cfg.Placeholder or "", PlaceholderColor3 = T.SubText, Font = T.Font, TextSize = 13, TextColor3 = T.Text,
+		PlaceholderText = cfg.Placeholder or "", PlaceholderColor3 = T.SubText, Font = T.Font, TextSize = 14, TextColor3 = T.Text,
 		TextXAlignment = LEFT, ClearTextOnFocus = false, Parent = boxFrame,
 	})
 	local btn = new("TextButton", {
 		AnchorPoint = V2(1, 0), Position = UDim2.new(1, 0, 0, top), Size = UDim2.fromOffset(bw, h), BackgroundColor3 = T.Accent,
-		BackgroundTransparency = 0.05, AutoButtonColor = false, Text = cfg.Button or "OK", Font = T.FontBold, TextSize = 13,
+		BackgroundTransparency = 0.05, AutoButtonColor = false, Text = cfg.Button or "OK", Font = T.FontBold, TextSize = 14,
 		TextColor3 = Library.OnAccent(T.Accent), TextTruncate = Enum.TextTruncate.AtEnd, ClipsDescendants = true, Parent = frame,
 	}, { corner(2), stroke(T.Accent:Lerp(Color3.new(1, 1, 1), 0.3), 1, 0.5) })
 	strokeFeedback(btn, btn:FindFirstChildOfClass("UIStroke"), 0.5, 0.05)
@@ -12883,7 +13058,7 @@ function Section:CreateCodeBlock(cfg)
 	if cfg.Name then
 		new("TextLabel", {
 			Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -76, 0, 18), BackgroundTransparency = 1, Text = cfg.Name,
-			Font = T.Font, TextSize = 13, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
+			Font = T.Font, TextSize = 14, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
 		})
 	end
 	local text = tostring(cfg.Text or "")
@@ -12893,14 +13068,14 @@ function Section:CreateCodeBlock(cfg)
 		ScrollingDirection = Enum.ScrollingDirection.Y, Parent = frame,
 	}, { corner(10), stroke(T.Border, 1, 0.4), padding(8, 6, 8, 6) })
 	local label = new("TextLabel", {
-		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Text = text, Font = Enum.Font.Code, TextSize = 12,
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Text = text, Font = Enum.Font.Code, TextSize = 13,
 		TextColor3 = T.Text, TextXAlignment = LEFT, TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true, Parent = scroll,
 	})
 	local obj = {}
 	if showCopy then
 		local cb = new("TextButton", {
 			AnchorPoint = V2(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(UserInputService.TouchEnabled and 68 or 58, UserInputService.TouchEnabled and 26 or 18), BackgroundColor3 = T.Control,
-			BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "Copy", Font = T.Font, TextSize = 12, TextColor3 = T.Text,
+			BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "Copy", Font = T.Font, TextSize = 13, TextColor3 = T.Text,
 			ClipsDescendants = true, Parent = frame,
 		}, { corner(9), stroke(T.Border, 1, 0.35) })
 		feedback(cb, cb, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
@@ -13004,13 +13179,10 @@ function Section:CreateCountdown(cfg)
 	function obj:Get() return left() or 0 end
 	function obj:IsExpired() local s = left() return s ~= nil and s <= 0 end
 
-	local acc, conn = 0, nil
-	conn = RunService.Heartbeat:Connect(function(dt)
+	local conn
+	conn = Library._tick(0.5, function()
 		if not frame.Parent then conn:Disconnect() return end
 		if not win.Visible then return end
-		acc += dt
-		if acc < 0.5 then return end
-		acc = 0
 		pcall(render)
 	end)
 	table.insert(win.Conns, conn)
@@ -13048,7 +13220,7 @@ function Section:CreateListBox(cfg)
 		}, { corner(12), stroke(T.Border, 1, 0.35) })
 		searchBox = new("TextBox", {
 			Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -20, 1, 0), BackgroundTransparency = 1, Text = "",
-			PlaceholderText = cfg.SearchPlaceholder or "Search...", PlaceholderColor3 = T.SubText, Font = T.Font, TextSize = 13,
+			PlaceholderText = cfg.SearchPlaceholder or "Search...", PlaceholderColor3 = T.SubText, Font = T.Font, TextSize = 14,
 			TextColor3 = T.Text, TextXAlignment = LEFT, ClearTextOnFocus = false, Parent = sf,
 		})
 	end
@@ -13059,7 +13231,7 @@ function Section:CreateListBox(cfg)
 	}, { corner(10), stroke(T.Border, 1, 0.4), list(2), padding(4, 4, 4, 4) })
 	local empty = new("TextLabel", {
 		LayoutOrder = 1000000, Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, Text = cfg.Empty or "No items",
-		Font = T.Font, TextSize = 12, TextColor3 = T.SubText, Visible = false, Parent = scroll,
+		Font = T.Font, TextSize = 13, TextColor3 = T.SubText, Visible = false, Parent = scroll,
 	})
 
 	local items, rows, sel = {}, {}, {}
@@ -13135,7 +13307,7 @@ function Section:CreateListBox(cfg)
 		}, { corner(2) })
 		local lab = new("TextLabel", {
 			Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -20, 1, 0), BackgroundTransparency = 1, Text = name, Font = T.Font,
-			TextSize = 13, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
+			TextSize = 14, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 		})
 		btn.MouseEnter:Connect(function()
 			if usingTouch() or sel[name] then return end
@@ -13280,7 +13452,7 @@ function Section:CreateTable(cfg)
 	for _, c in ipairs(cols) do
 		new("TextLabel", {
 			Position = UDim2.new(c.X, 8, 0, 0), Size = UDim2.new(c.S, -10, 1, 0), BackgroundTransparency = 1, Text = c.Name,
-			Font = T.FontBold, TextSize = 12, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = head,
+			Font = T.FontBold, TextSize = 13, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = head,
 		})
 	end
 	local scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
@@ -13290,7 +13462,7 @@ function Section:CreateTable(cfg)
 	}, { corner(10), stroke(T.Border, 1, 0.4), list(0), padding(0, 2, 0, 2) })
 	local empty = new("TextLabel", {
 		LayoutOrder = 1000000, Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1, Text = cfg.Empty or "No data",
-		Font = T.Font, TextSize = 12, TextColor3 = T.SubText, Visible = false, Parent = scroll,
+		Font = T.Font, TextSize = 13, TextColor3 = T.SubText, Visible = false, Parent = scroll,
 	})
 
 	local data, rowFrames, cells = {}, {}, {}
@@ -13308,7 +13480,7 @@ function Section:CreateTable(cfg)
 			local v = row[j]
 			cells[i][j] = new("TextLabel", {
 				Position = UDim2.new(c.X, 8, 0, 0), Size = UDim2.new(c.S, -10, 1, 0), BackgroundTransparency = 1,
-				Text = v == nil and "" or tostring(v), Font = T.Font, TextSize = 12, TextColor3 = T.Text, TextXAlignment = LEFT,
+				Text = v == nil and "" or tostring(v), Font = T.Font, TextSize = 13, TextColor3 = T.Text, TextXAlignment = LEFT,
 				TextTruncate = Enum.TextTruncate.AtEnd, Parent = r,
 			})
 		end
@@ -13452,7 +13624,7 @@ function Section:CreateStatusCard(cfg)
 	})
 	local pill = new("TextLabel", {
 		AnchorPoint = V2(1, 0), Position = UDim2.new(1, 0, 0, PAD), Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X,
-		BackgroundColor3 = T.SubText, BackgroundTransparency = 0.85, BorderSizePixel = 0, Text = "", Font = T.FontBold, TextSize = 12,
+		BackgroundColor3 = T.SubText, BackgroundTransparency = 0.85, BorderSizePixel = 0, Text = "", Font = T.FontBold, TextSize = 13,
 		TextColor3 = T.SubText, Visible = false, Parent = body,
 	}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }) })
 
@@ -13470,12 +13642,12 @@ function Section:CreateStatusCard(cfg)
 			LayoutOrder = i, Size = UDim2.new(1 / n, -math.floor(8 * (n - 1) / n), 1, 0), BackgroundTransparency = 1, Parent = cols,
 		})
 		new("TextLabel", {
-			Size = UDim2.new(0.5, 0, 0, 14), BackgroundTransparency = 1, Text = tostring(b.Label or ""), Font = T.Font, TextSize = 12,
+			Size = UDim2.new(0.5, 0, 0, 14), BackgroundTransparency = 1, Text = tostring(b.Label or ""), Font = T.Font, TextSize = 13,
 			TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = ATEND, Parent = cell,
 		})
 		local val = new("TextLabel", {
 			AnchorPoint = V2(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0.5, 0, 0, 14), BackgroundTransparency = 1, Text = "--",
-			Font = T.FontBold, TextSize = 13, TextColor3 = col, TextXAlignment = RIGHT, TextTruncate = ATEND, Parent = cell,
+			Font = T.FontBold, TextSize = 14, TextColor3 = col, TextXAlignment = RIGHT, TextTruncate = ATEND, Parent = cell,
 		})
 		local track = new("Frame", {
 			Position = UDim2.fromOffset(0, 18), Size = UDim2.new(1, 0, 0, 5), BackgroundColor3 = T.Background, BackgroundTransparency = 0.2,
@@ -13616,6 +13788,7 @@ function Window:RenameTab(nameOrTab, newName)
 	if other and other ~= t then return false end
 	t.Name = newName
 	t.Label.Text = newName
+	pcall(t._FitLabel, t)
 	if self._index then
 		for _, e in ipairs(self._index) do
 			if e.Tab == t then e.TabName = newName end
@@ -13683,11 +13856,11 @@ else
 	end
 end
 
-Library.Version = "3.17"   -- keep in step with the README
+Library.Version = "3.17-safe"   -- keep in step with the README (-safe = phone edge-margin patch)
 Library.Stage = "beta"      -- shown next to the version on the splash; set to nil / "" for a stable release
 end
 
------------------------------------------------------------- Splash / launch screen (v3.16)
+------------------------------------------------------------ Splash / launch screen (v3.21)
 -- Plain launch screen shown while CreateWindow builds the UI: logo, name, thin progress bar, one status line.
 -- No particles / glitch / HUD frames; short fade in and fade out. A gradient card sits behind it (Splash = { Panel = false } to remove);
 -- taps pass through to whatever is underneath while it shows (Splash = { Block = true } blocks them).
@@ -13705,7 +13878,7 @@ end
 --            or explicitly: Window:HoldLoading() / Window:ReleaseLoading() / Window:FinishLoading().  BuildTimeout (30 s) is the safety net.
 --            Splash = { WaitBuild = false } (or Library.Splash.WaitBuild = false) brings back the old timed splash.
 do
-	local TS, RS, UIS = game:GetService("TweenService"), game:GetService("RunService"), game:GetService("UserInputService")
+	local TS, RS, UIS = TweenService, RunService, UserInputService
 	local S = { Enabled = true, Duration = 4, Skippable = false, Async = false, Backdrop = 1, Theme = false, Panel = true, Block = false,
 		WaitBuild = true, IdleTime = 0.8, BuildTimeout = 30,
 		Steps = { "Loading", "Preparing interface", "Almost ready" } }
@@ -13773,144 +13946,218 @@ do
 		local holdT = (ctx and ctx.hold) and (tonumber(opt("BuildTimeout")) or 30) or 0
 		task.delay(D + 12 + holdT, function() if gui.Parent then pcall(gui.Destroy, gui) end end)
 
-		-- flat backdrop + one centered group (fades as a whole)
-		local bg = fr({ Name = "BG", Size = U2(1, 0, 1, 0), BackgroundColor3 = bgc, BackgroundTransparency = 1, Active = opt("Block") == true, Parent = gui })
-		local stack = mk("CanvasGroup", { Name = "Stack", AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0.5, 10), Size = U2(0, 300, 0, 204),
-			BackgroundTransparency = 1, BorderSizePixel = 0, GroupTransparency = 1, Parent = bg })
-		local sc0 = math.clamp(math.min(vp.X / 760, vp.Y / 520), 0.8, 1.15)
-		local stackScale = mk("UIScale", { Scale = sc0, Parent = stack })
+		-- ===== visuals (v3.21) =====
+		-- Stability rules: (1) no CanvasGroup (it re-rasterised the whole stack every frame while the rings turned, which blurred
+		-- edges and cost frames on phones): fading is done per element instead; (2) every animation is driven by os.clock(), not
+		-- by summed frame times, so a frame spike or the blocking build() never slows it down, it just lands where it should be;
+		-- (3) property writes only happen while something actually changes (intro, burst, exit); (4) one UIScale for everything.
+		local fades, movers = {}, {}   -- { obj, prop, base, d, g, last } / { obj, x, y, d }
+		local function R(obj, prop, d, g)   -- fades `prop` in (stagger `d`, seconds); group g: "fx" fades on burst, "bg" fades late on exit
+			local base = obj[prop]
+			fades[#fades + 1] = { obj = obj, prop = prop, base = base, d = d or 0, g = g, last = 2 }
+			obj[prop] = 1
+			return obj
+		end
+		local function M(obj, d)   -- slides up into place while fading in
+			local p = obj.Position
+			movers[#movers + 1] = { obj = obj, p = p, d = d or 0, last = -1 }
+			return obj
+		end
+		local function ease(x) x = math.clamp(x, 0, 1) return 1 - (1 - x) ^ 4 end
 
-		-- card behind the logo: gradient fill only (no border, no glow). Pure frames (no loops), fades with the rest.
-		-- Splash = { Panel = false } turns it off. Taps pass through the splash unless Splash = { Block = true }.
-		local panel, panelScales, panelStroke
+		local lowP = lowPower()
+		local bg = fr({ Name = "BG", Size = U2(1, 0, 1, 0), BackgroundColor3 = bgc, BackgroundTransparency = 1, Active = opt("Block") == true, Parent = gui })
+		local sc0 = math.clamp(math.min(vp.X / 760, vp.Y / 520), 0.8, 1.15)
+		sc0 = math.floor(sc0 * 20 + 0.5) / 20   -- steps of 0.05: fractional scales make text soft
+		local PW, PH = 380, 292
+		local holder = fr({ Name = "Holder", AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0.5, 0), Size = U2(0, PW, 0, PH), BackgroundTransparency = 1, Parent = bg })
+		local holderScale = mk("UIScale", { Scale = sc0, Parent = holder })
+
+		-- glass card: gradient fill, top-lit edge, thin accent line on top
+		local panel, panelStroke
 		if opt("Panel") ~= false then
-			local PW, PH = 372, 276
-			panel = fr({ Name = "Panel", AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0.5, 10), Size = U2(0, PW, 0, PH),
-				BackgroundColor3 = white, BackgroundTransparency = 1, Active = false, ZIndex = 0, Parent = bg }, { round(26) })
-			panelStroke = mk("UIStroke", { Color = acc, Thickness = 1, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = panel })
+			panel = fr({ Name = "Panel", Size = U2(1, 0, 1, 0), BackgroundColor3 = white, BackgroundTransparency = 0.06, Active = false, ZIndex = 0, Parent = holder }, { round(24) })
 			mk("UIGradient", { Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, bgc:Lerp(acc, 0.22)), ColorSequenceKeypoint.new(0.55, bgc:Lerp(acc2, 0.06)),
-				ColorSequenceKeypoint.new(1, bgc:Lerp(Color3.new(0, 0, 0), 0.25)) }), Rotation = 90, Parent = panel })
-			panelScales = { mk("UIScale", { Scale = sc0, Parent = panel }) }
+				ColorSequenceKeypoint.new(0, bgc:Lerp(acc, 0.20)), ColorSequenceKeypoint.new(0.5, bgc:Lerp(acc2, 0.05)),
+				ColorSequenceKeypoint.new(1, bgc:Lerp(Color3.new(0, 0, 0), 0.30)) }), Rotation = 90, Parent = panel })
+			panelStroke = mk("UIStroke", { Color = acc:Lerp(white, 0.25), Thickness = 1, Transparency = 0.45, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = panel })
+			mk("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.45, 0.65),
+				NumberSequenceKeypoint.new(1, 1) }), Parent = panelStroke })
+			local line = fr({ AnchorPoint = V2(0.5, 0), Position = U2(0.5, 0, 0, 0), Size = U2(0.34, 0, 0, 2), BackgroundColor3 = white, BackgroundTransparency = 0.1, Parent = panel }, { round(1) })
+			mk("UIGradient", { Color = ColorSequence.new(acc, acc2), Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.5, 0), NumberSequenceKeypoint.new(1, 1) }), Parent = line })
+			R(panel, "BackgroundTransparency", 0)
+			R(panelStroke, "Transparency", 0)
+			R(line, "BackgroundTransparency", 0.25)
 		end
 
-		-- soft outline so the text stays readable on a transparent backdrop
-		local function shadow() return mk("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 1, Transparency = 0.55 }) end
+		local stack = fr({ Name = "Stack", AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0.5, 0), Size = U2(0, 320, 0, 224), BackgroundTransparency = 1, Parent = holder })
+		local function shadow() return mk("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 1, Transparency = 0.6 }) end
+		local function T(p, d)   -- text label with soft outline, both fade in together
+			local l = lb(p)
+			local s = shadow() s.Parent = l
+			R(l, "TextTransparency", d) R(s, "Transparency", d)
+			return l
+		end
 
-		-- effects: pulsing glow + two counter-rotating comet rings + breathing logo
-		local CY = 54
-		local glow = fr({ AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0, CY), Size = U2(0, 104, 0, 104), BackgroundColor3 = acc,
-			BackgroundTransparency = 0.85, Parent = stack }, { mk("UICorner", { CornerRadius = UDim.new(1, 0) }) })
-		local function ring(size, thick, c1, c2)
+		-- logo block: glow, static track ring, two comet rings, tile
+		local CY = 56
+		local glow = fr({ AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0, CY), Size = U2(0, 118, 0, 118), BackgroundColor3 = acc,
+			BackgroundTransparency = 0.86, Parent = stack }, { mk("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		R(glow, "BackgroundTransparency", 0.05, "fx") M(glow, 0.05)
+		local function ring(size, thick, c1, c2, comet)
 			local r = fr({ AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0, CY), Size = U2(0, size, 0, size), BackgroundTransparency = 1, Parent = stack },
 				{ mk("UICorner", { CornerRadius = UDim.new(1, 0) }) })
-			local st = mk("UIStroke", { Color = white, Thickness = thick, Parent = r })
-			return mk("UIGradient", { Color = ColorSequence.new(c1, c2),
-				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.55, 1), NumberSequenceKeypoint.new(1, 1) }),
-				Parent = st })
+			local st = mk("UIStroke", { Color = comet and white or acc, Thickness = thick, Transparency = comet and 0 or 0.86, Parent = r })
+			local g
+			if comet then
+				g = mk("UIGradient", { Color = ColorSequence.new(c1, c2),
+					Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 1), NumberSequenceKeypoint.new(1, 1) }),
+					Parent = st })
+			end
+			R(st, "Transparency", 0.1, "fx") M(r, 0.1)
+			return g
 		end
-		local ringA = ring(88, 2.5, acc, acc2)
-		local ringB = ring(76, 1.5, acc2, acc)
+		ring(96, 2, acc, acc, false)
+		local ringA = ring(96, 2.5, acc, acc2, true)
+		local ringB = ring(82, 1.5, acc2, acc, true)
 
-		-- logo: custom image, or the first letter on a flat accent tile
 		local logo
+		local logoBase = 64
 		if logoId then
 			local id = tonumber(logoId)
-			logo = mk("ImageLabel", { AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0, CY), Size = U2(0, 62, 0, 62), BackgroundTransparency = 1,
-				Image = id and ("rbxassetid://" .. id) or tostring(logoId), Parent = stack }, { round(14) })
+			logo = mk("ImageLabel", { AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0, CY), Size = U2(0, logoBase, 0, logoBase), BackgroundTransparency = 1,
+				Image = id and ("rbxassetid://" .. id) or tostring(logoId), Parent = stack }, { round(16) })
+			R(logo, "ImageTransparency", 0.1)
 		else
 			local okc, ch = pcall(function() return utf8.char(utf8.codepoint(brand, 1)) end)
-			logo = fr({ AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0, CY), Size = U2(0, 62, 0, 62), BackgroundColor3 = acc, Parent = stack }, { round(14) })
-			lb({ Size = U2(1, 0, 1, 0), Text = okc and ch:upper() or "S", Font = Enum.Font.GothamBold, TextSize = 28, TextColor3 = onAcc, Parent = logo })
+			logo = fr({ AnchorPoint = V2(0.5, 0.5), Position = U2(0.5, 0, 0, CY), Size = U2(0, logoBase, 0, logoBase), BackgroundColor3 = white, Parent = stack }, { round(16) })
+			mk("UIGradient", { Color = ColorSequence.new(acc, acc2), Rotation = 45, Parent = logo })
+			local ls = mk("UIStroke", { Color = white, Thickness = 1, Transparency = 0.75, Parent = logo })
+			local lt = lb({ Size = U2(1, 0, 1, 0), Text = okc and ch:upper() or "S", Font = Enum.Font.GothamBold, TextSize = 28, TextColor3 = onAcc, Parent = logo })
+			R(logo, "BackgroundTransparency", 0.1) R(ls, "Transparency", 0.1) R(lt, "TextTransparency", 0.1)
 		end
+		M(logo, 0.1)
 		local logoScale = mk("UIScale", { Parent = logo })
 
-		lb({ Position = U2(0, 0, 0, 100), Size = U2(1, 0, 0, 28), Text = brand, Font = Enum.Font.GothamBold, TextSize = 22, TextColor3 = txt, Parent = stack }, { shadow() })
+		local brandL = T({ Position = U2(0, 0, 0, 108), Size = U2(1, 0, 0, 28), Text = brand, Font = Enum.Font.GothamBold, TextSize = 22, TextColor3 = txt, Parent = stack }, 0.2)
+		M(brandL, 0.2)
 		if sub ~= "" then
-			local pill = fr({ AnchorPoint = V2(0.5, 0), Position = U2(0.5, 0, 0, 132), Size = U2(0, 0, 0, 22), AutomaticSize = Enum.AutomaticSize.X,
+			local pill = fr({ AnchorPoint = V2(0.5, 0), Position = U2(0.5, 0, 0, 140), Size = U2(0, 0, 0, 22), AutomaticSize = Enum.AutomaticSize.X,
 				BackgroundColor3 = acc, BackgroundTransparency = 0.82, Parent = stack },
-				{ round(11), mk("UIStroke", { Color = acc, Thickness = 1, Transparency = 0.6 }),
-				  mk("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }) })
-			lb({ Size = U2(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, Text = sub, TextSize = 12, Font = Enum.Font.GothamMedium, TextColor3 = txt, Parent = pill })
+				{ round(11), mk("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }) })
+			local ps = mk("UIStroke", { Color = acc, Thickness = 1, Transparency = 0.6, Parent = pill })
+			local pl = lb({ Size = U2(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, Text = sub, TextSize = 13, Font = Enum.Font.GothamMedium, TextColor3 = txt, Parent = pill })
+			R(pill, "BackgroundTransparency", 0.3) R(ps, "Transparency", 0.3) R(pl, "TextTransparency", 0.3)
+			M(pill, 0.3)
 		end
 
-		local status = lb({ Position = U2(0, 0, 0, 168), Size = U2(0, 220, 0, 14), Text = steps[1], TextSize = 13, TextColor3 = subc,
-			TextXAlignment = Enum.TextXAlignment.Left, Parent = stack }, { shadow() })
-		local pct = lb({ Position = U2(1, -50, 0, 168), Size = U2(0, 50, 0, 14), Text = "0%", TextSize = 13, TextColor3 = subc,
-			TextXAlignment = Enum.TextXAlignment.Right, Parent = stack }, { shadow() })
-		local track = fr({ Position = U2(0, 0, 0, 190), Size = U2(1, 0, 0, 6), BackgroundColor3 = white, BackgroundTransparency = 0.88, Parent = stack }, { round(3) })
+		local status = T({ Position = U2(0, 0, 0, 178), Size = U2(0, 236, 0, 16), Text = steps[1], TextSize = 14, TextColor3 = subc,
+			TextXAlignment = Enum.TextXAlignment.Left, Parent = stack }, 0.4)
+		local pct = T({ Position = U2(1, -56, 0, 178), Size = U2(0, 56, 0, 16), Text = "0%", TextSize = 14, TextColor3 = subc,
+			TextXAlignment = Enum.TextXAlignment.Right, Font = Enum.Font.GothamMedium, Parent = stack }, 0.4)
+		M(status, 0.4) M(pct, 0.4)
+		local track = fr({ Position = U2(0, 0, 0, 202), Size = U2(1, 0, 0, 6), BackgroundColor3 = white, BackgroundTransparency = 0.9, Parent = stack }, { round(3) })
 		-- fill is white; the gradient supplies the colour (it multiplies) and a moving highlight
 		local fill = fr({ Size = U2(0, 0, 1, 0), BackgroundColor3 = white, Parent = track }, { round(3) })
-		local shine = mk("UIGradient", { Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, acc), ColorSequenceKeypoint.new(0.5, acc2:Lerp(white, 0.6)),
+		local shine = mk("UIGradient", { Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, acc), ColorSequenceKeypoint.new(0.5, acc2:Lerp(white, 0.55)),
 			ColorSequenceKeypoint.new(1, acc2) }), Parent = fill })
+		R(track, "BackgroundTransparency", 0.45) R(fill, "BackgroundTransparency", 0.45)
+		M(track, 0.45)
 
-		local ver = lb({ AnchorPoint = V2(0.5, 1), Position = U2(0.5, 0, 1, -18), Size = U2(0, 200, 0, 16), TextSize = 12, TextColor3 = subc,
+		local ver = lb({ AnchorPoint = V2(0.5, 1), Position = U2(0.5, 0, 1, -18), Size = U2(0, 200, 0, 16), TextSize = 13, TextColor3 = subc,
 			TextTransparency = 0.6, Text = "v" .. tostring(Library.Version) .. ((type(Library.Stage) == "string" and Library.Stage ~= "") and (" " .. Library.Stage) or ""), Parent = bg })
+		R(ver, "TextTransparency", 0.6)
+
+		local bd = tonumber(opt("Backdrop")) or 1
+		if bd < 1 then R(bg, "BackgroundTransparency", 0, "bg") fades[#fades].base = bd end   -- default: stays fully transparent
 
 		-- state
 		local t, shown, fin, skip, done = 0, 0, false, false, false
 		local pcache, lastS, fcount = -1, "", 0
-		local hit = panel or bg
-		-- (no tap-to-skip: the launch screen always plays to the end)
+		local t0c = os.clock()
+		local tExit, burstAt
+		local settled = false
+		local glowPx = 118
 
-		local bd = tonumber(opt("Backdrop")) or 1
-		if bd < 1 then tw(bg, 0.25, { BackgroundTransparency = bd }) end   -- default: stays fully transparent
-		tw(stack, 0.45, { GroupTransparency = 0, Position = U2(0.5, 0, 0.5, 0) }, EZ.Quint)
-		if panel then
-			tw(panel, 0.45, { BackgroundTransparency = 0.08, Position = U2(0.5, 0, 0.5, 0) }, EZ.Quint)
-			if panelStroke then tw(panelStroke, 0.6, { Transparency = 0.72 }, EZ.Quint) end
+		-- fade / slide driver: only runs while something is moving (intro ~1 s, burst, exit)
+		local function apply(now)
+			local tin = now - t0c
+			local ex = tExit and math.clamp((now - tExit) / 0.32, 0, 1) or 0
+			local exBg = tExit and math.clamp((now - tExit - 0.15) / 0.35, 0, 1) or 0
+			local fx = burstAt and math.clamp((now - burstAt) / 0.24, 0, 1) or 0
+			if tin >= 1.3 and not tExit and not burstAt then
+				if settled then return end
+				settled = true
+			else
+				settled = false
+			end
+			local exE = ex * ex   -- ease-in
+			for i = 1, #fades do
+				local e = fades[i]
+				local v = ease((tin - e.d) / 0.55)
+				if e.g == "bg" then v = v * (1 - exBg) else v = v * (1 - exE) end
+				if e.g == "fx" then v = v * (1 - fx) end
+				local val = 1 - (1 - e.base) * v
+				if math.abs(val - e.last) > 0.002 then e.last = val e.obj[e.prop] = val end
+			end
+			for i = 1, #movers do
+				local m = movers[i]
+				local dy = math.floor((1 - ease((tin - m.d) / 0.6)) * 10 + 0.5)
+				if dy ~= m.last then
+					m.last = dy
+					m.obj.Position = U2(m.p.X.Scale, m.p.X.Offset, m.p.Y.Scale, m.p.Y.Offset + dy)
+				end
+			end
+			holderScale.Scale = sc0 * (1 + 0.07 * exE)
+			holder.Position = U2(0.5, 0, 0.5, math.floor(-6 * exE + 0.5))
 		end
 
 		local function step(dt)
 			t = t + dt
+			local now = os.clock()
+			local ph = now - t0c
 			if skip and not fin then t = math.max(t, D) end
 			local k = math.clamp(t / D, 0, 1)
 			local target = fin and 1 or 0.85 * k   -- steady, even pace up to 85%; the last 15% is filled only after the window is really built
 			shown = shown + (target - shown) * math.min(1, dt * (skip and 12 or 5))
+			if shown > 1 then shown = 1 end
 			fill.Size = U2(shown, 0, 1, 0)
 			fcount = fcount + 1
-			if not lowPower() or fcount % 2 == 0 then
-				ringA.Rotation = (t * 240) % 360
-				ringB.Rotation = (-t * 150) % 360
+			if not lowP or fcount % 2 == 0 then
+				ringA.Rotation = (ph * 230) % 360
+				ringB.Rotation = (-ph * 140) % 360
 			end
-			if not done then   -- after the finish burst the tweens own these
-				local pl = math.sin(t * 3.2)
-				logoScale.Scale = 1 + 0.04 * pl
-				glow.BackgroundTransparency = 0.84 + 0.08 * pl
+			if not done then
+				local pl = math.sin(ph * 3)
+				logoScale.Scale = 1 + 0.035 * pl
+				if not lowP then
+					local gs = 118 + math.floor(8 * pl + 0.5)   -- whole pixels only
+					if gs ~= glowPx then glowPx = gs glow.Size = U2(0, gs, 0, gs) end
+				end
+			elseif burstAt then
+				logoScale.Scale = 1 + 0.12 * math.sin(math.pi * math.clamp((now - burstAt) / 0.4, 0, 1))
 			end
-			shine.Offset = V2((t * 0.8) % 1 * 2 - 1, 0)
+			if not lowP then shine.Offset = V2((ph * 0.9) % 1 * 2 - 1, 0) end
 			local pc = math.floor(shown * 100 + 0.5)
 			if pc ~= pcache then pcache = pc pct.Text = pc .. "%" end
 			local s
 			if fin and shown > 0.97 then s = "Ready"
-			else s = steps[math.clamp(math.floor(shown / 0.85 * #steps) + 1, 1, #steps)] .. string.rep(".", math.floor(t * 2.5) % 4) end
+			else s = steps[math.clamp(math.floor(shown / 0.85 * #steps) + 1, 1, #steps)] .. string.rep(".", math.floor(ph * 2.5) % 4) end
 			if s ~= lastS then lastS = s status.Text = s end
+			apply(now)
 		end
 		local function frameStep() local dt = math.min(RS.Heartbeat:Wait(), 0.1) step(dt) return dt end
 
-		-- "done": no more circles. The rings / glow just fade out and the logo gives a tiny pop,
-		-- then the window plays its own launch animation (rise + light sweep + tabs popping in).
+		-- "done": the rings / glow fade out and the logo gives a tiny pop (all clock driven, see apply / step),
+		-- then the window plays its own launch animation.
 		local function burst()
 			done = true
-			tw(ringA.Parent, 0.22, { Transparency = 1 })
-			tw(ringB.Parent, 0.22, { Transparency = 1 })
-			tw(glow, 0.22, { BackgroundTransparency = 1 })
-			tw(logoScale, 0.2, { Scale = 1.12 }, EZ.Quad, ED.Out)
-			task.delay(0.2, function() if gui.Parent then tw(logoScale, 0.2, { Scale = 1 }, EZ.Quad, ED.Out) end end)
+			burstAt = os.clock()
 		end
 
 		local function exit()
-			tw(stackScale, 0.35, { Scale = sc0 * 1.12 }, EZ.Quad, ED.In)   -- slight zoom towards the player while it fades
-			tw(stack, 0.3, { GroupTransparency = 1, Position = U2(0.5, 0, 0.5, -6) }, EZ.Quad, ED.In)
-			tw(ver, 0.3, { TextTransparency = 1 })
-			if panel then
-				for _, ps in ipairs(panelScales) do tw(ps, 0.35, { Scale = sc0 * 1.12 }, EZ.Quad, ED.In) end
-				tw(panel, 0.3, { BackgroundTransparency = 1, Position = U2(0.5, 0, 0.5, -6) }, EZ.Quad, ED.In)
-				if panelStroke then tw(panelStroke, 0.25, { Transparency = 1 }, EZ.Quad, ED.In) end
-			end
-			task.delay(0.15, function()
-				if gui.Parent then tw(bg, 0.35, { BackgroundTransparency = 1 }) end
-			end)
+			tExit = os.clock()   -- apply() fades everything out, zooms the card slightly and drops the backdrop last
 		end
 
 		-- main loop: runs until the timeline ends (or the person taps)
@@ -14370,9 +14617,9 @@ end
 -- Settings tab: an "Animation" section (speed preset, cascade, toggle jelly) is added to Window:CreateSettingsTab()
 -- unless CreateSettingsTab({ Sections = { Animation = false } }).
 do
-	local TS = game:GetService("TweenService")
-	local UIS = game:GetService("UserInputService")
-	local RS = game:GetService("RunService")
+	local TS = TweenService
+	local UIS = UserInputService
+	local RS = RunService
 	local A = Library.Anim
 	local EQUAD, EBACK, ESINE = Enum.EasingStyle.Quad, Enum.EasingStyle.Back, Enum.EasingStyle.Sine
 	local EOUT = Enum.EasingDirection.Out
@@ -14384,11 +14631,7 @@ do
 	if A.CascadeLow == nil then A.CascadeLow = false end
 	if A.ToggleStretch == nil then A.ToggleStretch = true end
 
-	local function lite()
-		local p = Library.Perf and Library.Perf.LowPower
-		if p ~= nil then return p end
-		return UIS.TouchEnabled
-	end
+	local function lite() return false end   -- one look everywhere: phones and PC run the same visuals
 
 	local function go(o, t, props, style, dir, delay)
 		t = math.max(t * (A.Speed or 1), 0.06)
@@ -14672,7 +14915,7 @@ Library._tabLockV2 = (function()
 			}),
 			new("TextLabel", {
 				Name = "Reason", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 34), Size = UDim2.new(1, -48, 0, 44),
-				BackgroundTransparency = 1, Text = "", Font = T.Font, TextSize = 13, TextColor3 = T.SubText,
+				BackgroundTransparency = 1, Text = "", Font = T.Font, TextSize = 14, TextColor3 = T.SubText,
 				TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 19,
 			}),
 		})
@@ -14856,5 +15099,1728 @@ Library._tabLockV2 = (function()
 	K.Sync = syncCover
 	return K
 end)()
+
+------------------------------------------------------------ UX pack (v3.17)
+-- Sidebar : tab breadcrumb + round collapse button + "Theme" chip with a popup list (search lives in the header only).
+-- Tabs    : pin icon on hover; pinned tabs float to the top.
+-- Pages   : slim scroll-progress line + a floating glass dock (fold all sections / back to top).
+;(function()
+	local TOP, SW = 48, 40
+	local CURATED = { "Rose", "Violet", "Cyber", "Crimson", "Matrix", "Midnight", "Ocean", "Sunset", "Aurora", "Dracula", "Nord", "TokyoNight", "Mocha", "Synthwave", "Mono", "Minimal" }
+
+	local function glyph(parent, name, fallback, size, color)
+		local d = Library:IsIconName(name) and Library:ResolveIcon(name) or nil
+		local o
+		if d then
+			o = Library:MakeIcon(d, color)
+			o.Size = UDim2.fromOffset(size, size)
+		else
+			o = new("TextLabel", {
+				Size = UDim2.fromOffset(size, size), BackgroundTransparency = 1, Text = fallback,
+				Font = Enum.Font.GothamBold, TextSize = size, TextColor3 = color,
+			})
+		end
+		o.AnchorPoint = Vector2.new(0.5, 0.5)
+		o.Position = UDim2.fromScale(0.5, 0.5)
+		o.Parent = parent
+		return o
+	end
+	local function recolor(o, c)
+		if o:IsA("ImageLabel") then o.ImageColor3 = c else o.TextColor3 = c end
+	end
+	local function swatch(parent, th, size, x)
+		return new("Frame", {
+			AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, x, 0.5, 0), Size = UDim2.fromOffset(size, size),
+			BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, ZIndex = 62, Parent = parent,
+		}, {
+			new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+			new("UIGradient", { Rotation = 45, Color = ColorSequence.new(th.Accent, th.Accent2 or th.Accent) }),
+		})
+	end
+
+	-- touch / click ripple: a soft accent circle grows from the press point and fades. Lives in its own clipped overlay
+	-- (never touches the button itself). Library.Perf.Ripple = false turns it off.
+	local function addRipple(btn, win)
+		if not btn or btn:FindFirstChild("UXRipple") then return end
+		local rc = btn:FindFirstChildOfClass("UICorner")
+		local layer = new("Frame", {
+			Name = "UXRipple", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0,
+			ClipsDescendants = true, Active = false, ZIndex = btn.ZIndex + 1, Parent = btn,
+		})
+		if rc then new("UICorner", { CornerRadius = rc.CornerRadius, Parent = layer }) end
+		btn.InputBegan:Connect(function(i)
+			if i.UserInputType ~= Enum.UserInputType.MouseButton1 and i.UserInputType ~= Enum.UserInputType.Touch then return end
+			if Library.Perf and Library.Perf.Ripple == false then return end
+			local sc = (win.Scale and win.Scale.Scale) or 1
+			if sc <= 0.01 then sc = 1 end
+			local ap, as = layer.AbsolutePosition, layer.AbsoluteSize
+			if as.X <= 0 or as.Y <= 0 then return end
+			local px = math.clamp((i.Position.X - ap.X) / sc, 0, as.X / sc)
+			local py = math.clamp((i.Position.Y - ap.Y) / sc, 0, as.Y / sc)
+			local d = math.max(as.X, as.Y) / sc * 2.2
+			local dot = new("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(px, py), Size = UDim2.fromOffset(0, 0),
+				BackgroundColor3 = win.Theme.Accent, BackgroundTransparency = 0.7, BorderSizePixel = 0, Active = false, Parent = layer,
+			}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+			tween(dot, 0.5, { Size = UDim2.fromOffset(d, d), BackgroundTransparency = 1 })
+			task.delay(0.55, function() if dot.Parent then dot:Destroy() end end)
+		end)
+	end
+
+	local function build(win)
+		local T, side = win.Theme, win.Sidebar
+		if not (side and win.TabList and win.Pages and win.Main) then return end
+
+		---------------------------------------------------------------- tab breadcrumb + collapse button
+		local bar = new("Frame", { Name = "UXBar", Position = UDim2.fromOffset(10, 6), Size = UDim2.new(1, -19, 0, 36), BackgroundTransparency = 1, Parent = side })
+		-- (the sidebar search box was removed: the header already has one search that covers every tab)
+		-- breadcrumb: shows which tab is open, so the bar is useful when the window is small
+		local crumb = new("TextLabel", {
+			Name = "UXCrumb", Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -52, 1, 0), BackgroundTransparency = 1, Text = "",
+			Font = T.FontBold, TextSize = 12, TextColor3 = T.SubText, TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd, Parent = bar,
+		})
+
+		local cbtn = new("TextButton", {
+			Name = "Collapse", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(36, 36),
+			BackgroundColor3 = T.Background, BackgroundTransparency = 0.35, Text = "", AutoButtonColor = false, BorderSizePixel = 0, Parent = bar,
+		}, {
+			new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+			new("UIStroke", { Color = T.Border, Thickness = 1, Transparency = 0.35, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
+		})
+		addRipple(cbtn, win)
+		local icClose = glyph(cbtn, "lucide:panel-left-close", "<", 18, T.SubText)
+		local icOpen = glyph(cbtn, "lucide:panel-left-open", ">", 18, T.SubText)
+		icOpen.Visible = false
+		cbtn.MouseEnter:Connect(function()
+			tween(cbtn, 0.12, { BackgroundTransparency = 0.1 })
+			recolor(icClose, win.Theme.Accent) recolor(icOpen, win.Theme.Accent)
+		end)
+		cbtn.MouseLeave:Connect(function()
+			tween(cbtn, 0.14, { BackgroundTransparency = 0.35 })
+			recolor(icClose, win.Theme.SubText) recolor(icOpen, win.Theme.SubText)
+		end)
+
+		---------------------------------------------------------------- theme chip + popup
+		local chip = new("TextButton", {
+			Name = "UXTheme", BackgroundColor3 = T.Background, BackgroundTransparency = 0.35, Text = "", AutoButtonColor = false,
+			BorderSizePixel = 0, Parent = side,
+		}, {
+			new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+			new("UIStroke", { Color = T.Border, Thickness = 1, Transparency = 0.35, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
+		})
+		addRipple(chip, win)
+		local chipSw = new("Frame", {
+			AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0), Size = UDim2.fromOffset(18, 18),
+			BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = chip,
+		}, {
+			new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+			new("UIGradient", { Rotation = 45, Color = ColorSequence.new(T.Accent, T.Accent2) }),
+		})
+		local chipLbl = new("TextLabel", {
+			Position = UDim2.fromOffset(36, 0), Size = UDim2.new(1, -62, 1, 0), BackgroundTransparency = 1, Text = "Theme",
+			Font = T.Font, TextSize = 14, TextColor3 = T.Text, TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd, Parent = chip,
+		})
+		local chipChev = new("Frame", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(16, 16), BackgroundTransparency = 1, Parent = chip })
+		local chevIco = glyph(chipChev, "lucide:chevron-up", "^", 14, T.SubText)
+		chip.MouseEnter:Connect(function() tween(chip, 0.12, { BackgroundTransparency = 0.1 }) end)
+		chip.MouseLeave:Connect(function() tween(chip, 0.14, { BackgroundTransparency = 0.35 }) end)
+
+		local function curName()
+			for n, th in pairs(Library.Themes) do
+				if th.Accent == win.Theme.Accent and th.Accent2 == win.Theme.Accent2 then return n end
+			end
+			return "Custom"
+		end
+		local function paint()
+			if win._destroyed then return end
+			local g = chipSw:FindFirstChildOfClass("UIGradient")
+			if g then g.Color = ColorSequence.new(win.Theme.Accent, win.Theme.Accent2) end
+			chipSw.BackgroundColor3 = Color3.new(1, 1, 1)
+			crumb.TextColor3 = win.Theme.SubText
+			chipLbl.Text = curName()
+			if win._uxProg then
+				win._uxProg.BackgroundColor3 = win.Theme.Accent
+				local pg = win._uxProg:FindFirstChildOfClass("UIGradient")
+				if pg then pg.Color = ColorSequence.new(win.Theme.Accent, win.Theme.Accent2) end
+			end
+		end
+		win._uxPaint = paint
+
+		local pop, shield
+		local function closePop()
+			if pop then pop:Destroy() pop = nil end
+			if shield then shield:Destroy() shield = nil end
+		end
+		local function openPop()
+			if pop then closePop() return end
+			local main, TH = win.Main, win.Theme
+			local sc = math.max((win.Scale and win.Scale.Scale) or 1, 0.01)
+			local rel = (chip.AbsolutePosition - main.AbsolutePosition) / sc
+			shield = new("TextButton", { Name = "UXShield", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 58, Parent = main })
+			shield.MouseButton1Click:Connect(closePop)
+			local names, seen = {}, {}
+			for _, n in ipairs(CURATED) do if Library.Themes[n] then names[#names + 1] = n seen[n] = true end end
+			local rest = {}
+			for n in pairs(Library.Themes) do if not seen[n] then rest[#rest + 1] = n end end
+			table.sort(rest)
+			for _, n in ipairs(rest) do names[#names + 1] = n end
+			local cur = curName()
+			local W, ROW = math.max(chip.AbsoluteSize.X / sc, 176), 34
+			local H = math.min(#names * (ROW + 2) + 12, 260)
+			pop = new("Frame", {
+				Name = "UXPop", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromOffset(rel.X, rel.Y - 8), Size = UDim2.fromOffset(W, H),
+				BackgroundColor3 = TH.Panel, BorderSizePixel = 0, ZIndex = 60, Parent = main,
+			}, { corner(14), stroke(TH.Accent, 1, 0.45) })
+			local scr = new("ScrollingFrame", {
+				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
+				ScrollBarImageColor3 = TH.Accent, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ZIndex = 61, Parent = pop,
+			}, {
+				new("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }),
+				new("UIPadding", { PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }),
+			})
+			for i, n in ipairs(names) do
+				local th = Library.Themes[n]
+				local on = n == cur
+				local row = new("TextButton", {
+					LayoutOrder = i, Size = UDim2.new(1, 0, 0, ROW), BackgroundColor3 = TH.Accent, BackgroundTransparency = on and 0.82 or 1,
+					Text = "", AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 62, Parent = scr,
+				}, { new("UICorner", { CornerRadius = UDim.new(0, 10) }) })
+				swatch(row, th, 18, 10)
+				new("TextLabel", {
+					Position = UDim2.fromOffset(36, 0), Size = UDim2.new(1, -46, 1, 0), BackgroundTransparency = 1, Text = n,
+					Font = on and TH.FontBold or TH.Font, TextSize = 14, TextColor3 = on and TH.Accent or TH.Text,
+					TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 62, Parent = row,
+				})
+				row.MouseEnter:Connect(function() if not on then tween(row, 0.1, { BackgroundTransparency = 0.9 }) end end)
+				row.MouseLeave:Connect(function() if not on then tween(row, 0.12, { BackgroundTransparency = 1 }) end end)
+				row.MouseButton1Click:Connect(function()
+					closePop()
+					win:SetTheme(n)
+				end)
+			end
+		end
+		chip.MouseButton1Click:Connect(openPop)
+		win._uxClosePop = closePop
+		paint()
+
+		---------------------------------------------------------------- layout (re-run after every _Fit)
+		local function layout()
+			if win._destroyed then return end
+			local c = win.Compact == true
+			local ox, ow = c and 5 or 10, c and -10 or -19
+			bar.Position = UDim2.fromOffset(ox, 6)
+			bar.Size = UDim2.new(1, ow, 0, 36)
+			crumb.Visible = not c
+			cbtn.AnchorPoint = c and Vector2.new(0.5, 0) or Vector2.new(1, 0)
+			cbtn.Position = c and UDim2.new(0.5, 0, 0, 0) or UDim2.new(1, 0, 0, 0)
+			icClose.Visible, icOpen.Visible = not c, c
+			chip.Visible = not c
+			chip.Position = UDim2.new(0, ox, 1, -(FOOT_H + 10 + SW) + 4)
+			chip.Size = UDim2.new(1, ow, 0, 32)
+			for _, t in ipairs(win.Tabs) do if t._uxStar then t._uxStar.Visible = not c end end
+			win.TabList.Position = UDim2.fromOffset(ox, TOP)
+			win.TabList.Size = UDim2.new(1, ow, 1, -(TOP + FOOT_H + 10 + (c and 0 or SW)))
+			if c then closePop() end
+		end
+		win._uxLayout = layout
+		layout()
+		cbtn.MouseButton1Click:Connect(function()
+			win._forceCompact = not (win.Compact == true)
+			win:_Fit(false)
+		end)
+
+		---------------------------------------------------------------- scroll-progress line
+		local prog = new("Frame", {
+			Name = "UXProgress", Size = UDim2.new(0, 0, 0, 3), BackgroundColor3 = T.Accent, BorderSizePixel = 0,
+			Visible = false, ZIndex = 25, Parent = win.Pages,
+		}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), new("UIGradient", { Color = ColorSequence.new(T.Accent, T.Accent2) }) })
+		win._uxProg = prog
+
+		---------------------------------------------------------------- floating glass dock
+		local dock = new("Frame", {
+			Name = "UXDock", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -18, 1, -4), Size = UDim2.fromOffset(0, 44),
+			AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.Panel, BackgroundTransparency = 1, BorderSizePixel = 0,
+			Visible = false, ZIndex = 30, Parent = win.Pages,
+		}, {
+			new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+			new("UIStroke", { Color = T.Accent, Thickness = 1, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
+			new("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center,
+				Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder,
+			}),
+			new("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4) }),
+		})
+		local dstroke = dock:FindFirstChildOfClass("UIStroke")
+		local function dbtn(order, iconName, fb)
+			local b = new("TextButton", {
+				LayoutOrder = order, Size = UDim2.fromOffset(36, 36), BackgroundColor3 = T.Accent, BackgroundTransparency = 1,
+				Text = "", AutoButtonColor = false, BorderSizePixel = 0, Visible = false, ZIndex = 31, Parent = dock,
+			}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+			local g = glyph(b, iconName, fb, 18, T.Accent)
+			g.ZIndex = 32
+			b.MouseEnter:Connect(function() tween(b, 0.12, { BackgroundTransparency = 0.8 }) end)
+			b.MouseLeave:Connect(function() tween(b, 0.14, { BackgroundTransparency = 1 }) end)
+			return b, g
+		end
+		local fold, foldA = dbtn(1, "lucide:chevrons-down-up", "=")
+		local foldB = glyph(fold, "lucide:chevrons-up-down", "+", 18, T.Accent)
+		foldB.ZIndex = 32
+		foldB.Visible = false
+		local up = dbtn(2, "lucide:arrow-up", "^")
+
+		local function foldable(tab)
+			local n = {}
+			for _, sec in ipairs(tab and tab.Sections or {}) do
+				local head = sec.Frame and sec.Frame:FindFirstChildWhichIsA("TextButton")
+				local ok = false
+				if head then
+					for _, c in ipairs(head:GetChildren()) do
+						if c:IsA("GuiObject") and c.AnchorPoint == Vector2.new(1, 0.5) and c.Visible then ok = true end
+					end
+				end
+				if ok and sec.SetCollapsed then n[#n + 1] = sec end
+			end
+			return n
+		end
+		local dockOn = false
+		local function setDock(on)
+			if on == dockOn then return end
+			dockOn = on
+			if on then
+				dock.Visible = true
+				tween(dock, 0.22, { BackgroundTransparency = 0.04, Position = UDim2.new(1, -18, 1, -16) })
+				tween(dstroke, 0.22, { Transparency = 0.45 })
+			else
+				tween(dock, 0.2, { BackgroundTransparency = 1, Position = UDim2.new(1, -18, 1, -4) })
+				tween(dstroke, 0.2, { Transparency = 1 })
+				task.delay(0.24, function() if not dockOn and dock.Parent then dock.Visible = false end end)
+			end
+		end
+		win._uxRefresh = function()
+			if win._destroyed then return end
+			local tab = win.Active
+			local far, frac = false, 0
+			if tab and tab.Cols then
+				for _, c in ipairs(tab.Cols) do
+					local y = c.CanvasPosition.Y
+					if y > 160 then far = true end
+					local range = c.AbsoluteCanvasSize.Y - c.AbsoluteSize.Y
+					if range > 4 then frac = math.max(frac, math.clamp(y / range, 0, 1)) end
+				end
+			end
+			crumb.Text = tab and ("%s  %s"):format("\226\128\186", tostring(tab.Name):upper()) or ""
+			prog.Visible = frac > 0.001
+			prog.Size = UDim2.new(frac, 0, 0, 3)
+			local secs = foldable(tab)
+			local anyOpen = false
+			for _, sec in ipairs(secs) do if not sec.Collapsed then anyOpen = true end end
+			fold.Visible = #secs >= 2
+			up.Visible = far
+			foldA.Visible, foldB.Visible = anyOpen, not anyOpen
+			setDock(fold.Visible or far)
+		end
+		up.MouseButton1Click:Connect(function()
+			local tab = win.Active
+			if not (tab and tab.Cols) then return end
+			for _, c in ipairs(tab.Cols) do
+				TweenService:Create(c, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { CanvasPosition = Vector2.new(0, 0) }):Play()
+			end
+		end)
+		fold.MouseButton1Click:Connect(function()
+			local secs = foldable(win.Active)
+			local anyOpen = false
+			for _, sec in ipairs(secs) do if not sec.Collapsed then anyOpen = true end end
+			for _, sec in ipairs(secs) do sec:SetCollapsed(anyOpen) end
+			task.delay(0.3, win._uxRefresh)
+		end)
+	end
+
+	---------------------------------------------------------------- hooks
+	local prevCW = Library.CreateWindow
+	function Library:CreateWindow(cfg)
+		local win = prevCW(self, cfg)
+		if type(win) == "table" then
+			local ok, err = pcall(build, win)
+			if not ok then warn("[SpectreUI] UX pack: " .. tostring(err)) end
+		end
+		return win
+	end
+
+	local prevFit = Window._Fit
+	function Window:_Fit(...)
+		local r = prevFit(self, ...)
+		if self._uxLayout then self._uxLayout() end
+		return r
+	end
+
+	local prevCT = Window.CreateTab
+	function Window:CreateTab(...)
+		local tab = prevCT(self, ...)
+		if type(tab) == "table" and tab.Cols and self._uxRefresh then
+			for _, c in ipairs(tab.Cols) do c:GetPropertyChangedSignal("CanvasPosition"):Connect(self._uxRefresh) end
+		end
+		return tab
+	end
+
+	-- pin icon on every tab (hover = faint, pinned = accent); pinned tabs float to the top of the sidebar
+	Library._pins = Library._pins or {}
+	local function addPin(win, tab)
+		local btn = tab.Button
+		if not btn or tab._uxStar then return end
+		local order = btn.LayoutOrder
+		local pin = new("TextButton", {
+			Name = "Pin", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0), Size = UDim2.fromOffset(24, 24),
+			BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 4, Parent = btn,
+		})
+		pcall(addRipple, btn, win)
+		local g = glyph(pin, "lucide:pin", "*", 14, win.Theme.SubText)
+		g.ZIndex = 5
+		local function tint(pinned, hover)
+			recolor(g, pinned and win.Theme.Accent or win.Theme.SubText)
+			local tr = pinned and 0 or (hover and 0.35 or 1)
+			if g:IsA("ImageLabel") then g.ImageTransparency = tr else g.TextTransparency = tr end
+			g.Rotation = pinned and 0 or 35
+		end
+		local function apply()
+			local pinned = Library._pins[tab.Name] == true
+			btn.LayoutOrder = pinned and (order - 1000) or order
+			tint(pinned, false)
+		end
+		tab._uxStar = pin
+		pin.MouseButton1Click:Connect(function()
+			Library._pins[tab.Name] = not Library._pins[tab.Name] or nil
+			apply()
+		end)
+		btn.MouseEnter:Connect(function() if not Library._pins[tab.Name] then tint(false, true) end end)
+		btn.MouseLeave:Connect(function() if not Library._pins[tab.Name] then tint(false, false) end end)
+		pin.Visible = not (win.Compact == true)
+		apply()
+	end
+	local prevCT2 = Window.CreateTab
+	function Window:CreateTab(...)
+		local tab = prevCT2(self, ...)
+		if type(tab) == "table" then pcall(addPin, self, tab) end
+		return tab
+	end
+
+	if Tab and Tab.CreateSection then
+		local prevCS = Tab.CreateSection
+		function Tab:CreateSection(...)
+			local sec = prevCS(self, ...)
+			local w = self.Window
+			if w and w._uxRefresh then task.defer(w._uxRefresh) end
+			return sec
+		end
+	end
+
+	local prevSel = Window.SelectTab
+	function Window:SelectTab(tab)
+		local r = table.pack(prevSel(self, tab))
+		if self._uxRefresh then self._uxRefresh() end
+		return table.unpack(r, 1, r.n)
+	end
+
+	local prevTheme = Window.SetTheme
+	function Window:SetTheme(...)
+		local r = table.pack(prevTheme(self, ...))
+		if self._uxPaint then
+			self._uxPaint()
+			task.delay(0.7, self._uxPaint)   -- after the colour remap tween has finished
+		end
+		return table.unpack(r, 1, r.n)
+	end
+end)()
+
+------------------------------------------------------------ text guard (v3.18)
+-- Smarter UI check: text is FIXED instead of only reported, so a name never ends as "Some long na...".
+-- For every visible label / button the guard measures the text against its real box (padding, window zoom included) and:
+--   1) shrinks the text step by step (never below Library.TextGuard.MinSize) until it fits,
+--   2) if it would become too small, wraps it onto 2+ lines when the box is tall enough,
+--   3) grows it back to the size it was built with as soon as there is room again (window resized, sidebar opened).
+-- Runs by itself (build, tab switch, resize, theme / font / text size change, window opened); work is time-sliced.
+-- Library.TextGuard = { Enabled = true, MinSize = 10, Wrap = true }      opt out of one label: label:SetAttribute("SGSkip", true)
+-- Window:FitText(root) fits every label under root (default: the whole window).  Window:Audit({ Fix = true }) uses it too.
+Library.TextGuard = { Enabled = true, MinSize = 10, Wrap = true }
+do
+	local TextService = game:GetService("TextService")
+	local base = setmetatable({}, { __mode = "k" })       -- label -> size it was built with
+	local lastSet = setmetatable({}, { __mode = "k" })    -- label -> size the guard wrote last
+	local wrapBy = setmetatable({}, { __mode = "k" })     -- label -> TextTruncate it had before the guard wrapped it
+	local sigOf = setmetatable({}, { __mode = "k" })      -- label -> what was measured last time (unchanged = skip)
+	local NONE = Enum.AutomaticSize.None
+
+	local function measure(text, size, font, bound)
+		local ok, v = pcall(TextService.GetTextSize, TextService, text, size, font, bound)
+		if ok then return v end
+		return nil
+	end
+
+	-- returns "skip" | "same" | "ok" | "shrunk" | "wrapped" | "cut"
+	function Library._fitOne(win, d)
+		local g = Library.TextGuard
+		if g.Enabled == false or d.TextScaled or d.RichText or d.Text == "" or d:GetAttribute("SGSkip") then return "skip" end
+		local auto = d.AutomaticSize
+		if auto == Enum.AutomaticSize.X or auto == Enum.AutomaticSize.XY then return "skip" end
+		if d.TextWrapped and auto == Enum.AutomaticSize.Y and not wrapBy[d] then return "skip" end
+		local sz = d.AbsoluteSize
+		if sz.X < 8 or sz.Y < 8 then return "skip" end
+		local sc = math.max((win.Scale and win.Scale.Scale) or 1, 0.01)
+		local aw, ah = sz.X / sc, sz.Y / sc
+		local pd = d:FindFirstChildOfClass("UIPadding")
+		if pd then
+			aw = aw - (pd.PaddingLeft.Offset + pd.PaddingLeft.Scale * aw) - (pd.PaddingRight.Offset + pd.PaddingRight.Scale * aw)
+			ah = ah - (pd.PaddingTop.Offset + pd.PaddingTop.Scale * ah) - (pd.PaddingBottom.Offset + pd.PaddingBottom.Scale * ah)
+		end
+		if aw < 6 or ah < 6 then return "skip" end
+
+		local cur = d.TextSize
+		if base[d] == nil or lastSet[d] ~= cur then base[d] = cur end   -- first sight, or someone else changed the size
+		local b = base[d]
+		local text, font = d.Text, d.Font
+		local sig = text .. "|" .. b .. "|" .. math.floor(aw) .. "|" .. math.floor(ah) .. "|" .. tostring(font) .. "|" .. tostring(wrapBy[d] ~= nil)
+		if sigOf[d] == sig then return "same" end
+		sigOf[d] = sig
+
+		local minS = math.min(g.MinSize or 10, b)
+		local multi = d.TextWrapped and not wrapBy[d]   -- built as a multi-line label
+
+		local function fitsLine(size)
+			local v = measure(text, size, font, Vector2.new(100000, 100000))
+			return v ~= nil and v.X <= aw + 0.5 and v.Y <= ah + 2
+		end
+		local function fitsWrap(size)
+			local v = measure(text, size, font, Vector2.new(aw, 100000))
+			return v ~= nil and v.Y <= ah + 2
+		end
+		local function apply(size, wrap)
+			if d.TextSize ~= size then d.TextSize = size end
+			lastSet[d] = size
+			if wrap then
+				if not wrapBy[d] then wrapBy[d] = d.TextTruncate end
+				d.TextWrapped = true
+				d.TextTruncate = Enum.TextTruncate.None
+			elseif wrapBy[d] then
+				d.TextWrapped = false
+				d.TextTruncate = wrapBy[d]
+				wrapBy[d] = nil
+			end
+		end
+
+		if multi then
+			for size = b, minS, -1 do
+				if fitsWrap(size) then
+					apply(size, false)
+					return size == b and "ok" or "shrunk"
+				end
+			end
+			apply(minS, false)
+			return "cut"
+		end
+
+		-- single line: shrink a little first (down to ~80% of the built size)
+		local soft = math.max(minS, math.floor(b * 0.8))
+		for size = b, soft, -1 do
+			if fitsLine(size) then
+				apply(size, false)
+				return size == b and "ok" or "shrunk"
+			end
+		end
+		-- still too long: wrap it when the box is tall enough for 2+ lines
+		if g.Wrap ~= false then
+			for size = b, minS, -1 do
+				if fitsWrap(size) then
+					local v = measure(text, size, font, Vector2.new(aw, 100000))
+					if v and v.Y > size * 1.1 then   -- really needs a second line
+						apply(size, true)
+						return "wrapped"
+					end
+				end
+			end
+		end
+		-- last resort: the smallest size that is still readable
+		for size = soft - 1, minS, -1 do
+			if fitsLine(size) then
+				apply(size, false)
+				return "shrunk"
+			end
+		end
+		apply(minS, false)
+		return "cut"
+	end
+
+	-- fit every label / button under `root`, time-sliced (about 5 ms per frame)
+	function Window:FitText(root)
+		if Library.TextGuard.Enabled == false or self._destroyed then return 0 end
+		root = root or self.Main
+		if not root or not root.Parent then return 0 end
+		local fixed, t0, n = 0, os.clock(), 0
+		for _, d in ipairs(root:GetDescendants()) do
+			if self._destroyed or not root.Parent then break end
+			if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Visible then
+				n += 1
+				if n % 12 == 0 and os.clock() - t0 > 0.005 then
+					task.wait()
+					t0 = os.clock()
+				end
+				local ok, st = pcall(Library._fitOne, self, d)
+				if ok and (st == "shrunk" or st == "wrapped") then fixed += 1 end
+			end
+		end
+		return fixed
+	end
+
+	-- header, sidebar and the open page (hidden pages are fitted when they are opened)
+	function Window:_FitChrome()
+		if self._fitBusy or self._destroyed then return end
+		self._fitBusy = true
+		for _, r in ipairs({ self.HeaderCard, self.Sidebar, self.Active and self.Active.Page }) do
+			if r then pcall(self.FitText, self, r) end
+		end
+		self._fitBusy = false
+	end
+
+	-- debounced: the last request wins; a second pass 1.2 s later catches controls that were built after the first
+	function Window:_QueueFit(delay)
+		if self._destroyed or Library.TextGuard.Enabled == false then return end
+		self._fitSeq = (self._fitSeq or 0) + 1
+		local seq = self._fitSeq
+		task.delay(delay or 0.4, function()
+			if self._destroyed or seq ~= self._fitSeq then return end
+			if not (self.Visible and self.Main and self.Main.Visible) then self._fitDirty = true return end
+			if self._moving or (self._drag and self._drag.Dragging) then return self:_QueueFit(0.5) end
+			self:_FitChrome()
+			task.delay(1.2, function()
+				if not self._destroyed and seq == self._fitSeq and self.Visible then self:_FitChrome() end
+			end)
+		end)
+	end
+
+	for _, name in ipairs({ "SelectTab", "SetFont", "SetTextScale", "SetTheme", "SetSize", "Resize", "SetMaximized", "SetShaded", "RenameTab" }) do
+		local prev = Window[name]
+		if type(prev) == "function" then
+			Window[name] = function(self, ...)
+				local r = table.pack(prev(self, ...))
+				if self._QueueFit and not self._destroyed then self:_QueueFit(name == "SelectTab" and 0.45 or 0.6) end
+				return table.unpack(r, 1, r.n)
+			end
+		end
+	end
+	local prevVis = Window.SetVisible
+	function Window:SetVisible(v, ...)
+		local r = table.pack(prevVis(self, v, ...))
+		if v and not self._destroyed then self:_QueueFit(self._fitDirty and 0.5 or 0.9) self._fitDirty = nil end
+		return table.unpack(r, 1, r.n)
+	end
+end
+
+---------------------------------------------------------------- v3.18 : Visual Plus
+-- Purely visual extras, event-driven (looping tweens + one-shot tweens, no Heartbeat / RenderStepped loop).
+--   Library.Visual.Plus        = false   turn this whole block off
+--   Library.Visual.Aurora      = true    window border becomes a slowly rotating accent -> accent2 gradient   (PC only)
+--   Library.Visual.AuroraSpeed = 9       seconds per full turn
+--   Library.Visual.GlowSweep   = true    the glow line under the title bar drifts left <-> right             (PC only)
+--   Library.Visual.Sparkle     = true    a small accent burst when a toggle is switched ON by the user       (PC only)
+--   Window:SetAurora(true|false)         switch the animated border at runtime
+-- Phones / Library.Perf.LowPower skip all of it. The rotation pauses while the window is hidden.
+-- (wrapped in a function: the main chunk is close to Lua's local-variable limit, so no new top-level locals)
+Library.Visual = Library.Visual or { Plus = true, Aurora = true, AuroraSpeed = 9, GlowSweep = true, Sparkle = true }
+Library._visualPlus = (function()
+	local TS, UIS = TweenService, UserInputService
+	local V = Library.Visual
+	local WHITE = Color3.new(1, 1, 1)
+
+	local function lite() return false end   -- one look everywhere: phones and PC run the same visuals
+	local function on(key)
+		if V.Plus == false or V[key] == false then return false end
+		if lite() then return V.Mobile ~= false and (Library.MobileKeys or {})[key] == true end   -- phones: only the cheap one-shot effects
+		return true
+	end
+	local function accents(win)
+		local T = win.Theme or {}
+		local a = T.Accent or WHITE
+		return a, T.Accent2 or a
+	end
+
+	---------------------------------------------------------------- aurora border
+	local function paint(win)
+		local au = win._aurora
+		if not au or not au.g.Parent then return end
+		local a, b = accents(win)
+		au.g.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, a), ColorSequenceKeypoint.new(0.33, b),
+			ColorSequenceKeypoint.new(0.66, a:Lerp(WHITE, 0.35)), ColorSequenceKeypoint.new(1, a),
+		})
+		au.st.Color = WHITE   -- the gradient is multiplied with the stroke colour, so the base has to be white
+	end
+
+	local function startAurora(win)
+		if win._aurora or win._destroyed or not on("Aurora") then return end
+		local main = win.Main
+		local st = main and main:FindFirstChildOfClass("UIStroke")
+		if not st then return end
+		local g = Instance.new("UIGradient")
+		g.Name = "Aurora"
+		g.Parent = st
+		local tw = TS:Create(g, TweenInfo.new(math.max(tonumber(V.AuroraSpeed) or 9, 2), Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1), { Rotation = 360 })
+		win._aurora = { g = g, st = st, tw = tw, rest = st.Color }
+		paint(win)
+		tw:Play()
+		if win.Visible == false then tw:Pause() end
+	end
+
+	local function stopAurora(win)
+		local au = win._aurora
+		if not au then return end
+		win._aurora = nil
+		pcall(function() au.tw:Cancel() end)
+		pcall(function() au.g:Destroy() end)
+		pcall(function() if au.st.Parent then au.st.Color = (win.Theme and win.Theme.Border) or au.rest end end)
+	end
+
+	function Window:SetAurora(v)
+		V.Aurora = v and true or false
+		if v then startAurora(self) else stopAurora(self) end
+		return self
+	end
+
+	---------------------------------------------------------------- glow line sweep
+	local function startSweep(win)
+		if win._sweep or win._destroyed or not on("GlowSweep") then return end
+		local hc = win.HeaderCard
+		local line = hc and hc:FindFirstChild("GlowLine")
+		local g = line and line:FindFirstChildOfClass("UIGradient")
+		if not g then return end
+		g.Offset = Vector2.new(-0.45, 0)
+		local tw = TS:Create(g, TweenInfo.new(3.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Offset = Vector2.new(0.45, 0) })
+		win._sweep = tw
+		tw:Play()
+		if win.Visible == false then tw:Pause() end
+	end
+
+	---------------------------------------------------------------- hook the window
+	local prevCreate = Library.CreateWindow
+	function Library:CreateWindow(cfg)
+		local win = prevCreate(self, cfg)
+		if type(win) == "table" then
+			pcall(startAurora, win)
+			pcall(startSweep, win)
+		end
+		return win
+	end
+
+	local prevTheme = Window.SetTheme
+	function Window:SetTheme(...)
+		local r = table.pack(prevTheme(self, ...))
+		if self._aurora then
+			pcall(paint, self)
+			-- the theme change may still be tweening the stroke colour: apply once more afterwards
+			task.delay(0.7, function() if self._aurora then pcall(paint, self) end end)
+		end
+		return table.unpack(r, 1, r.n)
+	end
+
+	local prevVis = Window.SetVisible
+	function Window:SetVisible(v, ...)
+		local r = table.pack(prevVis(self, v, ...))
+		for _, tw in ipairs({ self._aurora and self._aurora.tw or false, self._sweep or false }) do
+			if tw then pcall(function() if v then tw:Play() else tw:Pause() end end) end
+		end
+		return table.unpack(r, 1, r.n)
+	end
+
+	local prevDestroy = Window.Destroy
+	function Window:Destroy(...)
+		pcall(stopAurora, self)
+		if self._sweep then pcall(function() self._sweep:Cancel() end) self._sweep = nil end
+		return prevDestroy(self, ...)
+	end
+
+	---------------------------------------------------------------- toggle sparkle
+	local function burst(win, obj)
+		local gui = win.Gui
+		local row = obj.Frame
+		if not (gui and gui.Parent and row and row.Parent) or win.Visible == false then return end
+		local track, knob
+		for _, c in ipairs(row:GetChildren()) do
+			if c:IsA("Frame") then track = c break end
+		end
+		if track then
+			for _, c in ipairs(track:GetChildren()) do
+				if c:IsA("Frame") and c.ZIndex == 2 then knob = c break end
+			end
+		end
+		local src = knob or track or row
+		local c = src.AbsolutePosition + src.AbsoluteSize / 2 - gui.AbsolutePosition
+		local a, b = accents(win)
+		local info = TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		for i = 1, 9 do
+			local p = Instance.new("Frame")
+			p.AnchorPoint = Vector2.new(0.5, 0.5)
+			p.Size = UDim2.fromOffset(5, 5)
+			p.Position = UDim2.fromOffset(c.X, c.Y)
+			p.BackgroundColor3 = (i % 2 == 0) and a or b
+			p.BorderSizePixel = 0
+			p.ZIndex = 300
+			p.Rotation = math.random(0, 90)
+			Instance.new("UICorner", p).CornerRadius = UDim.new(i % 3 == 0 and 0 or 1, i % 3 == 0 and 1 or 0)
+			p.Parent = gui
+			local ang = (i / 9) * math.pi * 2 + (math.random() - 0.5) * 0.6
+			local d = 16 + math.random() * 14
+			local tw = TS:Create(p, info, {
+				Position = UDim2.fromOffset(c.X + math.cos(ang) * d, c.Y + math.sin(ang) * d - 4),
+				BackgroundTransparency = 1, Size = UDim2.fromOffset(1, 1), Rotation = p.Rotation + 120,
+			})
+			tw.Completed:Once(function() p:Destroy() end)
+			tw:Play()
+		end
+	end
+
+	local origToggle = Section.CreateToggle
+	function Section:CreateToggle(cfg)
+		local obj = origToggle(self, cfg)
+		local win = self.Window
+		if type(obj) == "table" and type(obj.Set) == "function" and type(obj.Get) == "function" and win then
+			local raw = obj.Set
+			function obj:Set(v, silent)
+				local before = obj:Get()
+				raw(self, v, silent)
+				if v and not before and not silent and on("Sparkle") and not win._destroyed then
+					pcall(burst, win, obj)
+				end
+			end
+		end
+		return obj
+	end
+
+	return { start = startAurora, burst = burst }
+end)()
+
+---------------------------------------------------------------- v3.19 : Visual Plus 2
+-- More purely visual extras on top of v3.18. Event-driven only (input events + one-shot / looping tweens), no Heartbeat loop.
+--   Library.Visual.Spotlight   = true   section borders light up where the cursor is (a glow that follows the mouse)   (PC only)
+--   Library.Visual.RevealSweep = true   a light sweep runs across the sections when a tab opens / the window shows     (PC only)
+--   Library.Visual.ThemeWave   = true   the same sweep runs after a theme change                                       (PC only)
+--   Library.Visual.ClickRing   = true   a ring expands from every click inside the window                              (PC only)
+--   Library.Visual.TitleShine  = true   a coloured shine passes over the window title every few seconds               (PC only)
+--   Library.Visual.ScrollBar   = true   thin accent progress line at the top of the page, follows the scroll          (PC only)
+--   Library.Visual.Rainbow     = false  window border cycles through every colour instead of accent -> accent2
+--   Window:SetRainbow(true|false)       switch the rainbow border at runtime
+--   Window:SetSpotlight(true|false)     switch the cursor spotlight at runtime
+--   Library.Visual.TapGlow     = true   a tap on a section sends a light sweep along its border                     (touch)
+--   Library.Visual.Mobile      = true   phones / LowPower keep ONLY the cheap one-shot effects: Sparkle, RevealSweep, ThemeWave,
+--                                       ClickRing (a bigger ring on a tap), TitleShine, ScrollBar, TapGlow. false = nothing on phones.
+--                                       (taps count only when the finger did not move: scrolling never triggers a ring / glow)
+-- Library.Visual.Plus = false turns this and v3.18 off. Cursor Spotlight, Aurora border and GlowSweep stay PC-only.
+-- (wrapped in a function: the main chunk is close to Lua's local-variable limit, so no new top-level locals)
+do
+	local defaults = {
+		Plus = true, Spotlight = true, RevealSweep = true, ThemeWave = true,
+		ClickRing = true, TitleShine = true, ScrollBar = true, Rainbow = false, Mobile = true, TapGlow = true,
+	}
+	for k, v in pairs(defaults) do
+		if Library.Visual[k] == nil then Library.Visual[k] = v end
+	end
+	-- effects that are allowed on phones / low power (Library.Visual.Mobile = false turns them all off there)
+	Library.MobileKeys = { Sparkle = true, RevealSweep = true, ThemeWave = true, ClickRing = true, TitleShine = true, ScrollBar = true, TapGlow = true }
+end
+
+Library._visualPlus2 = (function()
+	local TS, UIS = TweenService, UserInputService
+	local V = Library.Visual
+	local WHITE = Color3.new(1, 1, 1)
+	local KP, NK = ColorSequenceKeypoint.new, NumberSequenceKeypoint.new
+	local BAND = NumberSequence.new({ NK(0, 0.93), NK(0.5, 0), NK(1, 0.93) })
+	local ST = setmetatable({}, { __mode = "k" })   -- per-window state
+
+	local function lite() return false end   -- one look everywhere: phones and PC run the same visuals
+	local function on(key)
+		if V.Plus == false or V[key] == false then return false end
+		if lite() then return V.Mobile ~= false and (Library.MobileKeys or {})[key] == true end   -- phones: only the cheap one-shot effects
+		return true
+	end
+	local function accents(win)
+		local T = win.Theme or {}
+		local a = T.Accent or WHITE
+		return a, T.Accent2 or a
+	end
+	local function alive(win) return win and not win._destroyed and win.Gui ~= nil and win.Gui.Parent ~= nil end
+	local function shown(win) return alive(win) and win.Visible ~= false end
+	local function state(win)
+		local s = ST[win]
+		if not s then
+			s = { byTab = {}, conns = {}, scConns = {}, rings = 0 }
+			ST[win] = s
+		end
+		return s
+	end
+	local function cleanup(win)
+		local st = ST[win]
+		if not st then return end
+		ST[win] = nil
+		for _, c in ipairs(st.conns) do pcall(function() c:Disconnect() end) end
+		for _, c in ipairs(st.scConns) do pcall(function() c:Disconnect() end) end
+		if st.title then pcall(function() st.title.tw:Cancel() end) end
+	end
+
+	---------------------------------------------------------------- section border light (spotlight + sweep)
+	local function attach(win, sec)
+		local f = sec and sec.Frame
+		if not f then return end
+		local stroke = f:FindFirstChildOfClass("UIStroke")
+		if not stroke or stroke:FindFirstChild("SpotGrad") then return end
+		local g = Instance.new("UIGradient")
+		g.Name = "SpotGrad"
+		g.Transparency = BAND
+		g.Enabled = false
+		g.Parent = stroke
+		local rec = { sec = sec, stroke = stroke, g = g, t0 = stroke.Transparency, th0 = stroke.Thickness, on = false, seq = 0 }
+		local st = state(win)
+		local list = st.byTab[sec.Tab]
+		if not list then list = {} st.byTab[sec.Tab] = list end
+		list[#list + 1] = rec
+	end
+
+	local function paint(win, rec)
+		local a, b = accents(win)
+		rec.g.Color = ColorSequence.new({ KP(0, a), KP(0.5, a:Lerp(WHITE, 0.5)), KP(1, b) })
+	end
+
+	local function lightOn(win, rec)
+		if rec.on then return end
+		rec.on = true
+		rec.seq += 1
+		paint(win, rec)
+		rec.g.Enabled = true
+		rec.stroke.Color = WHITE   -- the gradient is multiplied with the stroke colour, so the base has to be white
+		rec.stroke.Transparency = 1
+		rec.stroke.Thickness = 1.5
+		TS:Create(rec.stroke, TweenInfo.new(0.16, Enum.EasingStyle.Quad), { Transparency = 0.1 }):Play()
+	end
+
+	local function lightOff(win, rec)
+		if not rec.on then return end
+		rec.on = false
+		rec.seq += 1
+		local my = rec.seq
+		local tw = TS:Create(rec.stroke, TweenInfo.new(0.14, Enum.EasingStyle.Quad), { Transparency = 1 })
+		tw.Completed:Once(function()
+			if rec.seq ~= my or rec.on or not rec.stroke.Parent then return end
+			rec.g.Enabled = false
+			local T = win.Theme
+			if T and T.Border then rec.stroke.Color = T.Border end
+			rec.stroke.Thickness = rec.th0
+			rec.stroke.Transparency = 1
+			TS:Create(rec.stroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad), { Transparency = rec.t0 }):Play()
+		end)
+		tw:Play()
+	end
+
+	local function clearHover(win)
+		local st = ST[win]
+		if st and st.hover then
+			local r = st.hover
+			st.hover = nil
+			lightOff(win, r)
+		end
+	end
+
+	local function sweep(win, rec, delay)
+		task.delay(delay or 0, function()
+			if not shown(win) or rec.on or rec.sweeping or not rec.sec.Frame.Parent then return end
+			rec.sweeping = true
+			lightOn(win, rec)
+			rec.g.Offset = Vector2.new(-1, 0)
+			local tw = TS:Create(rec.g, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Offset = Vector2.new(1, 0) })
+			tw.Completed:Once(function()
+				rec.sweeping = false
+				local st = ST[win]
+				if st and st.hover == rec then return end   -- the cursor is on it: keep the light
+				lightOff(win, rec)
+			end)
+			tw:Play()
+		end)
+	end
+
+	local function playSweep(win, base)
+		local st = ST[win]
+		if not st or not st.ready or not on("RevealSweep") or not shown(win) then return end
+		local list = st.byTab[win.Active]
+		if not list then return end
+		local n = 0
+		for _, rec in ipairs(list) do
+			if rec.sec.Frame.Parent then
+				n += 1
+				if n > 8 then break end
+				sweep(win, rec, (base or 0.12) + n * 0.07)
+			end
+		end
+	end
+
+	local function onMove(win, input)
+		local st = ST[win]
+		if not st or not on("Spotlight") or not shown(win) then return end
+		local now = os.clock()
+		if now - (st.last or 0) < 0.025 then return end
+		st.last = now
+		if win._moving or (win._drag and win._drag.Dragging) then return end
+		local pos = input.Position
+		local hit
+		local list = win.Active and st.byTab[win.Active]
+		local pg = win.Pages
+		if list and pg and pg.Parent then
+			local pp, ps = pg.AbsolutePosition, pg.AbsoluteSize
+			if pos.X >= pp.X and pos.X <= pp.X + ps.X and pos.Y >= pp.Y and pos.Y <= pp.Y + ps.Y then
+				for i = #list, 1, -1 do
+					local rec = list[i]
+					local f = rec.sec.Frame
+					if not f.Parent then
+						table.remove(list, i)
+					else
+						local ap, as = f.AbsolutePosition, f.AbsoluteSize
+						if pos.X >= ap.X and pos.X <= ap.X + as.X and pos.Y >= ap.Y and pos.Y <= ap.Y + as.Y then hit = rec end
+					end
+				end
+			end
+		end
+		if hit ~= st.hover then
+			local cur = st.hover
+			st.hover = hit
+			if cur then lightOff(win, cur) end
+			if hit then lightOn(win, hit) end
+		end
+		if hit and not hit.sweeping then
+			local f = hit.sec.Frame
+			local w = f.AbsoluteSize.X
+			if w > 0 then
+				hit.g.Offset = Vector2.new(math.clamp((pos.X - f.AbsolutePosition.X) / w, 0, 1) - 0.5, 0)
+			end
+		end
+	end
+
+	-- section under a screen position (used for taps on touch screens)
+	local function sectionAt(win, pos)
+		local st = ST[win]
+		local list = st and win.Active and st.byTab[win.Active]
+		local pg = win.Pages
+		if not list or not pg or not pg.Parent then return nil end
+		local pp, ps = pg.AbsolutePosition, pg.AbsoluteSize
+		if pos.X < pp.X or pos.X > pp.X + ps.X or pos.Y < pp.Y or pos.Y > pp.Y + ps.Y then return nil end
+		for _, rec in ipairs(list) do
+			local f = rec.sec.Frame
+			if f.Parent then
+				local ap, as = f.AbsolutePosition, f.AbsoluteSize
+				if pos.X >= ap.X and pos.X <= ap.X + as.X and pos.Y >= ap.Y and pos.Y <= ap.Y + as.Y then return rec end
+			end
+		end
+		return nil
+	end
+
+	---------------------------------------------------------------- click ring
+	local function ring(win, pos, touch)
+		local st, gui = ST[win], win.Gui
+		if not st or not gui or st.rings >= 4 then return end
+		st.rings += 1
+		local a = accents(win)
+		local p = Instance.new("Frame")
+		p.AnchorPoint = Vector2.new(0.5, 0.5)
+		p.Position = UDim2.fromOffset(pos.X - gui.AbsolutePosition.X, pos.Y - gui.AbsolutePosition.Y)
+		p.Size = UDim2.fromOffset(6, 6)
+		p.BackgroundTransparency = 1
+		p.BorderSizePixel = 0
+		p.Active = false
+		p.ZIndex = 300
+		Instance.new("UICorner", p).CornerRadius = UDim.new(0.5, 0)
+		local sk = Instance.new("UIStroke")
+		sk.Color = a
+		sk.Thickness = touch and 2.5 or 2
+		sk.Transparency = 0.1
+		sk.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		sk.Parent = p
+		p.Parent = gui
+		local info = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		local tw = TS:Create(p, info, { Size = UDim2.fromOffset(touch and 80 or 54, touch and 80 or 54) })
+		TS:Create(sk, info, { Transparency = 1, Thickness = 0.5 }):Play()
+		tw.Completed:Once(function()
+			local s2 = ST[win]
+			if s2 then s2.rings = math.max(s2.rings - 1, 0) end
+			p:Destroy()
+		end)
+		tw:Play()
+	end
+
+	---------------------------------------------------------------- title shine
+	local function findTitle(win)
+		local left = win.Left
+		if not left then return nil end
+		local best, size = nil, 0
+		for _, d in ipairs(left:GetDescendants()) do
+			if d:IsA("TextLabel") and d.Text ~= "" and d.TextSize > size then best, size = d, d.TextSize end
+		end
+		return best
+	end
+
+	local function paintTitle(win)
+		local st = ST[win]
+		local ts = st and st.title
+		if not ts or not ts.g.Parent then return end
+		local a, b = accents(win)
+		ts.g.Color = ColorSequence.new({
+			KP(0, WHITE), KP(ts.c - ts.w, WHITE), KP(ts.c, a:Lerp(b, 0.4)), KP(ts.c + ts.w, WHITE), KP(1, WHITE),
+		})
+	end
+
+	local function startTitle(win)
+		local st = ST[win]
+		if not st or st.title or not alive(win) or not on("TitleShine") then return end
+		local lbl = findTitle(win)
+		if not lbl then return end
+		local r = math.clamp(lbl.TextBounds.X / math.max(lbl.AbsoluteSize.X, 1), 0.15, 1)
+		local s0 = 0
+		if lbl.TextXAlignment == Enum.TextXAlignment.Center then s0 = (1 - r) / 2
+		elseif lbl.TextXAlignment == Enum.TextXAlignment.Right then s0 = 1 - r end
+		local c, w = s0 + r / 2, 0.14 * r
+		local g = Instance.new("UIGradient")
+		g.Name = "TitleShine"
+		g.Offset = Vector2.new(-(c + w), 0)
+		g.Parent = lbl
+		local info = TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, false, 3.5)
+		local tw = TS:Create(g, info, { Offset = Vector2.new(r / 2 + w, 0) })
+		st.title = { g = g, tw = tw, lbl = lbl, c = c, w = w }
+		paintTitle(win)
+		tw:Play()
+	end
+
+	---------------------------------------------------------------- scroll progress line
+	local function paintBar(win)
+		local st = ST[win]
+		if not st or not st.bar or not st.bar.Parent then return end
+		local a, b = accents(win)
+		st.barG.Color = ColorSequence.new(a, b)
+	end
+
+	local function bindScroll(win)
+		local st = ST[win]
+		if not st or not st.bar then return end
+		for _, c in ipairs(st.scConns) do pcall(function() c:Disconnect() end) end
+		table.clear(st.scConns)
+		local tab = win.Active
+		if not tab or not tab.Cols then st.bar.Visible = false return end
+		local function update()
+			if not st.bar.Parent then return end
+			local best, vis = 0, false
+			for _, col in ipairs(tab.Cols) do
+				local mx = col.AbsoluteCanvasSize.Y - col.AbsoluteWindowSize.Y
+				if mx > 6 then
+					vis = true
+					best = math.max(best, math.clamp(col.CanvasPosition.Y / mx, 0, 1))
+				end
+			end
+			st.bar.Visible = vis and on("ScrollBar")
+			st.bar.Size = UDim2.new(best, 0, 0, 2)
+		end
+		for _, col in ipairs(tab.Cols) do
+			for _, prop in ipairs({ "CanvasPosition", "AbsoluteCanvasSize", "AbsoluteWindowSize" }) do
+				st.scConns[#st.scConns + 1] = col:GetPropertyChangedSignal(prop):Connect(update)
+			end
+		end
+		update()
+	end
+
+	---------------------------------------------------------------- rainbow border
+	local function rainbowSeq()
+		local k = {}
+		for i = 0, 6 do k[#k + 1] = KP(i / 6, Color3.fromHSV((i % 6) / 6, 0.7, 1)) end
+		return ColorSequence.new(k)
+	end
+	local function applyRainbow(win)
+		local au = win._aurora
+		if au and au.g.Parent then au.g.Color = rainbowSeq() end
+	end
+
+	function Window:SetRainbow(v)
+		self._rainbow = v and true or false
+		if self._rainbow then
+			if not self._aurora and self.SetAurora then self:SetAurora(true) end
+			applyRainbow(self)
+		elseif self._aurora and self.SetAurora then
+			self:SetAurora(false)   -- start again so the accent colours come back
+			self:SetAurora(true)
+		end
+		return self
+	end
+
+	function Window:SetSpotlight(v)
+		V.Spotlight = v and true or false
+		if not v then clearHover(self) end
+		return self
+	end
+
+	---------------------------------------------------------------- hooks
+	local function setup(win)
+		local st = state(win)
+		if st.ready ~= nil then return end
+		st.ready = false   -- no sweeps while the window is still being built
+		st.conns[#st.conns + 1] = UIS.InputChanged:Connect(function(i)
+			if i.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+			if not alive(win) then return cleanup(win) end
+			onMove(win, i)
+		end)
+		st.conns[#st.conns + 1] = UIS.InputBegan:Connect(function(i)
+			local ty = i.UserInputType
+			local touch = ty == Enum.UserInputType.Touch
+			if ty ~= Enum.UserInputType.MouseButton1 and not touch then return end
+			if not alive(win) then return cleanup(win) end
+			if not shown(win) or not win.Main then return end
+			local ap, as, p = win.Main.AbsolutePosition, win.Main.AbsoluteSize, i.Position
+			if p.X < ap.X or p.X > ap.X + as.X or p.Y < ap.Y or p.Y > ap.Y + as.Y then return end
+			if touch then
+				st.tap = { input = i, pos = Vector2.new(p.X, p.Y), t = os.clock() }   -- ring / glow wait until it is a real tap, not a scroll
+			elseif on("ClickRing") then
+				pcall(ring, win, p, false)
+			end
+		end)
+		st.conns[#st.conns + 1] = UIS.InputEnded:Connect(function(i)
+			local tap = st.tap
+			if not tap or tap.input ~= i then return end
+			st.tap = nil
+			if not alive(win) then return cleanup(win) end
+			if not shown(win) then return end
+			local p = i.Position
+			if os.clock() - tap.t > 0.45 or (Vector2.new(p.X, p.Y) - tap.pos).Magnitude > 12 then return end   -- a drag, not a tap
+			if on("ClickRing") then pcall(ring, win, tap.pos, true) end
+			if on("TapGlow") then
+				local rec = sectionAt(win, tap.pos)
+				if rec then sweep(win, rec, 0) end
+			end
+		end)
+		if win.Main then
+			st.conns[#st.conns + 1] = win.Main.MouseLeave:Connect(function() clearHover(win) end)
+		end
+		if win.Pages then
+			local bar = Instance.new("Frame")
+			bar.Name = "VPScroll"
+			bar.Size = UDim2.new(0, 0, 0, 2)
+			bar.BackgroundColor3 = WHITE
+			bar.BorderSizePixel = 0
+			bar.Active = false
+			bar.Visible = false
+			bar.ZIndex = 30
+			bar.Parent = win.Pages
+			st.bar = bar
+			st.barG = Instance.new("UIGradient")
+			st.barG.Parent = bar
+			paintBar(win)
+			bindScroll(win)
+		end
+		task.delay(0.7, function() if alive(win) then pcall(startTitle, win) end end)
+		if V.Rainbow == true then
+			task.delay(0.3, function() if alive(win) then pcall(win.SetRainbow, win, true) end end)
+		end
+		task.delay(1.0, function() if ST[win] then ST[win].ready = true end end)
+	end
+
+	local prevCS = Tab.CreateSection
+	function Tab:CreateSection(...)
+		local sec = prevCS(self, ...)
+		local win = self.Window
+		if type(sec) == "table" and win and not win._destroyed then pcall(attach, win, sec) end
+		return sec
+	end
+
+	local prevCreate = Library.CreateWindow
+	function Library:CreateWindow(cfg)
+		local win = prevCreate(self, cfg)
+		if type(win) == "table" then pcall(setup, win) end
+		return win
+	end
+
+	local prevSel = Window.SelectTab
+	function Window:SelectTab(...)
+		local r = table.pack(prevSel(self, ...))
+		pcall(function()
+			if not ST[self] or self._destroyed then return end
+			clearHover(self)
+			bindScroll(self)
+			playSweep(self, 0.12)
+		end)
+		return table.unpack(r, 1, r.n)
+	end
+
+	local prevVis = Window.SetVisible
+	function Window:SetVisible(v, ...)
+		local r = table.pack(prevVis(self, v, ...))
+		pcall(function()
+			if not ST[self] then return end
+			if v then playSweep(self, 0.3) else clearHover(self) end
+		end)
+		return table.unpack(r, 1, r.n)
+	end
+
+	local prevTheme = Window.SetTheme
+	function Window:SetTheme(...)
+		local r = table.pack(prevTheme(self, ...))
+		local win = self
+		pcall(function()
+			if not ST[win] then return end
+			if V.ThemeWave ~= false then playSweep(win, 0.1) end
+			paintBar(win)
+			task.delay(0.8, function()   -- after the colour remap tween (v3.18 repaints its border at 0.7 s)
+				if not alive(win) then return end
+				pcall(paintBar, win)
+				pcall(paintTitle, win)
+				if win._rainbow then pcall(applyRainbow, win) end
+			end)
+		end)
+		return table.unpack(r, 1, r.n)
+	end
+
+	local prevDestroy = Window.Destroy
+	function Window:Destroy(...)
+		pcall(cleanup, self)
+		return prevDestroy(self, ...)
+	end
+
+	return { sweep = playSweep, ring = ring }
+end)()
+
+---------------------------------------------------------------- v3.21 : Visual Plus 3 (HUD / cyber pack)
+-- Hardcore visual extras. Event-driven (looping tweens + input events + short one-shot threads), no Heartbeat loop.
+--   Library.Visual.Brackets     = false  sci-fi HUD corner brackets around the window, softly pulsing            (PC only)
+--   Library.Visual.Scanline     = false  a faint scan beam sweeps down the window every few seconds              (PC only)
+--   Library.Visual.Neon         = false  breathing neon halo around the window, accent <-> accent2               (PC only)
+--   Library.Visual.Trail        = true   glowing particle trail behind the cursor while it is over the window    (PC only)
+--   Library.Visual.Scramble     = true   title "decrypts" from random glyphs when the window opens / theme changes
+--   Library.Visual.Glitch       = true   RGB-split glitch on the title every 7-14 s                               (PC only)
+--   Library.Visual.ShakeOnError = true   the window shakes when an Error notification is shown
+--   Window:SetBrackets(bool) / SetScanline(bool) / SetNeon(bool) / SetTrail(bool)
+--   Window:Scramble(seconds) / Window:Glitch(seconds) / Window:Shake(strength)
+-- Library.Visual.Plus = false turns it off. Phones and PC run exactly the same effects (Trail follows the finger on touch).
+-- Old note, no longer applies: Brackets static, Neon / Scanline pulse once
+-- The frame governor still drops the looping ones if the window stutters.
+do
+	local d = { Brackets = false, Scanline = false, Neon = false, Trail = true, Scramble = true, Glitch = true, ShakeOnError = true }
+	for k, v in pairs(d) do
+		if Library.Visual[k] == nil then Library.Visual[k] = v end
+	end
+	Library.MobileKeys = Library.MobileKeys or {}
+	Library.MobileKeys.Scramble = true
+	Library.MobileKeys.ShakeOnError = true
+	-- phone-friendly versions (static / mostly idle, see builders): no CanvasGroup, long idle gaps between pulses
+	Library.MobileKeys.Brackets = true
+	Library.MobileKeys.Neon = true
+	Library.MobileKeys.Scanline = true
+	Library.MobileKeys.Glitch = true
+	Library.MobileKeys.Aurora = true      -- rotating border (slower on phones)
+	Library.MobileKeys.GlowSweep = true   -- glow line under the title bar
+	Library.MobileKeys.Trail = true       -- finger trail (touch)
+end
+
+Library._visualPlus3 = (function()
+	local TS, UIS = TweenService, UserInputService
+	local V = Library.Visual
+	local WHITE = Color3.new(1, 1, 1)
+	local NK = NumberSequenceKeypoint.new
+	local ST = setmetatable({}, { __mode = "k" })
+
+	local function lite() return false end   -- one look everywhere: phones and PC run the same visuals
+	local function on(key)
+		if V.Plus == false or V[key] == false then return false end
+		if lite() then return V.Mobile ~= false and (Library.MobileKeys or {})[key] == true end
+		return true
+	end
+	local function accents(win)
+		local T = win.Theme or {}
+		local a = T.Accent or WHITE
+		return a, T.Accent2 or a
+	end
+	local function alive(win) return win and not win._destroyed and win.Gui ~= nil and win.Gui.Parent ~= nil end
+	local function shown(win) return alive(win) and win.Visible ~= false end
+	local function state(win)
+		local s = ST[win]
+		if not s then s = { feat = {}, scr = 0, shake = 0 } ST[win] = s end
+		return s
+	end
+	local function mk(class, props, parent)
+		local o = Instance.new(class)
+		for k, v in pairs(props) do o[k] = v end
+		o.Parent = parent
+		return o
+	end
+	local function loop(inst, dur, props, style, reverse, delay)
+		local tw = TS:Create(inst, TweenInfo.new(dur, style or Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, reverse or false, delay or 0), props)
+		tw:Play()
+		return tw
+	end
+
+	---------------------------------------------------------------- feature plumbing
+	local function stopFeat(win, name)
+		local s = ST[win]
+		local f = s and s.feat[name]
+		if not f then return end
+		s.feat[name] = nil
+		for _, tw in ipairs(f.tweens or {}) do pcall(function() tw:Cancel() end) end
+		if f.conn then pcall(function() f.conn:Disconnect() end) end
+		if f.inst then pcall(function() f.inst:Destroy() end) end
+	end
+
+	local builders = {}
+
+	local function startFeat(win, name)
+		if not alive(win) or ST[win] and ST[win].feat[name] or not on(name) then return end
+		local ok, inst, tweens, conn = pcall(builders[name], win)
+		if not ok or not inst then return end
+		state(win).feat[name] = { inst = inst, tweens = tweens or {}, conn = conn }
+		if win.Visible == false then
+			for _, tw in ipairs(tweens or {}) do pcall(function() tw:Pause() end) end
+		end
+	end
+
+	local function restartAll(win)
+		for name in pairs(builders) do
+			if ST[win] and ST[win].feat[name] then
+				stopFeat(win, name)
+				startFeat(win, name)
+			end
+		end
+	end
+
+	local function setPaused(win, paused)
+		local s = ST[win]
+		if not s then return end
+		for _, f in pairs(s.feat) do
+			for _, tw in ipairs(f.tweens) do
+				pcall(function() if paused then tw:Pause() else tw:Play() end end)
+			end
+		end
+	end
+
+	---------------------------------------------------------------- HUD corner brackets
+	builders.Brackets = function(win)
+		local a = accents(win)
+		local holder = mk("CanvasGroup", {
+			Name = "HudBrackets", Position = UDim2.fromOffset(-5, -5), Size = UDim2.new(1, 10, 1, 10),
+			BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 46, Active = false,
+		}, win.Main)
+		holder.GroupTransparency = 0.15
+		local L, W = 20, 2
+		for _, c in ipairs({ { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 1 } }) do
+			local ax, ay = c[1], c[2]
+			mk("Frame", { AnchorPoint = Vector2.new(ax, ay), Position = UDim2.new(ax, 0, ay, 0), Size = UDim2.fromOffset(L, W), BackgroundColor3 = a, BorderSizePixel = 0, ZIndex = 46 }, holder)
+			mk("Frame", { AnchorPoint = Vector2.new(ax, ay), Position = UDim2.new(ax, 0, ay, 0), Size = UDim2.fromOffset(W, L), BackgroundColor3 = a, BorderSizePixel = 0, ZIndex = 46 }, holder)
+		end
+		return holder, { loop(holder, 1.8, { GroupTransparency = 0.7 }, nil, true) }
+	end
+
+	---------------------------------------------------------------- breathing neon halo
+	builders.Neon = function(win)
+		local a, b = accents(win)
+		local r = (win.Radius or 16) + 7
+		local halo = mk("Frame", {
+			Name = "NeonHalo", Position = UDim2.fromOffset(-7, -7), Size = UDim2.new(1, 14, 1, 14),
+			BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 1, Active = false,
+		}, win.Main)
+		mk("UICorner", { CornerRadius = UDim.new(0, r) }, halo)
+		local st = mk("UIStroke", { Color = a, Thickness = 5, Transparency = 0.9 }, halo)
+		return halo, {
+			loop(st, 2.4, { Transparency = 0.58 }, nil, true),
+			loop(st, 4.2, { Color = b }, nil, true),
+		}
+	end
+
+	---------------------------------------------------------------- scan beam
+	builders.Scanline = function(win)
+		local a = accents(win)
+		local clip = mk("Frame", {
+			Name = "ScanBeam", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0,
+			ClipsDescendants = true, ZIndex = 45, Active = false,
+		}, win.Main)
+		mk("UICorner", { CornerRadius = UDim.new(0, win.Radius or 16) }, clip)
+		local beam = mk("Frame", {
+			Position = UDim2.new(0, 0, 0, -48), Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = a, BorderSizePixel = 0, ZIndex = 45, Active = false,
+		}, clip)
+		mk("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NK(0, 1), NK(0.7, 0.96), NK(0.96, 0.78), NK(1, 1) }) }, beam)
+		return clip, { loop(beam, 3.4, { Position = UDim2.new(0, 0, 1, 0) }, Enum.EasingStyle.Linear, false, 3.2) }
+	end
+
+	---------------------------------------------------------------- cursor trail
+	builders.Trail = function(win)
+		local layer = mk("Frame", {
+			Name = "CursorTrail", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 200, Active = false,
+		}, win.Gui)
+		local pool, N, idx = {}, 18, 0
+		local GS = game:GetService("GuiService")
+		for i = 1, N do
+			local dot = mk("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(9, 9), BackgroundColor3 = WHITE, BorderSizePixel = 0, Visible = false, ZIndex = 200, Active = false }, layer)
+			mk("UICorner", { CornerRadius = UDim.new(1, 0) }, dot)
+			pool[i] = { dot = dot, tw = nil }
+		end
+		local last
+		local conn = UIS.InputChanged:Connect(function(input)
+			local t = input.UserInputType
+			if (t ~= Enum.UserInputType.MouseMovement and t ~= Enum.UserInputType.Touch) or not shown(win) or not on("Trail") then return end
+			local main = win.Main
+			local mp = t == Enum.UserInputType.Touch and (Vector2.new(input.Position.X, input.Position.Y) + GS:GetGuiInset()) or UIS:GetMouseLocation()
+			local p0, sz = main.AbsolutePosition, main.AbsoluteSize
+			if mp.X < p0.X or mp.Y < p0.Y or mp.X > p0.X + sz.X or mp.Y > p0.Y + sz.Y then last = nil return end
+			if last and (mp - last).Magnitude < 9 then return end
+			last = mp
+			idx = idx % N + 1
+			local e = pool[idx]
+			if e.tw then pcall(function() e.tw:Cancel() end) end
+			local a, b = accents(win)
+			e.dot.BackgroundColor3 = a:Lerp(b, (os.clock() * 0.6) % 1)
+			e.dot.Position = UDim2.fromOffset(mp.X, mp.Y)
+			e.dot.Size = UDim2.fromOffset(9, 9)
+			e.dot.BackgroundTransparency = 0.2
+			e.dot.Visible = true
+			local tw = TS:Create(e.dot, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(2, 2), BackgroundTransparency = 1 })
+			e.tw = tw
+			tw.Completed:Connect(function(st)
+				if st == Enum.PlaybackState.Completed and e.tw == tw then e.dot.Visible = false end
+			end)
+			tw:Play()
+		end)
+		return layer, {}, conn
+	end
+
+	---------------------------------------------------------------- title scramble ("decrypt")
+	local GLYPHS = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789#%&@"
+	local function splitChars(str)
+		local out = {}
+		local ok = pcall(function()
+			for _, c in utf8.codes(str) do out[#out + 1] = utf8.char(c) end
+		end)
+		if not ok then out = {} for i = 1, #str do out[i] = str:sub(i, i) end end
+		return out
+	end
+
+	function Window:Scramble(dur)
+		local lbl = self.BrandLabel
+		if not lbl or not lbl.Parent or self._destroyed then return self end
+		local s = state(self)
+		s.scr += 1
+		local tok = s.scr
+		local final = s.scrFinal or lbl.Text
+		s.scrFinal = final
+		local chars = splitChars(final)
+		local n = #chars
+		if n == 0 then s.scrFinal = nil return self end
+		local steps = 14
+		local dt = math.max((tonumber(dur) or 0.6) / steps, 0.016)
+		task.spawn(function()
+			for i = 1, steps do
+				if tok ~= s.scr or self._destroyed or not lbl.Parent then return end
+				local reveal = math.floor(n * i / steps)
+				local buf = table.create(n)
+				for j = 1, n do
+					local c = chars[j]
+					if j <= reveal or c:match("%s") then
+						buf[j] = c
+					else
+						local g = math.random(1, #GLYPHS)
+						buf[j] = GLYPHS:sub(g, g)
+					end
+				end
+				lbl.Text = table.concat(buf)
+				task.wait(dt)
+			end
+			if tok == s.scr and lbl.Parent then
+				lbl.Text = final
+				s.scrFinal = nil
+			end
+		end)
+		return self
+	end
+
+	---------------------------------------------------------------- RGB-split glitch
+	function Window:Glitch(dur)
+		local lbl = self.BrandLabel
+		if not lbl or not lbl.Parent or self._destroyed then return self end
+		local s = state(self)
+		if s.glitching then return self end
+		s.glitching = true
+		local function layer(color)
+			return mk("TextLabel", {
+				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = lbl.Text, Font = lbl.Font, TextSize = lbl.TextSize,
+				TextColor3 = color, TextTransparency = 0.35, TextXAlignment = lbl.TextXAlignment, ZIndex = (lbl.ZIndex or 1) + 1, Active = false,
+			}, lbl)
+		end
+		local red, cyan = layer(Color3.fromRGB(255, 45, 95)), layer(Color3.fromRGB(45, 230, 255))
+		task.spawn(function()
+			local steps = 7
+			local dt = math.max((tonumber(dur) or 0.28) / steps, 0.02)
+			for _ = 1, steps do
+				if self._destroyed or not lbl.Parent then break end
+				local dx, dy = math.random(-3, 3), math.random(-1, 1)
+				red.Position = UDim2.fromOffset(-dx - 1, dy)
+				cyan.Position = UDim2.fromOffset(dx + 1, -dy)
+				red.Text, cyan.Text = lbl.Text, lbl.Text
+				task.wait(dt)
+			end
+			pcall(function() red:Destroy() end)
+			pcall(function() cyan:Destroy() end)
+			s.glitching = false
+		end)
+		return self
+	end
+
+	local function glitchLoop(win)
+		task.spawn(function()
+			while alive(win) do
+				task.wait(math.random(70, 140) / 10)
+				if shown(win) and on("Glitch") and (win._qual or 0) < 2 and not (win._drag and win._drag.Dragging) then pcall(win.Glitch, win) end
+			end
+		end)
+	end
+
+	---------------------------------------------------------------- error shake
+	function Window:Shake(strength)
+		local main = self.Main
+		if not main or self._destroyed or self.Visible == false or (self._drag and self._drag.Dragging) then return self end
+		local s = state(self)
+		s.shake += 1
+		local tok = s.shake
+		local k = tonumber(strength) or 1.6
+		task.spawn(function()
+			for _, ang in ipairs({ k, -k, k * 0.6, -k * 0.4, 0 }) do
+				if tok ~= s.shake or self._destroyed then break end
+				local tw = TS:Create(main, TweenInfo.new(0.05, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Rotation = ang })
+				tw:Play()
+				task.wait(0.055)
+			end
+			if tok == s.shake and main.Parent then main.Rotation = 0 end
+		end)
+		return self
+	end
+
+	---------------------------------------------------------------- runtime switches
+	local function switch(name, setter)
+		Window[setter] = function(self, v)
+			V[name] = v and true or false
+			if v then startFeat(self, name) else stopFeat(self, name) end
+			return self
+		end
+	end
+	switch("Brackets", "SetBrackets")
+	switch("Scanline", "SetScanline")
+	switch("Neon", "SetNeon")
+	switch("Trail", "SetTrail")
+
+	---------------------------------------------------------------- hooks
+	local function setup(win)
+		state(win)
+		for name in pairs(builders) do startFeat(win, name) end
+		if on("Scramble") then task.delay(0.25, function() if shown(win) then pcall(win.Scramble, win, 0.7) end end) end
+		glitchLoop(win)
+	end
+
+	local prevCreate = Library.CreateWindow
+	function Library:CreateWindow(cfg)
+		local win = prevCreate(self, cfg)
+		if type(win) == "table" then pcall(setup, win) end
+		return win
+	end
+
+	local prevVis = Window.SetVisible
+	function Window:SetVisible(v, ...)
+		local was = self.Visible
+		local r = table.pack(prevVis(self, v, ...))
+		pcall(function()
+			if not ST[self] or self._destroyed then return end
+			setPaused(self, not v)
+			if v and not was and on("Scramble") then
+				task.delay(0.2, function() if shown(self) then pcall(self.Scramble, self, 0.55) end end)
+			end
+		end)
+		return table.unpack(r, 1, r.n)
+	end
+
+	local prevTheme = Window.SetTheme
+	function Window:SetTheme(...)
+		local r = table.pack(prevTheme(self, ...))
+		local win = self
+		pcall(function()
+			if not ST[win] then return end
+			if on("Scramble") then win:Scramble(0.45) end
+			if on("Glitch") then win:Glitch(0.3) end
+			task.delay(0.8, function()
+				if alive(win) and ST[win] then pcall(restartAll, win) end
+			end)
+		end)
+		return table.unpack(r, 1, r.n)
+	end
+
+	local prevTitle = Window.SetTitle
+	function Window:SetTitle(...)
+		local s = ST[self]
+		if s then s.scr += 1 s.scrFinal = nil end   -- a running scramble must not overwrite the new title
+		return prevTitle(self, ...)
+	end
+
+	local function isError(x)
+		if type(x) == "string" then return x:lower() == "error" or x:lower() == "err" end
+		if type(x) == "table" then
+			local k = x.Kind or x.kind or x.Type
+			return type(k) == "string" and (k:lower() == "error" or k:lower() == "err")
+		end
+		return false
+	end
+	local prevNotify = Window.Notify
+	function Window:Notify(cfg, ...)
+		if on("ShakeOnError") and isError(cfg) then pcall(self.Shake, self) end
+		return prevNotify(self, cfg, ...)
+	end
+	local prevToast = Window.Toast
+	function Window:Toast(text, opts, ...)
+		if on("ShakeOnError") and (isError(opts) or isError(text)) then pcall(self.Shake, self) end
+		return prevToast(self, text, opts, ...)
+	end
+
+	-- frame governor: first step down drops the looping effects, a full recovery brings them back
+	local prevDegrade = Window._Degrade
+	function Window:_Degrade(...)
+		local r = table.pack(prevDegrade(self, ...))
+		pcall(function()
+			stopFeat(self, "Neon")
+			stopFeat(self, "Scanline")
+			if (self._qual or 0) >= 2 then stopFeat(self, "Trail") end
+			if self._aurora then pcall(function() self._aurora.tw:Pause() end) end
+		end)
+		return table.unpack(r, 1, r.n)
+	end
+	local prevRecover = Window._Recover
+	function Window:_Recover(...)
+		local r = table.pack(prevRecover(self, ...))
+		pcall(function()
+			if (self._qual or 0) == 0 and ST[self] and alive(self) then
+				startFeat(self, "Neon") startFeat(self, "Scanline") startFeat(self, "Trail")
+				if self._aurora and self.Visible ~= false then pcall(function() self._aurora.tw:Play() end) end
+			end
+		end)
+		return table.unpack(r, 1, r.n)
+	end
+
+	local prevDestroy = Window.Destroy
+	function Window:Destroy(...)
+		pcall(function()
+			local s = ST[self]
+			if not s then return end
+			for name in pairs(s.feat) do stopFeat(self, name) end
+			ST[self] = nil
+		end)
+		return prevDestroy(self, ...)
+	end
+
+	return { scramble = function(w, d) return w:Scramble(d) end, glitch = function(w, d) return w:Glitch(d) end }
+end)()
+
+-- Phones now run the SAME visuals as PC (shimmer, halo, tab slide, aurora, trail, every Visual.* effect).
+-- The frame governor still steps things down by itself if the window stutters.
+-- Want the light phone mode back?  Library:SetQuality("auto")  (or "low") before CreateWindow.
+if Library.Perf.LowPower == nil then Library:SetQuality("high") end
+
+Library.Version = "3.21"
 
 return Library
