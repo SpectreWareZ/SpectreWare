@@ -365,6 +365,7 @@ Library:CreateWindow({ Title = "X", AutoCheck = false })
 | `OnAccent(Window.Theme)` | สีตัวอักษรที่อ่านง่ายบนสีธีม (ไลบรารีใช้เองอัตโนมัติ) |
 | `IsIconName` / `ResolveIcon` / `MakeIcon(desc, color)` / `SetIconModule(mod)` | ตัวช่วยไอคอนระดับล่าง |
 | `Library.IconLib.Default` / `.Url` | แพ็กไอคอนเริ่มต้น / ที่อยู่ `Main-v2.lua` |
+| `Library.KindIcons` | ไอคอนของ control แต่ละชนิดในผลค้นหา (เช่น `Library.KindIcons.Toggle = "lucide:power"`) · control ที่ตั้ง `Icon` เอง (เช่น Button) ใช้ไอคอนนั้น · ไอคอนแท็บมาจาก `Icon` ของ `CreateTab` |
 | `Library.PaletteKey` | ปุ่มคู่กับ Ctrl เปิด Palette (ค่าเริ่มต้น `K`) |
 | `Library.NotifyConfig` | `Position` `MaxVisible` `Duration` `Gap` `Margin` `Width` `Merge` `PauseOnHover` `Animate` |
 | `Library.Anim.Speed` | ความเร็วอนิเมชัน (1.25 = ช้าลง 25%) |

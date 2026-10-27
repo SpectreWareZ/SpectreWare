@@ -846,6 +846,61 @@ function Library:MakeIcon(desc, color)
 	return img
 end
 
+-- search results: icon helpers shared by the window search box and the Ctrl+K palette.
+-- Library.KindIcons maps a control kind to an icon name (override or extend it freely, e.g. Library.KindIcons.Toggle = "lucide:power").
+Library.KindIcons = {
+	Toggle = "lucide:toggle-right", KeybindToggle = "lucide:toggle-right", Keybind = "lucide:keyboard",
+	Slider = "lucide:sliders-horizontal", RangeSlider = "lucide:sliders-horizontal", Stepper = "lucide:hash",
+	Dropdown = "lucide:chevron-down", Segmented = "lucide:layout-grid", ListBox = "lucide:list",
+	ColorPicker = "lucide:palette", Textbox = "lucide:text-cursor-input", InputButton = "lucide:text-cursor-input",
+	TagInput = "lucide:tag", Button = "lucide:mouse-pointer-click", ButtonRow = "lucide:mouse-pointer-click",
+	HoldButton = "lucide:mouse-pointer-click", Stat = "lucide:activity", Graph = "lucide:activity", KeyValue = "lucide:key",
+	Countdown = "lucide:timer", Table = "lucide:table", ItemGrid = "lucide:package", Image = "lucide:image",
+	StatusCard = "lucide:layout-dashboard", Discord = "lucide:message-circle", CodeBlock = "lucide:code",
+	Console = "lucide:terminal", ConfigManager = "lucide:save", ThemeManager = "lucide:palette", FontPicker = "lucide:type",
+	Command = "lucide:zap", Tab = "lucide:folder",
+}
+
+-- icon (pack name / asset id / rbxasset url) or, when it cannot be drawn yet, a short text glyph, centred in `parent`
+function Library._searchIcon(parent, spec, fallback, color, size, T)
+	local o
+	local d = Library:IsIconName(spec) and Library:ResolveIcon(spec) or nil
+	if d then
+		o = Library:MakeIcon(d, color)
+		o.Size = UDim2.fromOffset(size, size)
+	elseif type(spec) == "number" or (type(spec) == "string" and spec:find("^rbxasset")) then
+		o = new("ImageLabel", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(size, size),
+			BackgroundTransparency = 1, ImageColor3 = color, ScaleType = Enum.ScaleType.Fit,
+			Image = type(spec) == "number" and ("rbxassetid://" .. spec) or spec,
+		})
+	else
+		o = new("TextLabel", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(size, size),
+			BackgroundTransparency = 1, Text = tostring(fallback or "?"):sub(1, 1):upper(), Font = T and T.FontBold or Enum.Font.GothamBold,
+			TextSize = math.max(10, math.floor(size * 0.9)), TextColor3 = color,
+		})
+	end
+	o.Parent = parent
+	return o
+end
+
+-- rounded tinted square holding an icon (flat = no square, just the icon). Caller sets Position; z = ZIndex for the whole thing.
+function Library._iconBadge(parent, spec, fallback, color, size, z, T, flat)
+	local b = new("Frame", {
+		Name = "IconBadge", AnchorPoint = Vector2.new(0, 0.5), Size = UDim2.fromOffset(size, size),
+		BackgroundColor3 = color, BackgroundTransparency = flat and 1 or 0.82, BorderSizePixel = 0, Parent = parent,
+	}, { corner(8) })
+	Library._searchIcon(b, spec, fallback, color, math.floor(size * (flat and 1 or 0.58)), T)
+	if z then
+		b.ZIndex = z
+		for _, d in ipairs(b:GetDescendants()) do
+			if d:IsA("GuiObject") then d.ZIndex = z end
+		end
+	end
+	return b
+end
+
 local function stroke(color, thickness, transparency)
 	local st = new("UIStroke", {
 		Color = color, Thickness = thickness or 1, Transparency = math.max(0, (transparency or 0) - 0.15),
@@ -2477,8 +2532,27 @@ function Library:CreateWindow(cfg)
 					break
 				end
 			end
+			-- icon badge: the tab's own icon for a tab result, otherwise the control's icon (its Icon option, else the per-kind icon);
+			-- the sub line gets a small tab icon so it is obvious which page the result lives on
+			local tabObj = e.GoTab or e.Tab
+			local tabSpec = tabObj and tabObj.Cfg and tabObj.Cfg.Icon
+			local tabLetter = tostring(tabObj and tabObj.Name or "?")
+			local badgeSpec, badgeLetter
+			if e.GoTab then
+				badgeSpec, badgeLetter = tabSpec, tabLetter
+			else
+				local own = e.Cfg and e.Cfg.Icon
+				badgeSpec = (type(own) == "string" or type(own) == "number") and own or Library.KindIcons[e.Kind] or "lucide:circle"
+				badgeLetter = tostring(e.Kind)
+			end
+			Library._iconBadge(row, badgeSpec, badgeLetter, T2.Accent, 34, 42, T2).Position = UDim2.new(0, 8, 0.5, 0)
+			local subX = 54
+			if not e.GoTab then
+				Library._iconBadge(row, tabSpec, tabLetter, T2.SubText, 14, 42, T2, true).Position = UDim2.fromOffset(54, 34)
+				subX = 73
+			end
 			new("TextLabel", {
-				Position = UDim2.fromOffset(12, 5), Size = UDim2.new(1, -110, 0, 20), BackgroundTransparency = 1, RichText = true,
+				Position = UDim2.fromOffset(54, 5), Size = UDim2.new(1, -152, 0, 20), BackgroundTransparency = 1, RichText = true,
 				Text = nm, Font = T2.FontBold, TextSize = 15, TextColor3 = T2.Text, TextXAlignment = LEFT,
 				TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 42, Parent = row,
 			})
@@ -2489,7 +2563,7 @@ function Library:CreateWindow(cfg)
 				where = '<font color="' .. hex(T2.Accent) .. '"><b>' .. esc(e.TabName or "?") .. "</b></font>  \226\128\186  " .. esc(e.SectionName or "")
 			end
 			new("TextLabel", {
-				Position = UDim2.fromOffset(12, 26), Size = UDim2.new(1, -110, 0, 16), BackgroundTransparency = 1, RichText = true,
+				Position = UDim2.fromOffset(subX, 26), Size = UDim2.new(1, -(subX + 98), 0, 16), BackgroundTransparency = 1, RichText = true,
 				Text = where, Font = T2.Font, TextSize = 14, TextColor3 = T2.SubText, TextXAlignment = LEFT,
 				TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 42, Parent = row,
 			})
@@ -2558,29 +2632,39 @@ function Library:CreateWindow(cfg)
 
 	---------------------------------------------------------- resize grip (bottom-right corner ONLY)
 	if canResize then
-		local touch = false
-		local gripSize = touch and 36 or 18
+		-- corner handle drawn as the universal "resize" mark: a double-headed diagonal arrow (NW <-> SE, like the resize cursor),
+		-- built from frames so it never depends on the icon pack. The touch area around it is much larger than the mark.
+		local gripSize = usingTouch() and 44 or 30
 		local grip = new("TextButton", {
 			Name = "ResizeGrip", AnchorPoint = Vector2.new(1, 1), Position = UDim2.fromScale(1, 1),
 			Size = UDim2.fromOffset(gripSize, gripSize), BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
 			Active = true, ZIndex = 30, Parent = main,
 		})
+		local GRIP_REST = 0.1   -- resting transparency of the arrow
+		local mark = new("Frame", {
+			Name = "Mark", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -6, 1, -6), Size = UDim2.fromOffset(20, 20),
+			BackgroundTransparency = 1, ZIndex = 31, Parent = grip,
+		})
 		local ticks = {}
-		-- six dots in a triangle (bottom-right corner), a modern "grab here" mark instead of three plain lines
-		for ix = 0, 2 do
-			for iy = 0, 2 - ix do
-				ticks[#ticks + 1] = new("Frame", {
-					AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -(7 + ix * 5), 1, -(7 + iy * 5)),
-					Size = UDim2.fromOffset(3, 3), BackgroundColor3 = T.SubText,
-					BackgroundTransparency = 0.35, BorderSizePixel = 0, ZIndex = 31, Parent = grip,
-				}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
-			end
+		-- every piece is a thin rounded bar: (centre x, centre y, width, height, rotation) inside the 20x20 mark
+		local PIECES = {
+			{ 10, 10, 19, 2, 45 },     -- shaft  "\"
+			{ 13.75, 17, 7, 2, 0 },    -- SE head: horizontal arm
+			{ 17, 13.75, 2, 7, 0 },    -- SE head: vertical arm
+			{ 6.25, 3, 7, 2, 0 },      -- NW head: horizontal arm
+			{ 3, 6.25, 2, 7, 0 },      -- NW head: vertical arm
+		}
+		for _, pc in ipairs(PIECES) do
+			ticks[#ticks + 1] = new("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(pc[1], pc[2]), Size = UDim2.fromOffset(pc[3], pc[4]),
+				Rotation = pc[5], BackgroundColor3 = T.SubText, BackgroundTransparency = GRIP_REST, BorderSizePixel = 0, ZIndex = 32, Parent = mark,
+			}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 		end
 		local function tintTicks(c, tr)
 			for _, t in ipairs(ticks) do tween(t, 0.14, { BackgroundColor3 = c, BackgroundTransparency = tr }) end
 		end
 		grip.MouseEnter:Connect(function() if not usingTouch() then tintTicks(T.Accent, 0) end end)
-		grip.MouseLeave:Connect(function() if not win._resizing then tintTicks(T.SubText, 0.35) end end)
+		grip.MouseLeave:Connect(function() if not win._resizing then tintTicks(T.SubText, GRIP_REST) end end)
 
 		makeResizable(win, grip, 1, 1)
 		win._resizeFx = {
@@ -2589,7 +2673,7 @@ function Library:CreateWindow(cfg)
 				if not lowPower() then mainStroke.Color, mainStroke.Transparency = T.Accent, 0.35 end
 			end,
 			End = function()
-				tintTicks(T.SubText, 0.35)
+				tintTicks(T.SubText, GRIP_REST)
 				if not lowPower() then mainStroke.Color, mainStroke.Transparency = T.Border, 0.1 end
 			end,
 		}
@@ -4592,6 +4676,13 @@ function NM:_Build(entry)
 	ui.Bg = new("Frame", { Name = "Bg", Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Panel, BackgroundTransparency = 0.03, BorderSizePixel = 0, ZIndex = 1, Parent = card })
 	ui.BgGrad = wash(cseq({ 0, T.Top }, { 1, T.Deep }), 90)
 	ui.BgGrad.Parent = ui.Bg
+	-- soft accent glow fading out from the left edge: the kind (success / warning / error / info) reads at a glance.
+	-- Hidden in low power (the gradient is what makes it transparent, so the whole frame goes instead).
+	ui.Tint = new("Frame", { Name = "Tint", Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Accent, BackgroundTransparency = 0,
+		BorderSizePixel = 0, ZIndex = 2, Visible = not lowPower(), Parent = card },
+		{ new("UIGradient", { Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.78), NumberSequenceKeypoint.new(0.55, 0.94), NumberSequenceKeypoint.new(1, 1),
+		}) }) })
 	ui.Rim = new("Frame", { Name = "Rim", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 2, Parent = card },
 		{ corner(toast and 16 or 10), stroke(T.Accent, 2, 0.5) })
 	ui.RimStroke = ui.Rim:FindFirstChildOfClass("UIStroke")
@@ -4686,6 +4777,7 @@ function NM:_Paint(entry)
 	local accent, accent2 = styleOf(T, spec)
 	local toast = spec.Role == "toast"
 	ui.RimStroke.Color = accent
+	if ui.Tint then ui.Tint.BackgroundColor3 = accent end
 	if ui.RailGrad then ui.RailGrad.Color = ColorSequence.new(accent, accent2) end
 	if ui.FillGrad then ui.FillGrad.Color = ColorSequence.new(accent, accent2) end
 	if ui.Track then ui.Track.BackgroundColor3 = accent end
@@ -5077,7 +5169,13 @@ function NM:Dialog(cfg)
 	}, { corner(12) })
 	new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Panel, BackgroundTransparency = 0.02, BorderSizePixel = 0, ZIndex = 1, Parent = card },
 		{ wash(cseq({ 0, T.Top }, { 1, T.Deep }), 90) })
-	new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 2, Parent = card }, { corner(12), stroke(accent, 2, 0.45) })
+	-- soft accent glow at the top of the card (hidden in low power: the gradient is what makes it transparent)
+	local dlgTint = new("Frame", { Name = "Tint", Size = UDim2.new(1, 0, 0, 96), BackgroundColor3 = accent, BackgroundTransparency = 0,
+		BorderSizePixel = 0, ZIndex = 2, Visible = not lowPower(), Parent = card },
+		{ new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(0.84, 1) }) })
+	local dlgRim = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 2, Parent = card }, { corner(12), stroke(accent, 2, 0.45) })
+	local dlgStroke = dlgRim:FindFirstChildOfClass("UIStroke")
+	local accentGrads = {}   -- gradients of the primary buttons: recoloured when Update changes the Kind
 	local col = new("Frame", { Size = UDim2.fromScale(1, 0), AutomaticSize = AY, BackgroundTransparency = 1, ZIndex = 3, Parent = card },
 		{ list(12), padding(18, 18, 18, 16) })
 
@@ -5181,7 +5279,9 @@ function NM:Dialog(cfg)
 			feedback(btn, btn, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
 		else
 			local c1 = style == "Danger" and Library.Kinds.Error.Color or accent
-			gradient(c1, style == "Danger" and Util.Lighten(c1, 0.25) or accent2, 0).Parent = btn
+			local g = gradient(c1, style == "Danger" and Util.Lighten(c1, 0.25) or accent2, 0)
+			g.Parent = btn
+			if style ~= "Danger" then table.insert(accentGrads, g) end
 			feedback(btn, btn, "BackgroundColor3", fill, Color3.fromRGB(236, 236, 236), Color3.fromRGB(200, 200, 200))
 		end
 		local btnLbl = new("TextLabel", {
@@ -5209,6 +5309,14 @@ function NM:Dialog(cfg)
 				end
 			end
 		end))
+	end
+
+	-- everything that carries the accent colour (Update{ Kind = ... } used to leave the rim and the buttons on the old colour)
+	local function paintAccent()
+		if dlgStroke then dlgStroke.Color = accent end
+		dlgTint.BackgroundColor3 = accent
+		scroll.ScrollBarImageColor3 = accent
+		for _, g in ipairs(accentGrads) do g.Color = ColorSequence.new(accent, accent2) end
 	end
 
 	local function setHead()
@@ -5272,6 +5380,8 @@ function NM:Dialog(cfg)
 			kind = normKind(patch.Kind)
 			cfg.Kind = patch.Kind
 			accent = (kind and Library.Kinds[kind].Color) or T.Accent
+			accent2 = (kind and Util.Lighten(accent, 0.35)) or T.Accent2
+			paintAccent()
 		end
 		if patch.Icon ~= nil then cfg.Icon = patch.Icon end
 		setHead()
@@ -5285,6 +5395,14 @@ function NM:Dialog(cfg)
 	handle.Id = depth
 
 	table.insert(self.Dialogs, dlg)
+	-- the overlay was destroyed from outside (game cleaning its guis, Window:Destroy): release Wait() callers and drop the dialog
+	-- instead of leaving it "open" forever
+	bag:Add(overlay.Destroying:Connect(function()
+		if dlg.open then
+			dlg.instant = true
+			finish(nil, nil, "destroyed")
+		end
+	end))
 	-- open animation
 	if NotifyCfg.Animate ~= false then
 		tw(overlay, 0.15, { BackgroundTransparency = 0.5 }, SINE, OUT)
@@ -6552,10 +6670,9 @@ function Section:CreateDropdown(cfg)
 		end
 		return out
 	end
-	-- search box shows automatically with many options (override: Searchable = true / false)
+	-- search box only with Searchable = true, and it takes focus only when tapped
 	local function searchOn()
-		if cfg.Searchable ~= nil then return cfg.Searchable and true or false end
-		return #options > 6
+		return cfg.Searchable == true   -- no search box unless asked for (Searchable = true); it never opens by itself
 	end
 	local function chrome()
 		return searchOn() and searchH or 0, multi and footH or 0
@@ -7083,8 +7200,6 @@ function Section:CreateDropdown(cfg)
 			fit(true)
 			tween(popup, 0.18, { BackgroundTransparency = 0 }, SINE, OUT)
 			tween(popupStroke, 0.18, { Transparency = 0.3 }, SINE, OUT)
-			-- PC: start typing straight away (not on touch, the keyboard would cover the list)
-			if not touch and searchOn() then searchBox:CaptureFocus() end
 		end)
 	end
 
@@ -8660,10 +8775,10 @@ end
 
 local function builtinCommands()
 	return {
-		{ Name = "Undo last change", Desc = "History", Callback = function() Library:Undo() end },
-		{ Name = "Redo", Desc = "History", Callback = function() Library:Redo() end },
+		{ Name = "Undo last change", Desc = "History", Icon = "lucide:undo-2", Callback = function() Library:Undo() end },
+		{ Name = "Redo", Desc = "History", Icon = "lucide:redo-2", Callback = function() Library:Redo() end },
 		{
-			Name = "Reset modified settings", Desc = #Library:GetModified() .. " modified",
+			Name = "Reset modified settings", Desc = #Library:GetModified() .. " modified", Icon = "lucide:rotate-ccw",
 			Callback = function()
 				Library:Confirm({
 					Title = "Reset settings?", Content = "Every changed setting goes back to its default. You can undo this.",
@@ -8682,8 +8797,11 @@ local function entryItem(win, e, close)
 		end
 		return e.Kind:upper()
 	end
+	local own = e.Cfg and e.Cfg.Icon
 	return {
 		title = e.Name, sub = e.TabName .. "  \u{203A}  " .. e.SectionName, chip = valueText(),
+		icon = (type(own) == "string" or type(own) == "number") and own or Library.KindIcons[e.Kind] or "lucide:circle",
+		letter = e.Kind, tabIcon = e.Tab and e.Tab.Cfg and e.Tab.Cfg.Icon, tabLetter = e.TabName,
 		run = function(chip)
 			pushRecent(win, e)
 			if e.Obj._locked then
@@ -8721,6 +8839,7 @@ local function buildItems(win, raw, close)
 		if best then
 			table.insert(out, {
 				title = "Set " .. best.Name .. " = " .. av, sub = best.TabName .. "  \u{203A}  " .. best.SectionName, chip = "SET",
+				icon = "lucide:pencil", letter = "S", tabIcon = best.Tab and best.Tab.Cfg and best.Tab.Cfg.Icon, tabLetter = best.TabName,
 				run = function()
 					close()
 					applyAssign(win, best, av)
@@ -8764,6 +8883,7 @@ local function buildItems(win, raw, close)
 			local c = it.c
 			table.insert(out, {
 				title = c.Name or "Command", sub = c.Desc or "Command", chip = "CMD",
+				icon = c.Icon or Library.KindIcons.Command, letter = "C",
 				run = function()
 					close()
 					safe(c.Callback)
@@ -8858,12 +8978,19 @@ function Window:OpenPalette(initial)
 			BackgroundColor3 = T.Accent, BorderSizePixel = 0, Visible = false, Parent = btn,
 		}, { corner(2) })
 		feedback(btn, btn, "BackgroundTransparency", 1, 0.8, 0.55, true)
+		-- icon badge (control / command icon) + small tab icon in front of "Tab > Section"
+		Library._iconBadge(btn, it.icon, it.letter, T.Accent, 32, nil, T).Position = UDim2.new(0, 8, 0.5, 0)
+		local subX = 48
+		if it.tabLetter then
+			Library._iconBadge(btn, it.tabIcon, it.tabLetter, T.SubText, 14, nil, T, true).Position = UDim2.fromOffset(48, 21 + PADY + 7)
+			subX = 66
+		end
 		new("TextLabel", {
-			Position = UDim2.fromOffset(10, 3 + PADY), Size = UDim2.new(1, -100, 0, 18), BackgroundTransparency = 1, Text = it.title,
+			Position = UDim2.fromOffset(48, 3 + PADY), Size = UDim2.new(1, -140, 0, 18), BackgroundTransparency = 1, Text = it.title,
 			Font = T.FontBold, TextSize = 14, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 		})
 		new("TextLabel", {
-			Position = UDim2.fromOffset(10, 21 + PADY), Size = UDim2.new(1, -100, 0, 14), BackgroundTransparency = 1, Text = it.sub or "",
+			Position = UDim2.fromOffset(subX, 21 + PADY), Size = UDim2.new(1, -(subX + 92), 0, 14), BackgroundTransparency = 1, Text = it.sub or "",
 			Font = T.Font, TextSize = 14, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 		})
 		local chip = new("TextLabel", {
