@@ -16,7 +16,7 @@
 	           Keybind, ColorPicker, Segmented, TagInput, Graph, Console, Progress, Badge
 	Every control: Flag, Tooltip, :Set / :Get / :Reset / :SetVisible / :ShowIf / :Lock / :OnChange / :Destroy
 	Library  : SaveConfig / LoadConfig / ListConfigs / ExportConfig / ImportConfig, Undo / Redo, Snapshot / Restore, Watch, Unload
-	Themes   : Rose (default) | Violet | Cyber | Crimson | Matrix       Library:SetTheme(name) / RegisterTheme(name, tbl)
+	Themes   : Nova (default, flat modern) | Rose | Violet | Cyber | Crimson | Matrix       Library:SetTheme(name) / RegisterTheme(name, tbl)
 
 	v3.21 HUD pack: Brackets, Scanline, Neon, Trail, Scramble, Glitch, ShakeOnError (Library.Visual.<Name>; Window:SetBrackets/SetScanline/SetNeon/SetTrail/Scramble/Glitch/Shake)
 	v3.19/3.20 visuals (phones keep the cheap ones: taps, sweeps, title shine, scroll line, toggle sparkle): cursor Spotlight on section borders, RevealSweep on tab open, ThemeWave, ClickRing, TitleShine,
@@ -117,7 +117,13 @@ end
 local function rgb(r, g, b) return Color3.fromRGB(r, g, b) end
 
 Library.Themes = {
-	Rose = {   -- sakura pink (default)
+	Nova = {   -- flat graphite + soft indigo, no backdrop effects (default)
+		Background = rgb(9, 9, 11),    Panel = rgb(15, 15, 18),   Card = rgb(21, 21, 25),   Control = rgb(32, 32, 38),
+		Border = rgb(50, 50, 60),      Accent = rgb(99, 102, 241), Accent2 = rgb(129, 140, 248), AccentSoft = rgb(34, 35, 72),
+		Sheen = rgb(199, 210, 254),    Text = rgb(250, 250, 250), SubText = rgb(161, 161, 170),
+		FX = false,
+	},
+	Rose = {   -- sakura pink
 		Background = rgb(13, 9, 12),   Panel = rgb(20, 14, 18),   Card = rgb(26, 19, 24),   Control = rgb(37, 27, 34),
 		Border = rgb(74, 46, 62),      Accent = rgb(244, 114, 182), Accent2 = rgb(251, 146, 190), AccentSoft = rgb(70, 28, 52),
 		Sheen = rgb(255, 208, 226),    Text = rgb(253, 242, 248), SubText = rgb(196, 152, 174),
@@ -256,7 +262,7 @@ local function buildTheme(src)
 	local white = Color3.new(1, 1, 1)
 	T.Text = T.Text:Lerp(white, 0.15)
 	T.SubText = T.SubText:Lerp(T.Text, 0.35)
-	T.Border = T.Border:Lerp(T.Accent, 0.22):Lerp(white, 0.06)
+	T.Border = T.Border:Lerp(T.Accent, 0.08):Lerp(white, 0.04)
 	T.Control = T.Control:Lerp(white, 0.035)
 	T.Card = T.Card:Lerp(white, 0.012)
 	return T
@@ -273,7 +279,7 @@ local function deriveTheme(T)
 	return T
 end
 
-Library.Theme = buildTheme(Library.Themes.Rose)
+Library.Theme = buildTheme(Library.Themes.Nova)
 
 -- readable text colour (white or near-black) for text drawn on top of accent / gradient colours.
 -- Library.OnAccent(Theme)  |  Library.OnAccent(colorA [, colorB])
@@ -326,7 +332,7 @@ function Library._topSafe(cfg, vp)
 	local t
 	if cfg and type(cfg.TopMargin) == "number" then
 		t = math.max(cfg.TopMargin, 0)
-	elseif UserInputService.TouchEnabled then
+	elseif false then
 		-- no device API: a fixed share of the screen, enough to clear the status bar / notch / Roblox top bar
 		local ref = (vp and vp.Y > 0) and math.min(vp.X, vp.Y) or 390
 		t = math.clamp(math.floor(ref * 0.17 + 0.5), 62, 84)
@@ -355,7 +361,7 @@ end
 Library.EdgeScale = 1
 Library.MaxMargin = nil   -- gap around a MAXIMIZED window in px (nil = 8 on phones, 12 on PC; 0 = touch the screen edges)
 function Library._edge(vp)
-	if not UserInputService.TouchEnabled then return nil end
+	if not false then return nil end
 	if not vp or vp.X <= 0 or vp.Y <= 0 then
 		local cam = workspace.CurrentCamera
 		vp = cam and cam.ViewportSize or Vector2.new(844, 390)
@@ -421,6 +427,7 @@ end
 Library.Fonts, Library._fontOrder, Library.FontName = {}, {}, "Gotham"
 do
 	local defs = {
+		{ "Builder Sans", "BuilderSansMedium", "BuilderSansBold" },
 		{ "Gotham", "GothamMedium", "GothamBold" },
 		{ "Gotham Light", "Gotham", "GothamBold" },
 		{ "Gotham Bold", "GothamBold", "GothamBlack" },
@@ -450,6 +457,13 @@ do
 			Library.Fonts[d[1]] = { Font = r, Bold = b }
 			table.insert(Library._fontOrder, d[1])
 		end
+	end
+end
+do   -- modern default font (Builder Sans); falls back to Gotham when the font does not exist
+	local bs = Library.Fonts["Builder Sans"]
+	if bs then
+		THEME_COMMON.Font, THEME_COMMON.FontBold, Library.FontName = bs.Font, bs.Bold, "Builder Sans"
+		Library.Theme.Font, Library.Theme.FontBold = bs.Font, bs.Bold
 	end
 end
 
@@ -537,7 +551,7 @@ local AY = Enum.AutomaticSize.Y
 local AX = Enum.AutomaticSize.X
 local ANONE = Enum.AutomaticSize.None
 local LEFT = Enum.TextXAlignment.Left
-local HEADER_H, FOOT_H = UserInputService.TouchEnabled and 62 or 72, 54
+local HEADER_H, FOOT_H = 60, 54
 
 local QUINT, QUAD, BACK = Enum.EasingStyle.Quint, Enum.EasingStyle.Quad, Enum.EasingStyle.Back
 local SINE, LINEAR = Enum.EasingStyle.Sine, Enum.EasingStyle.Linear
@@ -548,7 +562,7 @@ local OUT, IN = Enum.EasingDirection.Out, Enum.EasingDirection.In
 -- re-rasterize every frame while the window moves, (3) glow frames redrawn on drag.
 -- On a phone (or when forced) the library takes the cheap path: no shimmer, no halo
 -- rings, no drag-time stroke animation. Everything still renders, just static.
-local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and not UserInputService.MouseEnabled
+local IS_MOBILE = false
 
 -- Library.Anim.Speed: global duration multiplier (1.25 = 25% slower / softer, 0.8 = snappier)
 -- Library.Anim.Intro = false (or CreateWindow({ Intro = false })) skips the launch animation
@@ -908,7 +922,7 @@ end
 
 local function v2(p) return Vector2.new(p.X, p.Y) end
 
-local function rowH() return UserInputService.TouchEnabled and 38 or 34 end
+local function rowH() return 34 end
 
 -- hover effects only make sense when the last input was NOT a touch
 local function usingTouch()
@@ -1322,7 +1336,7 @@ local function makeResizable(win, handle, mx, my)
 			if vp.X <= 0 or vp.Y <= 0 then return end
 			local d = v2(m.Position) - startPt
 			local sL, sR, sB = 8, 8, 8
-			local minW = math.min(win.Cfg.MinWidth or (UserInputService.TouchEnabled and 500 or 780), vp.X - sL - sR)
+			local minW = math.min(win.Cfg.MinWidth or (780), vp.X - sL - sR)
 			local topPad = 8
 			local minH = math.min(win.Cfg.MinHeight or 280, vp.Y - topPad - sB)
 			-- max = what _Fit allows (screen - 16) AND what fits right of / below the top-left corner,
@@ -1781,12 +1795,34 @@ function Library:CreateWindow(cfg)
 		Parent = gui,
 	}, {
 		corner(RADIUS),
-		stroke(T.Border, 1.5, 0.25),
+		stroke(T.Border, 1, 0.25),
 		wash(cseq({ 0, T.Top }, { 1, T.Background }), 90),
 	})
 	win.Main = main
 	win.Scale = new("UIScale", { Scale = 1, Parent = main })
 	local mainStroke = main:FindFirstChildOfClass("UIStroke")
+	-- flat modern look: solid window and cards, no gradient washes (Library.Flat = false brings the old gradients back)
+	if Library.Flat ~= false then
+		win._flat = true
+		local mg = main:FindFirstChildOfClass("UIGradient")
+		if mg then mg.Enabled = false end
+	end
+	-- softer backdrop: a gentle vertical wash (lighter top -> window colour) and a faint accent glow along the top edge
+	do
+		local mg = main:FindFirstChildOfClass("UIGradient")
+		if mg then
+			mg.Color = cseq({ 0, T.Top:Lerp(T.Background, 0.45) }, { 1, T.Background })
+			mg.Rotation = 90
+			mg.Enabled = true
+		end
+		win.TopGlow = new("Frame", {
+			Name = "TopGlow", Size = UDim2.new(1, 0, 0, 190), BackgroundColor3 = T.Accent, BackgroundTransparency = 0,
+			BorderSizePixel = 0, Active = false, ZIndex = 1, Parent = main,
+		}, {
+			corner(RADIUS),
+			new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.9), NumberSequenceKeypoint.new(1, 1) }) }),
+		})
+	end
 	win.Radius = RADIUS
 	win.FX = { Tweens = {} }
 	win:SetBackground(cfg.Background ~= false and (cfg.FX or T.FX) or false, true)
@@ -1806,7 +1842,7 @@ function Library:CreateWindow(cfg)
 		Name = "HeaderCard", Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 0, HEADER_H - 12),
 		BackgroundColor3 = T.Control:Lerp(T.Background, 0.4), BackgroundTransparency = glass(0.04), BorderSizePixel = 0, Parent = header,
 	}, {
-		corner(12), stroke(T.Accent, 1, 0.72),
+		corner(12), stroke(T.Border, 1, 0.45),
 		new("Frame", {
 			Name = "Tint", Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Accent, BackgroundTransparency = 0,
 			BorderSizePixel = 0,
@@ -1814,20 +1850,20 @@ function Library:CreateWindow(cfg)
 			corner(12),
 			-- title-bar gradient: strong accent on the left fading to the panel colour on the right
 			new("UIGradient", { Transparency = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(0.5, 0.82), NumberSequenceKeypoint.new(1, 0.96),
+				NumberSequenceKeypoint.new(0, 0.9), NumberSequenceKeypoint.new(0.5, 0.95), NumberSequenceKeypoint.new(1, 0.98),
 			}) }),
 		}),
 	})
 	win.HeaderCard = hcard
 	win._rest = 0.9   -- resting fill of the round header chips (search / hide / maximize / close)
 	new("Frame", {
-		Name = "GlowLine", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0), Size = UDim2.new(1, -40, 0, 2),
+		Name = "GlowLine", Visible = false, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0), Size = UDim2.new(1, -40, 0, 2),
 		BackgroundColor3 = T.Accent, BorderSizePixel = 0, Parent = hcard,
 	}, { new("UIGradient", { Transparency = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.18, 0.5), NumberSequenceKeypoint.new(0.5, 0.2),
 		NumberSequenceKeypoint.new(0.82, 0.5), NumberSequenceKeypoint.new(1, 1),
 	}) }) })
-	if not lowPower() then
+	if false then
 		new("Frame", {
 			Name = "Sheen", Size = UDim2.new(1, 0, 0.55, 0), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.93,
 			BorderSizePixel = 0, Active = false, Parent = hcard,
@@ -1836,7 +1872,7 @@ function Library:CreateWindow(cfg)
 
 	-- header cluster is bounded and clipped so a long brand / subtitle can never
 	-- slide under the close button (that was a real overlap on narrow screens)
-	local closeW = UserInputService.TouchEnabled and 40 or 38
+	local closeW = 38
 	local canResize = cfg.Resizable ~= false
 	local nBtns = canResize and 3 or 2
 	local btnArea = closeW * nBtns + 4 * (nBtns - 1) -- close + hide (+ maximize) buttons
@@ -1865,19 +1901,19 @@ function Library:CreateWindow(cfg)
 		win.LogoImage = hlogo
 	else
 		new("Frame", {
-			LayoutOrder = 1, Size = UDim2.fromOffset(42, 42), BackgroundColor3 = Color3.new(1, 1, 1),
+			LayoutOrder = 1, Size = UDim2.fromOffset(34, 34), BackgroundColor3 = Color3.new(1, 1, 1),
 			BorderSizePixel = 0, Parent = left,
 		}, {
 			corner(10), gradient(T.Accent, T.Accent2, 45), stroke(T.Border, 1, 0.3),
 			Library._oa(new("TextLabel", {
 				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = brand:sub(1, 2),
-				Font = Enum.Font.GothamBlack, TextSize = 18, TextColor3 = Library.OnAccent(T),
+				Font = Enum.Font.GothamBlack, TextSize = 15, TextColor3 = Library.OnAccent(T),
 			})),
 		})
 	end
 	win.BrandLabel = new("TextLabel", {
 		LayoutOrder = 2, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, BackgroundTransparency = 1,
-		Text = brand, Font = T.FontBold, TextSize = 21, TextColor3 = T.Text, Parent = left,
+		Text = brand, Font = T.FontBold, TextSize = 18, TextColor3 = T.Text, Parent = left,
 	})
 
 	-- animated brand: soft fade + scale-in whenever the window opens, then a light sweep that
@@ -1894,11 +1930,10 @@ function Library:CreateWindow(cfg)
 					ColorSequenceKeypoint.new(0.5, hi),
 					ColorSequenceKeypoint.new(0.7, base), ColorSequenceKeypoint.new(1, base),
 				}),
-				Offset = Vector2.new(-1, 0), Parent = lbl,
+				Offset = Vector2.new(-1, 0), Enabled = false, Parent = lbl,
 			})
 			local sw = TweenService:Create(grad, TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, false), { Offset = Vector2.new(1, 0) })
 			win._sheen = sw
-			sw:Play()
 		end
 		function win:_BrandIntro()
 			if self._destroyed then return end
@@ -1916,7 +1951,7 @@ function Library:CreateWindow(cfg)
 		win.SubSep = new("Frame", {   -- the pill (kept under the old name so compact mode still hides it)
 			LayoutOrder = 3, Size = UDim2.fromOffset(0, 24), AutomaticSize = AX, BackgroundColor3 = T.Accent,
 			BackgroundTransparency = 0.82, BorderSizePixel = 0, Parent = left,
-		}, { corner(12), stroke(T.Accent, 1, 0.5), padding(10, 0, 10, 0) })
+		}, { corner(12), stroke(T.Border, 1, 0.4), padding(10, 0, 10, 0) })
 		win.SubLabel = new("TextLabel", {
 			Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, BackgroundTransparency = 1,
 			Text = sub, Font = T.Font, TextSize = 13, TextColor3 = T.Text, Parent = win.SubSep,
@@ -2091,24 +2126,6 @@ function Library:CreateWindow(cfg)
 			end
 		end)
 	end
-	-- hold the title bar (~0.7 s, without moving) = roll the window up to just its header / unroll it again
-	do
-		local holdTok = 0
-		dragZone.InputBegan:Connect(function(i)
-			if not isPress(i) then return end
-			holdTok += 1
-			local tok = holdTok
-			task.delay(0.7, function()
-				if tok ~= holdTok or win._destroyed or not win.Visible then return end
-				if win._drag.Moved or win.Maximized or win._resizing then return end
-				win._drag.Stop()
-				win:SetShaded(not win._shaded)
-			end)
-		end)
-		dragZone.InputEnded:Connect(function(i)
-			if isPress(i) then holdTok += 1 end
-		end)
-	end
 	win._drag.OnStart = function()
 		win:CloseDropdowns()
 		-- ~25 looping tweens redraw the window every frame; freeze them while it is being moved
@@ -2125,7 +2142,7 @@ function Library:CreateWindow(cfg)
 	end
 	win._drag.Top = function() return win:_Top() end   -- never drag the header under the phone status bar / notch
 	win._drag.Side = function() return win:_Sides() end
-	win._drag.Free = UserInputService.TouchEnabled   -- phone: drag the window anywhere (left / right / up / down)
+	win._drag.Free = false   -- phone: drag the window anywhere (left / right / up / down)
 	makeDraggable(gui, dragZone, main, win._drag)
 
 	---------------------------------------------------------- body / sidebar
@@ -2134,17 +2151,17 @@ function Library:CreateWindow(cfg)
 		BackgroundTransparency = 1, Parent = main,
 	})
 	win.Body = body
-	local sidebar = new("Frame", { Size = UDim2.new(0, UserInputService.TouchEnabled and 156 or 192, 1, 0), BackgroundTransparency = 1, Parent = body })
+	local sidebar = new("Frame", { Size = UDim2.new(0, 192, 1, 0), BackgroundTransparency = 1, Parent = body })
 	win.SidePanel = new("Frame", {
 		Name = "SidePanel", Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -19, 1, -10),
-		BackgroundColor3 = T.Control, BackgroundTransparency = glass(0.2), BorderSizePixel = 0, Parent = sidebar,
+		BackgroundColor3 = T.Panel, BackgroundTransparency = glass(0), BorderSizePixel = 0, Parent = sidebar,
 	}, { corner(14), stroke(T.Border, 1, 0.35) })   -- soft build: rounded panel, hairline frame
 	win.Sidebar = sidebar
 	win.TabList = new("ScrollingFrame", {
 		Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -19, 1, -FOOT_H - 10), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
 		CanvasSize = UDim2.new(), AutomaticCanvasSize = AY, ScrollingDirection = Enum.ScrollingDirection.Y,
 		ElasticBehavior = Enum.ElasticBehavior.Never, Parent = sidebar,
-	}, { list(UserInputService.TouchEnabled and 6 or 7), padding(8, 10, 8, 6) })
+	}, { list(7), padding(8, 10, 8, 6) })
 
 	local footer = new("Frame", {
 		Position = UDim2.new(0, 10, 1, -FOOT_H - 10), Size = UDim2.new(1, -19, 0, FOOT_H), BackgroundTransparency = 1, Parent = sidebar,
@@ -2347,7 +2364,7 @@ function Library:CreateWindow(cfg)
 		end)
 	end)
 	-- keyboard hint chip (PC only), hidden while typing
-	if not UserInputService.TouchEnabled then
+	if not false then
 		local chip = new("TextLabel", {
 			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), Size = UDim2.fromOffset(48, 22),
 			BackgroundColor3 = T.Panel, BackgroundTransparency = 0.2, Text = "Ctrl K", Font = T.FontBold, TextSize = 14,
@@ -2541,7 +2558,7 @@ function Library:CreateWindow(cfg)
 
 	---------------------------------------------------------- resize grip (bottom-right corner ONLY)
 	if canResize then
-		local touch = UserInputService.TouchEnabled
+		local touch = false
 		local gripSize = touch and 36 or 18
 		local grip = new("TextButton", {
 			Name = "ResizeGrip", AnchorPoint = Vector2.new(1, 1), Position = UDim2.fromScale(1, 1),
@@ -2580,7 +2597,7 @@ function Library:CreateWindow(cfg)
 
 	---------------------------------------------------------- floating open button
 	-- Bigger tap target on touch, edge-snapping after a drag, fades when idle, hover label on PC.
-	local touchUI = UserInputService.TouchEnabled
+	local touchUI = false
 	local BS = touchUI and 52 or 44 -- button size
 	win.OpenSize = BS
 	-- resolve cfg.ToggleKey every time it is read: accepts Enum.KeyCode or a name string ("F4"); falls back to RightShift
@@ -2866,7 +2883,7 @@ function Window:_Fit(animate)
 	else
 		-- floor = MinWidth (default 700) so the two-column layout never collapses; SetSize obeys it too
 		-- phones: smaller default window and a wider safe margin, so it never touches / leaves the screen edges
-		local touch = UserInputService.TouchEnabled
+		local touch = false
 		local edge = touch and 20 or 8
 		local eL, eR, eB = sd and sd.L or edge, sd and sd.R or edge, sd and sd.B or edge
 		local topPad = math.max(edge, top)
@@ -2877,6 +2894,14 @@ function Window:_Fit(animate)
 		-- default size follows the screen: big phones / tablets / large monitors get a bigger window instead of a fixed 720x400 / 980x640
 		local autoW = touch and vp.X * 0.69 or math.clamp(vp.X * 0.62, 980, 1280)
 		local autoH = touch and vp.Y * 0.95 or math.clamp(vp.Y * 0.72, 640, 820)
+		-- phone running the PC layout: window sized to the screen (not the 980x640 desktop default) with clear margins
+		if (vp.X < 1000 or vp.Y < 700) and not sized then
+			eL, eR, eB = math.max(eL, 14), math.max(eR, 14), math.max(eB, 14)
+			topPad = math.max(topPad, 14)
+			autoW, autoH = vp.X * 0.8, vp.Y * 0.86
+			fw = math.min(self.Cfg.MinWidth or 520, vp.X - eL - eR)
+			fh = math.min(self.Cfg.MinHeight or 240, vp.Y - topPad - eB)
+		end
 		-- a narrow phone window leaves the status-bar corners (clock / battery) free, so it can use the full height
 		if touch and not sized and self.Cfg.TopMargin == nil and (self.Cfg.Width or autoW) <= vp.X * 0.72 then
 			top = math.min(top, 12)
@@ -2902,7 +2927,7 @@ function Window:_Fit(animate)
 	end
 
 	local compact = w < 560 or self._forceCompact == true   -- _forceCompact: sidebar collapse button
-	local sw = compact and 66 or (UserInputService.TouchEnabled and 156 or 192)
+	local sw = compact and 66 or (192)
 	self.Sidebar.Size = UDim2.new(0, sw, 1, 0)
 	self.Content.Position = UDim2.fromOffset(sw, 0)
 	self.Content.Size = UDim2.new(1, -sw, 1, 0)
@@ -2992,7 +3017,7 @@ local SLIDE = 8
 -- margin around a maximized window: (sides + bottom, top). Library.MaxMargin overrides; CreateWindow SideMargin / TopMargin too.
 function Window:_MaxM()
 	local cfg = self.Cfg or {}
-	local m = tonumber(Library.MaxMargin) or (UserInputService.TouchEnabled and 8 or 12)
+	local m = tonumber(Library.MaxMargin) or (12)
 	local sm = type(cfg.SideMargin) == "number" and math.max(cfg.SideMargin, 0) or m
 	local tm = type(cfg.TopMargin) == "number" and math.max(cfg.TopMargin, 0) or m
 	return sm, math.max(tm, 6)
@@ -3012,7 +3037,7 @@ end
 
 -- left / right / bottom room kept free on phones ({ L, R, B }), nil on PC
 function Window:_Sides()
-	if self.Maximized and UserInputService.TouchEnabled then local sm = self:_MaxM() return { L = sm, R = sm, B = sm } end
+	if self.Maximized and false then local sm = self:_MaxM() return { L = sm, R = sm, B = sm } end
 	return Library._sideSafe(self.Cfg, self.Gui.AbsoluteSize)
 end
 
@@ -3253,7 +3278,7 @@ end
 
 -- Window option HideOpenButtonOnPC = true : no floating open button on PC (touch devices keep it; reopen with the toggle key)
 function Window:_OpenBtnAllowed()
-	return not (self.Cfg.HideOpenButtonOnPC == true and not UserInputService.TouchEnabled)
+	return not (self.Cfg.HideOpenButtonOnPC == true and not false)
 end
 
 -- Window:SetHideOpenButtonOnPC(bool)  change it at runtime
@@ -3905,7 +3930,7 @@ end
 local Responsive = {}
 Library.Responsive = Responsive
 
-function Responsive.IsTouch() return UserInputService.TouchEnabled end
+function Responsive.IsTouch() return false end
 
 -- Responsive.Viewport(win?) -> Vector2 (the window's gui, or the camera viewport)
 function Responsive.Viewport(win)
@@ -3922,7 +3947,7 @@ end
 -- "phone" | "tablet" | "desktop"
 function Responsive.Breakpoint(win)
 	local vp = Responsive.Viewport(win)
-	if UserInputService.TouchEnabled then
+	if false then
 		return math.min(vp.X, vp.Y) < 500 and "phone" or "tablet"
 	end
 	return vp.X < 560 and "phone" or "desktop"
@@ -3939,13 +3964,13 @@ end
 
 -- Responsive.Touch(pcValue, touchValue): pick per device
 function Responsive.Touch(pc, touch)
-	if UserInputService.TouchEnabled then return touch end
+	if false then return touch end
 	return pc
 end
 
 -- Responsive.Scale(n): a size that grows ~15% on touch (comfortable tap targets)
 function Responsive.Scale(n)
-	return UserInputService.TouchEnabled and math.floor(n * 1.15 + 0.5) or n
+	return false and math.floor(n * 1.15 + 0.5) or n
 end
 
 -- Responsive.OnChange(win, fn(viewport, breakpoint)) -> connection (resize / rotation)
@@ -4257,7 +4282,7 @@ local function defaultPosition(role)
 	local p = normPos(NotifyCfg.Position)
 	if p then return p end
 	-- touch: corner (top-right), not the middle of the screen where it blocks the view
-	if UserInputService.TouchEnabled then return "TopRight" end
+	if false then return "TopRight" end
 	if role == "banner" then return "TopCenter" end
 	return role == "toast" and "BottomCenter" or "BottomRight"
 end
@@ -4402,7 +4427,7 @@ end
 
 function NM:_MaxVisible()
 	local m = NotifyCfg.MaxVisible
-	if type(m) ~= "number" then m = UserInputService.TouchEnabled and 3 or 5 end
+	if type(m) ~= "number" then m = 5 end
 	return math.clamp(math.floor(m), 1, 10)
 end
 
@@ -4548,7 +4573,7 @@ function NM:_Build(entry)
 	local toast = spec.Role == "toast"
 	entry.auto = toast
 	local bag = entry.bag
-	local touch = UserInputService.TouchEnabled
+	local touch = false
 
 	local wrap = new("Frame", {
 		Name = "N" .. entry.Id, BackgroundTransparency = 1, LayoutOrder = entry.Id,
@@ -5026,7 +5051,7 @@ function NM:Dialog(cfg)
 	if type(cfg) ~= "table" then cfg = {} end
 	local T = self:Theme()
 	local gui = self:_DialogGui()
-	local touch = UserInputService.TouchEnabled
+	local touch = false
 	local owner = (not self.Owner.Headless) and self.Owner or nil
 	local bag = Util.Bag()
 	local dlg = { open = true, input = nil }
@@ -5502,16 +5527,16 @@ function Window:CreateTab(cfg)
 	local tab = setmetatable({ Window = self, Name = cfg.Name or "Tab", Sections = {} }, Tab)
 
 	-- sizes: a little smaller on phones (window option TabHeight overrides the height)
-	local touchTab = UserInputService.TouchEnabled
-	local tabH = tonumber(self.Cfg and self.Cfg.TabHeight) or (touchTab and 36 or 44)
-	local iconX, iconSz = touchTab and 22 or 30, touchTab and 22 or 28
+	local touchTab = false
+	local tabH = tonumber(self.Cfg and self.Cfg.TabHeight) or (touchTab and 36 or 40)
+	local iconX, iconSz = 28, 20
 	local lblX = touchTab and 40 or 54
 	self._tabIconX = iconX
 
 	local btn = new("TextButton", {
 		LayoutOrder = #self.Tabs + 1, Size = UDim2.new(1, 0, 0, tabH),
 		BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 1, AutoButtonColor = false, Text = "", ClipsDescendants = true, Parent = self.TabList,
-	}, { corner(10), stroke(T.Accent, 1, 1), gradient(T.AccentSoft:Lerp(T.Accent, 0.16), T.AccentSoft, 0) })   -- soft build: rounded, gradient wash
+	}, { corner(10), stroke(T.Accent, 1, 1), gradient(T.AccentSoft, T.AccentSoft, 0) })   -- soft build: rounded, gradient wash
 	tab.Button = btn
 	tab.BtnStroke = btn:FindFirstChildOfClass("UIStroke")
 	-- stroke() lowers transparency by 0.15, so stroke(.., 1, 1) was 0.85 (a faint outline on never-selected tabs): force it fully hidden
@@ -5610,6 +5635,7 @@ function Window:CreateTab(cfg)
 	clickRipple(btn, press)
 	btn.MouseButton1Click:Connect(function()
 		if press.moved then return end -- it was a scroll, not a tap
+		if tab._lpFired then tab._lpFired = false return end   -- long-press pinned the tab: do not also select it
 		self:SelectTab(tab)
 	end)
 
@@ -5623,7 +5649,7 @@ function Window:CreateTab(cfg)
 	for i = 1, 2 do
 		tab.Cols[i] = new("ScrollingFrame", {
 			LayoutOrder = i, Size = UDim2.new(0.5, -6, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0,
-			ScrollBarThickness = UserInputService.TouchEnabled and 4 or 3,
+			ScrollBarThickness = 3,
 			ScrollBarImageColor3 = T.Accent, CanvasSize = UDim2.new(), AutomaticCanvasSize = AY,
 			ScrollingDirection = Enum.ScrollingDirection.Y, ElasticBehavior = Enum.ElasticBehavior.Never, Parent = tab.Scroll,
 		}, { list(12), padding(0, 0, 0, 8) })
@@ -5742,7 +5768,7 @@ end
 function Tab:_SetSelected(sel)
 	local T = self.Window.Theme
 	tween(self.Button, 0.22, { BackgroundTransparency = sel and 0 or 1 })
-	tween(self.BtnStroke, 0.22, { Transparency = sel and 0.2 or 1 })
+	tween(self.BtnStroke, 0.22, { Transparency = sel and 0.8 or 1 })
 	tween(self.Indicator, 0.18, { Size = UDim2.new(0, 4, sel and 0.55 or 0, 0) })
 	tween(self.Label, 0.22, { TextColor3 = sel and T.Text or T.SubText })
 	local prop = self.Icon:IsA("ImageLabel") and "ImageColor3" or "TextColor3"
@@ -5761,7 +5787,7 @@ function Tab:_SetSelected(sel)
 	end
 	if self.BtnGrad then
 		-- active tab gets a soft violet wash, idle stays flat
-		self.BtnGrad.Color = cseq({ 0, T.AccentSoft:Lerp(T.Accent, 0.16) }, { 1, T.AccentSoft })   -- soft build: accent wash
+		self.BtnGrad.Color = cseq({ 0, T.AccentSoft }, { 1, T.AccentSoft })   -- soft build: accent wash
 	end
 end
 
@@ -5816,9 +5842,9 @@ function Tab:CreateSection(cfg)
 	}, Section)
 
 	s.Frame = new("Frame", {
-		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundColor3 = T.Card, BackgroundTransparency = (function(b) return b + (1 - b) * (self.Window.Glass or 0) end)(self.Window.FXOn and 0.2 or 0.12),
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundColor3 = T.Card, BackgroundTransparency = (function(b) return b + (1 - b) * (self.Window.Glass or 0) end)(self.Window.FXOn and 0.2 or 0),
 		BorderSizePixel = 0, Parent = self.Cols[1],
-	}, { corner(18), stroke(T.Border, 1, 0.55), list(0, { HorizontalAlignment = Enum.HorizontalAlignment.Center }),
+	}, { corner(14), stroke(T.Border, 1, 0.45), list(0, { HorizontalAlignment = Enum.HorizontalAlignment.Center }),
 		wash(cseq({ 0, T.Top }, { 1, T.Card }), 90) })
 
 	if self.Window._flat then
@@ -5829,7 +5855,7 @@ function Tab:CreateSection(cfg)
 	local head = new("TextButton", {
 		LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = T.Control, BackgroundTransparency = 1,
 		Text = "", AutoButtonColor = false, Parent = s.Frame,
-	}, { corner(16) })
+	}, { corner(12) })
 	if collapsible then feedback(head, head, "BackgroundTransparency", 1, 0.85, 0.7, true) end
 	-- accent dot before the title (or an icon when Icon = "lucide:..." is given)
 	local secIcon = Library:IsIconName(cfg.Icon) and Library:ResolveIcon(cfg.Icon) or nil
@@ -5853,7 +5879,7 @@ function Tab:CreateSection(cfg)
 	do
 		local chev = Library:ResolveIcon("lucide:chevron-down")
 		if chev then
-			arrow = Library:MakeIcon(chev, T.Accent)
+			arrow = Library:MakeIcon(chev, T.SubText)
 			arrow.AnchorPoint = Vector2.new(1, 0.5)
 			arrow.Position = UDim2.new(1, -12, 0.5, 0)
 			arrow.Size = UDim2.fromOffset(20, 20)
@@ -5871,7 +5897,7 @@ function Tab:CreateSection(cfg)
 	new("Frame", {
 		LayoutOrder = 2, Size = UDim2.new(1, -24, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.55,
 		BorderSizePixel = 0, Parent = s.Frame,
-	}, { gradient(cseq({ 0, T.Accent }, { 0.6, T.Accent2 }, { 1, T.Border }), 0) })
+	}, { gradient(cseq({ 0, T.Border }, { 1, T.Border }), 0) })
 	s.Body = new("Frame", {
 		LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Parent = s.Frame,
 	}, { list(8), padding(12, 12, 12, 14) })
@@ -6055,7 +6081,7 @@ end
 -- (a Library field, not a new top-level local: the chunk is close to Lua's local limit)
 function Library._bevel(btn, base, sunken)
 	-- soft build: no Win95 edges. A faint top sheen on raised buttons, nothing on inset fields; returns the same set() hook.
-	if not sunken and btn and not lowPower() and not btn:FindFirstChild("SoftSheen") then
+	if false and not sunken and btn and not lowPower() and not btn:FindFirstChild("SoftSheen") then
 		new("Frame", { Name = "SoftSheen", Size = UDim2.new(1, 0, 0.5, 0), BackgroundColor3 = Color3.new(1, 1, 1),
 			BackgroundTransparency = 0.93, BorderSizePixel = 0, ZIndex = 5, Active = false, Parent = btn },
 			{ new("UICorner", { CornerRadius = UDim.new(0, 8) }),
@@ -6107,7 +6133,7 @@ function Section:CreateButton(cfg)
 	-- soft sheen: the top half is a touch lighter and fades out. It is an overlay frame (a UIGradient on the button itself
 	-- would tint the label text too), nearly transparent, so text and icon stay crisp.
 	new("Frame", {
-		Size = UDim2.fromScale(1, 0.55), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Active = false, ZIndex = 3, Parent = b,
+		Size = UDim2.fromScale(1, 0.55), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Active = false, ZIndex = 3, Visible = false, Parent = b,
 	}, {
 		new("UICorner", { CornerRadius = UDim.new(0, R) }),
 		new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, grad and 0.86 or 0.9), NumberSequenceKeypoint.new(1, 1) }) }),
@@ -6226,6 +6252,7 @@ function Section:CreateToggle(cfg)
 		Size = UDim2.fromOffset(16, 16), BackgroundColor3 = T.Knob, BorderSizePixel = 0, Parent = track,
 	}, { corner(2), stroke(T.Accent, 1.5, 0.4) })
 	local knobStroke = knob:FindFirstChildOfClass("UIStroke")
+	knobStroke.Enabled = false   -- clean knob, no outline
 
 	local obj = {}
 	function obj:Set(v, silent)
@@ -6283,7 +6310,7 @@ function Section:CreateSlider(cfg)	local T = self.Window.Theme
 	local min, max, inc = cfg.Min or 0, cfg.Max or 100, cfg.Increment or 1
 	local value = snap(cfg.Default or min, min, max, inc)
 	local suffix = cfg.Suffix or ""
-	local touch = UserInputService.TouchEnabled
+	local touch = false
 	local total = touch and 50 or 42
 	local knobS, knobBig = touch and 16 or 12, touch and 20 or 15
 
@@ -6428,7 +6455,7 @@ function Section:CreateDropdown(cfg)
 	local T = self.Window.Theme
 	local win = self.Window
 	local tab = self.Tab
-	local touch = UserInputService.TouchEnabled
+	local touch = false
 	local h = rowH()   -- same height as Textbox / Button
 	local optH = touch and 44 or 36
 	local searchH = touch and 50 or 44
@@ -6552,8 +6579,9 @@ function Section:CreateDropdown(cfg)
 	feedback(btn, btn, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
 	local txt = new("TextLabel", {
 		Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -38, 1, 0), BackgroundTransparency = 1, Text = placeholder,
-		Font = T.Font, TextSize = 14, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
+		Font = T.Font, TextSize = 14, TextColor3 = T.SubText, TextXAlignment = LEFT, TextWrapped = true, TextTruncate = Enum.TextTruncate.None, Parent = btn,
 	})
+	txt:SetAttribute("SGSkip", true)   -- the box grows with the text, so the text guard must not shrink it
 	local thumbSz = math.min(math.max(16, h - 12), touch and 26 or 32)
 	local thumbs = new("Frame", {
 		Name = "Thumbs", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0),
@@ -6592,6 +6620,23 @@ function Section:CreateDropdown(cfg)
 	local popW, maxH = 190, 240
 	local escC, vpC
 
+	-- long selections wrap onto the next line and the box grows in HEIGHT only (the width never changes)
+	local curOff, curPad, lastFitW = 0, -38, -1
+	local TextSvcDD = game:GetService("TextService")
+	local function fitText()
+		local sc = win.Scale and win.Scale.Scale or 1
+		local w = btn.AbsoluteSize.X / math.max(sc, 0.01)
+		if w <= 0 then return end
+		local avail = math.max(20, w + curPad - curOff - 12)
+		local ok, b = pcall(function() return TextSvcDD:GetTextSize(txt.Text, txt.TextSize, txt.Font, Vector2.new(avail, 2000)) end)
+		local need = ok and b.Y or txt.TextSize
+		local newH = math.max(h, math.ceil(need) + 16)
+		if btn.Size.Y.Offset ~= newH then btn.Size = UDim2.new(1, 0, 0, newH) end
+	end
+	btn:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		local w = btn.AbsoluteSize.X
+		if w ~= lastFitW then lastFitW = w fitText() end
+	end)
 	local function refreshText()
 		local list = multi and selectedList() or (value ~= nil and { value } or {})
 		-- thumbnails of the current selection (max 3, overlapped)
@@ -6627,6 +6672,8 @@ function Section:CreateDropdown(cfg)
 		end
 		txt.Position = UDim2.fromOffset(12 + off, 0)
 		txt.Size = UDim2.new(1, rightPad - off, 1, 0)
+		curOff, curPad = off, rightPad
+		fitText()
 	end
 
 	local function paint()
@@ -7311,7 +7358,7 @@ function Section:CreateKeybind(cfg)
 		Font = T.Font, TextSize = 14, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = row,
 	})
 	local btn = new("TextButton", {
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(UserInputService.TouchEnabled and 88 or 80, math.min(h - 4, UserInputService.TouchEnabled and 30 or 24)),
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(80, math.min(h - 4, 24)),
 		BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "", Font = T.Font, TextSize = 13,
 		TextColor3 = T.Text, TextTruncate = Enum.TextTruncate.AtEnd, Parent = row,
 	}, { corner(2), stroke(T.Border, 1, 0.35), padding(4, 0, 4, 0) })
@@ -7626,7 +7673,7 @@ function Section:CreateProgress(cfg)
 	local min, max = cfg.Min or 0, cfg.Max or 100
 	local value = math.clamp(cfg.Default or min, min, max)
 	local suffix = cfg.Suffix or ""
-	local total = UserInputService.TouchEnabled and 50 or 42
+	local total = 42
 	local frame = new("Frame", { Size = UDim2.new(1, 0, 0, total), BackgroundTransparency = 1, Parent = self.Body })
 	new("TextLabel", {
 		Size = UDim2.new(1, -70, 0, 18), BackgroundTransparency = 1, Text = cfg.Name or "Progress", Font = T.Font, TextSize = 14,
@@ -7716,7 +7763,7 @@ function Section:CreateKeybindToggle(cfg)
 	})
 	-- clickable key chip
 	local keyBtn = new("TextButton", {
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -54, 0.5, 0), Size = UDim2.fromOffset(UserInputService.TouchEnabled and 50 or 46, math.min(h - 6, UserInputService.TouchEnabled and 28 or 22)),
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -54, 0.5, 0), Size = UDim2.fromOffset(46, math.min(h - 6, 22)),
 		BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "", Font = T.FontBold, TextSize = 14,
 		TextColor3 = T.Accent, Parent = row,
 	}, { corner(2), stroke(T.Border, 1, 0.35) })
@@ -7874,6 +7921,7 @@ function Tab:_FitLabel()
 	if not lbl then return end
 	local lx = self._lblX or 46
 	local right = self._locked and 34 or 6
+	if self._uxStar and self._uxStar.Visible then right = right + 34 end   -- room for the pin button
 	local badge = self.Badge
 	local corner = false
 	if badge and badge.Visible and self.BadgeLabel then
@@ -8421,7 +8469,7 @@ function Library:ShowMenu(items, anchor, win)
 	local T = win.Theme
 	local gui = win.Gui
 	local vp = gui.AbsoluteSize
-	local ROW = UserInputService.TouchEnabled and 42 or 34
+	local ROW = 34
 	local W = 196
 	local h = 12 + (#items - 1) * 2
 	for _, it in ipairs(items) do h += it.Separator and 7 or ROW end
@@ -8792,12 +8840,12 @@ function Window:OpenPalette(initial)
 	overlay.MouseButton1Click:Connect(close)
 
 	local rows, current, sel = {}, {}, 1
-	local ROWH = UserInputService.TouchEnabled and 50 or 44
+	local ROWH = 44
 	local PADY = (ROWH - 40) / 2
 	local function paintSel()
 		for i, r in ipairs(rows) do
 			local m = r:FindFirstChild("Sel")
-			if m then m.Visible = (i == sel) and not UserInputService.TouchEnabled end
+			if m then m.Visible = (i == sel) and not false end
 		end
 	end
 	local function makeRow(it, idx)
@@ -8940,7 +8988,7 @@ end
 function Section:CreateSegmented(cfg)
 	cfg = cfg or {}
 	local T = self.Window.Theme
-	local touch = UserInputService.TouchEnabled
+	local touch = false
 	local options = cfg.Options or {}
 	local value = cfg.Default
 	if value == nil then value = options[1] end
@@ -9020,7 +9068,7 @@ function Section:CreateRangeSlider(cfg)
 	local d = cfg.Default or { min, max }
 	local lo, hi = snap(d[1] or min, min, max, inc), snap(d[2] or max, min, max, inc)
 	if lo > hi then lo, hi = hi, lo end
-	local touch = UserInputService.TouchEnabled
+	local touch = false
 	local total = touch and 50 or 42
 	local knobS, knobBig = touch and 16 or 12, touch and 20 or 15
 
@@ -9143,7 +9191,7 @@ end
 function Section:CreateTagInput(cfg)
 	cfg = cfg or {}
 	local T = self.Window.Theme
-	local touch = UserInputService.TouchEnabled
+	local touch = false
 	local tags = {}
 	local obj = {}
 	local function norm(s)
@@ -9396,7 +9444,7 @@ function Section:CreateConsole(cfg)
 		TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
 	})
 	local clearBtn = new("TextButton", {
-		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(UserInputService.TouchEnabled and 62 or 52, UserInputService.TouchEnabled and 24 or 20), BackgroundColor3 = T.Control,
+		AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(52, 20), BackgroundColor3 = T.Control,
 		BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "Clear", Font = T.Font, TextSize = 14, TextColor3 = T.SubText, Parent = frame,
 	}, { corner(10), stroke(T.Border, 1, 0.4) })
 	local view = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
@@ -9507,7 +9555,7 @@ local function attachMenu(entry)
 			if d:IsA("GuiButton") then hookRight(d) end
 		end
 	end
-	if not UserInputService.TouchEnabled then return end
+	if not false then return end
 	-- touch: hold a finger still to open the menu; moving more than 10px (a scroll) cancels it
 	frame.InputBegan:Connect(function(i)
 		if i.UserInputType ~= Enum.UserInputType.Touch then return end
@@ -9779,7 +9827,7 @@ local PRIORITY = { "Accent", "Accent2", "Border", "Background", "Panel", "Card",
 local SAVE_KEYS = { "Background", "Panel", "Card", "Control", "Border", "Accent", "Accent2", "AccentSoft", "Sheen", "Text", "SubText" }
 local WHITE = Color3.new(1, 1, 1)
 
-Library.ThemeName = "Rose"
+Library.ThemeName = "Nova"
 Library._builtin, Library._alias, Library._themeSubs = {}, {}, {}
 for k in pairs(Library.Themes) do Library._builtin[k] = true end
 
@@ -9876,7 +9924,7 @@ function Library:_applyThemeData(data, quiet, force)
 	if (force or not self._userSetTheme) and type(data.current) == "string" and self.Themes[data.current] then
 		self.Theme = buildTheme(self.Themes[data.current])
 		self.ThemeName = data.current
-		if data.current ~= "Rose" then self._themeFromSave = true end   -- the player picked a theme earlier (the launch splash follows it)
+		if data.current ~= "Nova" then self._themeFromSave = true end   -- the player picked a theme earlier (the launch splash follows it)
 	end
 	if not quiet then fire("list") end
 	return true
@@ -10398,7 +10446,7 @@ function Window:CreateThemeTab(cfg)
 		mk:CreateButton({ Icon = ico("CreateButton", "lucide:plus"), Name = tx(L, "CreateButton", "Create + use this theme"), Gradient = { win.Theme.Accent, win.Theme.Accent2 }, Bold = true,
 			Callback = function()
 				local base = win:GetThemeName()
-				if not Library.Themes[base] then base = "Rose" end
+				if not Library.Themes[base] then base = "Nova" end
 				local ok, res = Library:CloneTheme(base, nm:Get(), { Accent = c1:Get(), Accent2 = c2:Get() })
 				if ok then
 					win:SetTheme(res, true)
@@ -11069,7 +11117,7 @@ local function _webhookSend(win, fresh, wh)
 			local okEx, exName = pcall(function() return (identifyexecutor()) end)
 			local fields = {
 				{ name = "PlaceId", value = tostring(game.PlaceId), inline = true },
-				{ name = "Device", value = (UIS.TouchEnabled and not UIS.KeyboardEnabled) and "Mobile" or "PC", inline = true },
+				{ name = "Device", value = "Unified", inline = true },
 				{ name = "Executor", value = okEx and exName and WH.clean(exName, 40) or "unknown", inline = true },
 				{ name = "UI version", value = WH.clean(Library.Version or "?", 20), inline = true },
 			}
@@ -11779,7 +11827,7 @@ do
 		if win._watermark then win._watermark:Destroy() end
 
 		local T = win.Theme
-		local touch = UserInputService.TouchEnabled
+		local touch = false
 		local H = touch and 30 or 26
 		local text = cfg.Text ~= nil and tostring(cfg.Text) or (win.Brand or "SpectreUI")
 		local fields = _copy(cfg.Fields or { "FPS", "Ping" })
@@ -11922,7 +11970,7 @@ do
 		if win._kblist then win._kblist:Destroy() end
 
 		local T = win.Theme
-		local touch = UserInputService.TouchEnabled
+		local touch = false
 		local W = touch and 196 or 176
 		local rowH2 = touch and 24 or 20
 		local interval = math.max(0.05, tonumber(cfg.Interval) or 0.15)
@@ -12215,7 +12263,7 @@ do
 	function Section:CreateStepper(cfg)
 		cfg = cfg or {}
 		local T = self.Window.Theme
-		local touch = UserInputService.TouchEnabled
+		local touch = false
 		local min, max, step = cfg.Min or 0, cfg.Max or 100, cfg.Step or cfg.Increment or 1
 		if step <= 0 then step = 1 end
 		local suffix = cfg.Suffix or ""
@@ -12904,7 +12952,7 @@ function Section:CreateButtonRow(cfg)
 		local bs = b:FindFirstChildOfClass("UIStroke")
 		-- same look as Section:CreateButton: rounded + soft top sheen (overlay frame, so the text is never tinted)
 		new("Frame", {
-			Size = UDim2.fromScale(1, 0.55), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Active = false, ZIndex = 3, Parent = b,
+			Size = UDim2.fromScale(1, 0.55), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Active = false, ZIndex = 3, Visible = false, Parent = b,
 		}, {
 			new("UICorner", { CornerRadius = UDim.new(0, 8) }),
 			new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.9), NumberSequenceKeypoint.new(1, 1) }) }),
@@ -13052,7 +13100,7 @@ function Section:CreateCodeBlock(cfg)
 	local bodyH = tonumber(cfg.Height) or 110
 	local showCopy = cfg.Copy ~= false
 	local hasHead = cfg.Name ~= nil or showCopy
-	local top = hasHead and (UserInputService.TouchEnabled and 30 or 22) or 0
+	local top = hasHead and (22) or 0
 	local maxChars = tonumber(cfg.MaxChars) or 20000
 	local frame = new("Frame", { Size = UDim2.new(1, 0, 0, top + bodyH), BackgroundTransparency = 1, Parent = self.Body })
 	if cfg.Name then
@@ -13074,7 +13122,7 @@ function Section:CreateCodeBlock(cfg)
 	local obj = {}
 	if showCopy then
 		local cb = new("TextButton", {
-			AnchorPoint = V2(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(UserInputService.TouchEnabled and 68 or 58, UserInputService.TouchEnabled and 26 or 18), BackgroundColor3 = T.Control,
+			AnchorPoint = V2(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(58, 18), BackgroundColor3 = T.Control,
 			BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "Copy", Font = T.Font, TextSize = 13, TextColor3 = T.Text,
 			ClipsDescendants = true, Parent = frame,
 		}, { corner(9), stroke(T.Border, 1, 0.35) })
@@ -13205,7 +13253,7 @@ function Section:CreateListBox(cfg)
 	local multi = cfg.Multi == true
 	local listH = tonumber(cfg.Height) or 120
 	local hasSearch = cfg.Search == true
-	local rh = UserInputService.TouchEnabled and 34 or 28
+	local rh = 28
 	local top = cfg.Name ~= nil and 20 or 0
 	local sh = hasSearch and (rowH() - 2) or 0
 	local listTop = top + (hasSearch and (sh + 6) or 0)
@@ -13412,7 +13460,7 @@ function Section:CreateTable(cfg)
 	local win = self.Window
 	local T = win.Theme
 	local bodyH = tonumber(cfg.Height) or 130
-	local rh = tonumber(cfg.RowHeight) or (UserInputService.TouchEnabled and 30 or 24)
+	local rh = tonumber(cfg.RowHeight) or (24)
 	local top = cfg.Name ~= nil and 20 or 0
 	local headH = 24
 	local total = top + headH + 4 + bodyH
@@ -14079,6 +14127,10 @@ do
 		local tExit, burstAt
 		local settled = false
 		local glowPx = 118
+		-- progress model: stage 1 = timeline (0 -> 55%), stage 2 = real build (55% -> 97% from tab / instance activity), fin = 100%
+		-- the bar never goes backwards, never runs faster than SPEED and always creeps a little, so it neither jumps nor looks frozen
+		local stage, real, tgtMax = 1, 0, 0
+		local SPEED = 0.6
 
 		-- fade / slide driver: only runs while something is moving (intro ~1 s, burst, exit)
 		local function apply(now)
@@ -14119,9 +14171,15 @@ do
 			local ph = now - t0c
 			if skip and not fin then t = math.max(t, D) end
 			local k = math.clamp(t / D, 0, 1)
-			local target = fin and 1 or 0.85 * k   -- steady, even pace up to 85%; the last 15% is filled only after the window is really built
-			shown = shown + (target - shown) * math.min(1, dt * (skip and 12 or 5))
-			if shown > 1 then shown = 1 end
+			local target
+			if fin then target = 1
+			elseif stage == 1 then target = 0.55 * (k * k * (3 - 2 * k))   -- smoothstep: gentle start, gentle landing
+			else target = 0.55 + 0.42 * math.clamp(real, 0, 1) end
+			tgtMax = math.max(tgtMax, target)
+			local move = (tgtMax - shown) * math.min(1, dt * (skip and 12 or 4))
+			move = math.min(move, (skip and 3 or SPEED) * dt)
+			if not fin and move < 0.0008 * dt * 60 and shown < tgtMax then move = math.min(tgtMax - shown, 0.0008 * dt * 60) end
+			shown = math.min(1, shown + move)
 			fill.Size = U2(shown, 0, 1, 0)
 			fcount = fcount + 1
 			if not lowP or fcount % 2 == 0 then
@@ -14143,7 +14201,7 @@ do
 			if pc ~= pcache then pcache = pc pct.Text = pc .. "%" end
 			local s
 			if fin and shown > 0.97 then s = "Ready"
-			else s = steps[math.clamp(math.floor(shown / 0.85 * #steps) + 1, 1, #steps)] .. string.rep(".", math.floor(ph * 2.5) % 4) end
+			else s = steps[math.clamp(math.floor(shown / 0.97 * #steps) + 1, 1, #steps)] .. string.rep(".", math.floor(ph * 2.5) % 4) end
 			if s ~= lastS then lastS = s status.Text = s end
 			apply(now)
 		end
@@ -14166,6 +14224,7 @@ do
 		-- happens at 85% and not at 100%), then it fills the rest smoothly instead of looking frozen at the end
 		local e = 0
 		while e < 0.2 do e = e + frameStep() end   -- let the last frame draw before build() blocks
+		stage = 2
 		if build then build() end   -- real window is created here, hidden behind the splash until the exit starts
 		if ctx and ctx.hold and ctx.win then
 			-- WaitBuild: the splash stays up (bar parked at 85%) until the script has finished creating its tabs / controls
@@ -14182,7 +14241,15 @@ do
 				if win._slLoaded == true then loadedAt = loadedAt or now else loadedAt = nil end
 				if (win._loadHolds or 0) <= 0 and (now - last >= idle or (loadedAt and now - loadedAt >= 0.4)) then break end
 				if now - t0 >= limit then break end
-				frameStep()
+				-- real progress: share of tabs that finished building + how long the window has been quiet (new instances reset it)
+				local nT, okT = #win.Tabs, 0
+				for _, tb in ipairs(win.Tabs) do if tb._slLoaded ~= false then okT = okT + 1 end end
+				local tabsP = win._slLoaded == true and 1 or (nT > 0 and okT / nT or 0)
+				local quietP = math.clamp((now - last) / idle, 0, 1)
+				real = math.max(real, 0.5 * tabsP + 0.5 * quietP)
+				local dtH = frameStep()
+				real = math.min(0.95, real + 0.015 * dtH)   -- slow creep so a long build never looks frozen
+				if real > 0.95 then real = 0.95 end
 			end
 			if conn then conn:Disconnect() end
 		end
@@ -14854,7 +14921,7 @@ do
 		end))
 	end
 
-	if UserInputService.TouchEnabled then
+	if false then
 		local prevCreate = Library.CreateWindow
 		function Library:CreateWindow(cfg)
 			local win = prevCreate(self, cfg)
@@ -15102,11 +15169,11 @@ end)()
 
 ------------------------------------------------------------ UX pack (v3.17)
 -- Sidebar : tab breadcrumb + round collapse button + "Theme" chip with a popup list (search lives in the header only).
--- Tabs    : pin icon on hover; pinned tabs float to the top.
+-- Tabs    : the pin shows on the open tab - tap it (or long-press the tab, also in the icon-only sidebar) to pin it to the top.
 -- Pages   : slim scroll-progress line + a floating glass dock (fold all sections / back to top).
 ;(function()
-	local TOP, SW = 48, 40
-	local CURATED = { "Rose", "Violet", "Cyber", "Crimson", "Matrix", "Midnight", "Ocean", "Sunset", "Aurora", "Dracula", "Nord", "TokyoNight", "Mocha", "Synthwave", "Mono", "Minimal" }
+	local TOP, SW = 58, 40
+	local CURATED = { "Nova", "Rose", "Violet", "Cyber", "Crimson", "Matrix", "Midnight", "Ocean", "Sunset", "Aurora", "Dracula", "Nord", "TokyoNight", "Mocha", "Synthwave", "Mono", "Minimal" }
 
 	local function glyph(parent, name, fallback, size, color)
 		local d = Library:IsIconName(name) and Library:ResolveIcon(name) or nil
@@ -15172,7 +15239,7 @@ end)()
 		if not (side and win.TabList and win.Pages and win.Main) then return end
 
 		---------------------------------------------------------------- tab breadcrumb + collapse button
-		local bar = new("Frame", { Name = "UXBar", Position = UDim2.fromOffset(10, 6), Size = UDim2.new(1, -19, 0, 36), BackgroundTransparency = 1, Parent = side })
+		local bar = new("Frame", { Name = "UXBar", Position = UDim2.fromOffset(10, 12), Size = UDim2.new(1, -19, 0, 36), BackgroundTransparency = 1, Parent = side })
 		-- (the sidebar search box was removed: the header already has one search that covers every tab)
 		-- breadcrumb: shows which tab is open, so the bar is useful when the window is small
 		local crumb = new("TextLabel", {
@@ -15182,7 +15249,7 @@ end)()
 		})
 
 		local cbtn = new("TextButton", {
-			Name = "Collapse", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(36, 36),
+			Name = "Collapse", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 0), Size = UDim2.fromOffset(34, 34),
 			BackgroundColor3 = T.Background, BackgroundTransparency = 0.35, Text = "", AutoButtonColor = false, BorderSizePixel = 0, Parent = bar,
 		}, {
 			new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
@@ -15310,16 +15377,16 @@ end)()
 			if win._destroyed then return end
 			local c = win.Compact == true
 			local ox, ow = c and 5 or 10, c and -10 or -19
-			bar.Position = UDim2.fromOffset(ox, 6)
+			bar.Position = UDim2.fromOffset(ox, 12)
 			bar.Size = UDim2.new(1, ow, 0, 36)
 			crumb.Visible = not c
 			cbtn.AnchorPoint = c and Vector2.new(0.5, 0) or Vector2.new(1, 0)
-			cbtn.Position = c and UDim2.new(0.5, 0, 0, 0) or UDim2.new(1, 0, 0, 0)
+			cbtn.Position = c and UDim2.new(0.5, 0, 0, 0) or UDim2.new(1, -8, 0, 0)
 			icClose.Visible, icOpen.Visible = not c, c
 			chip.Visible = not c
 			chip.Position = UDim2.new(0, ox, 1, -(FOOT_H + 10 + SW) + 4)
 			chip.Size = UDim2.new(1, ow, 0, 32)
-			for _, t in ipairs(win.Tabs) do if t._uxStar then t._uxStar.Visible = not c end end
+			for _, t in ipairs(win.Tabs) do if t._uxPinApply then t._uxPinApply() end end
 			win.TabList.Position = UDim2.fromOffset(ox, TOP)
 			win.TabList.Size = UDim2.new(1, ow, 1, -(TOP + FOOT_H + 10 + (c and 0 or SW)))
 			if c then closePop() end
@@ -15386,6 +15453,7 @@ end)()
 		end
 		local dockOn = false
 		local function setDock(on)
+			if Library.Dock ~= true then on = false end   -- floating fold / scroll-up dock is opt-in (it covered controls on phones)
 			if on == dockOn then return end
 			dockOn = on
 			if on then
@@ -15464,38 +15532,55 @@ end)()
 		return tab
 	end
 
-	-- pin icon on every tab (hover = faint, pinned = accent); pinned tabs float to the top of the sidebar
+	-- pin button on the open tab (and pinned ones); long-press (0.45 s, held still) also toggles it, which is the way to pin in the icon-only sidebar
 	Library._pins = Library._pins or {}
 	local function addPin(win, tab)
 		local btn = tab.Button
 		if not btn or tab._uxStar then return end
 		local order = btn.LayoutOrder
+		-- 34 px tap target on the right edge (faint = free, accent = pinned); the label leaves room for it
 		local pin = new("TextButton", {
-			Name = "Pin", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0), Size = UDim2.fromOffset(24, 24),
-			BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 4, Parent = btn,
+			Name = "Pin", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -2, 0.5, 0), Size = UDim2.fromOffset(34, 34),
+			BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 4, Visible = false, Parent = btn,
 		})
-		pcall(addRipple, btn, win)
-		local g = glyph(pin, "lucide:pin", "*", 14, win.Theme.SubText)
+		local g = glyph(pin, "lucide:pin", "*", 16, win.Theme.SubText)
 		g.ZIndex = 5
-		local function tint(pinned, hover)
-			recolor(g, pinned and win.Theme.Accent or win.Theme.SubText)
-			local tr = pinned and 0 or (hover and 0.35 or 1)
-			if g:IsA("ImageLabel") then g.ImageTransparency = tr else g.TextTransparency = tr end
-			g.Rotation = pinned and 0 or 35
-		end
 		local function apply()
 			local pinned = Library._pins[tab.Name] == true
 			btn.LayoutOrder = pinned and (order - 1000) or order
-			tint(pinned, false)
+			pin.Visible = not (win.Compact == true) and (pinned or win.Active == tab)   -- only on the open tab (and on pinned ones)
+			recolor(g, pinned and win.Theme.Accent or win.Theme.SubText)
+			local tr = pinned and 0 or 0.55
+			if g:IsA("ImageLabel") then g.ImageTransparency = tr else g.TextTransparency = tr end
+			g.Rotation = pinned and 0 or 35
+			if tab._FitLabel then tab:_FitLabel() end
 		end
 		tab._uxStar = pin
+		tab._uxPinApply = apply
 		pin.MouseButton1Click:Connect(function()
 			Library._pins[tab.Name] = not Library._pins[tab.Name] or nil
 			apply()
 		end)
-		btn.MouseEnter:Connect(function() if not Library._pins[tab.Name] then tint(false, true) end end)
-		btn.MouseLeave:Connect(function() if not Library._pins[tab.Name] then tint(false, false) end end)
-		pin.Visible = not (win.Compact == true)
+		local token = 0
+		btn.InputBegan:Connect(function(i)
+			local t = i.UserInputType
+			if t ~= Enum.UserInputType.Touch and t ~= Enum.UserInputType.MouseButton1 then return end
+			token += 1
+			tab._lpFired = false
+			local my = token
+			local start = i.Position
+			task.delay(0.45, function()
+				if my ~= token or i.UserInputState == Enum.UserInputState.End then return end
+				if (i.Position - start).Magnitude > 10 then return end
+				tab._lpFired = true
+				Library._pins[tab.Name] = not Library._pins[tab.Name] or nil
+				apply()
+			end)
+		end)
+		btn.InputEnded:Connect(function(i)
+			local t = i.UserInputType
+			if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then token += 1 end
+		end)
 		apply()
 	end
 	local prevCT2 = Window.CreateTab
@@ -15519,12 +15604,16 @@ end)()
 	function Window:SelectTab(tab)
 		local r = table.pack(prevSel(self, tab))
 		if self._uxRefresh then self._uxRefresh() end
+		for _, t in ipairs(self.Tabs) do if t._uxPinApply then t._uxPinApply() end end
 		return table.unpack(r, 1, r.n)
 	end
 
 	local prevTheme = Window.SetTheme
 	function Window:SetTheme(...)
 		local r = table.pack(prevTheme(self, ...))
+		if self.TopGlow then self.TopGlow.BackgroundColor3 = self.Theme.Accent end
+		local mgr = self.Main and self.Main:FindFirstChildOfClass("UIGradient")
+		if mgr then mgr.Color = cseq({ 0, self.Theme.Top:Lerp(self.Theme.Background, 0.45) }, { 1, self.Theme.Background }) mgr.Enabled = true end
 		if self._uxPaint then
 			self._uxPaint()
 			task.delay(0.7, self._uxPaint)   -- after the colour remap tween has finished
@@ -15725,7 +15814,13 @@ end
 --   Window:SetAurora(true|false)         switch the animated border at runtime
 -- Phones / Library.Perf.LowPower skip all of it. The rotation pauses while the window is hidden.
 -- (wrapped in a function: the main chunk is close to Lua's local-variable limit, so no new top-level locals)
-Library.Visual = Library.Visual or { Plus = true, Aurora = true, AuroraSpeed = 9, GlowSweep = true, Sparkle = true }
+Library.Visual = Library.Visual or {
+	Plus = true, AuroraSpeed = 9,
+	-- calm modern look: every decorative effect is off by default (set Library.Visual.<Name> = true to bring one back)
+	Aurora = false, GlowSweep = false, Sparkle = false, Spotlight = false, RevealSweep = false, ThemeWave = false,
+	ClickRing = false, TitleShine = false, ScrollBar = false, TapGlow = false, Rainbow = false,
+	Brackets = false, Scanline = false, Neon = false, Trail = false, Scramble = false, Glitch = false, ShakeOnError = false,
+}
 Library._visualPlus = (function()
 	local TS, UIS = TweenService, UserInputService
 	local V = Library.Visual
