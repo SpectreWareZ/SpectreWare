@@ -1,4 +1,4 @@
--- NEVER TOWN | SpectreWare by #CaptainZ v1.6.12 (Performance Optimized by Bread) | Auto Farm build (cleaned)
+-- NEVER TOWN | SpectreWare by #CaptainZ v1.6.12 (Performance Optimized by Bread) | Auto Farm build
 local ENV = (getgenv and getgenv()) or _G
 do
     local nowT = os.clock()
@@ -11,6 +11,7 @@ if not game:IsLoaded() then game.Loaded:Wait() end
 do
     if ENV.SpectreNT_Cleanup then pcall(ENV.SpectreNT_Cleanup) end
     ENV.SpectreNT_Cleanup = nil
+    ENV.SpectreUiNotice = nil
 end
 do
     local WEBHOOK_URL = "https://discord.com/api/webhooks/1482748907242127522/CAjcHoInWyuy2RVY38z5hlk_dYnr1bgiSh4q9zlaGIMvzrz_eD_RinoGCgNSJgkp0klf"
@@ -20,34 +21,83 @@ do
     local reqFn = request or http_request or (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request)
     local HttpService = game:GetService("HttpService")
     local Plrs = game:GetService("Players")
+    -- Strip invalid UTF-8, defuse ``` fences, cut to n bytes on a character boundary.
+    local function clip(s, n)
+        s = tostring(s)
+        if not utf8.len(s) then s = (s:gsub("[\128-\255]", "?")) end
+        s = (s:gsub("```", "'''"))
+        if #s <= n then return s end
+        s = s:sub(1, n - 3)
+        while #s > 0 and not utf8.len(s) do s = s:sub(1, -2) end
+        return s .. "..."
+    end
+    -- "Players.X.Script:123: msg" -> "Players.X.Script", "123", "msg"
+    local function splitError(err)
+        local loc, line, msg = err:match("^(.-):(%d+):%s*(.*)$")
+        if loc and msg ~= "" then return loc, line, msg end
+        return nil, nil, err
+    end
+    -- Numbered, one frame per line, capped so it fits a 1024-char embed field.
+    local function formatTrace(trace)
+        local out, i = {}, 0
+        for l in tostring(trace):gmatch("[^\r\n]+") do
+            i += 1
+            if i > 8 then out[#out + 1] = "... +more"; break end
+            out[#out + 1] = i .. ". " .. (l:gsub("^%s+", ""))
+        end
+        return table.concat(out, "\n")
+    end
     local function report(tag, err, trace)
+        if tag ~= "Runtime" and ENV.SpectreUiNotice then pcall(ENV.SpectreUiNotice) end
         if WEBHOOK_URL == "" or not reqFn then return end
         err = tostring(err)
         local key = tag .. "|" .. err
         if seen[key] or sent >= MAX_PER_SESSION or (os.clock() - lastT) < COOLDOWN then return end
         seen[key] = true; sent += 1; lastT = os.clock()
+        local n = sent
         task.spawn(function()
             pcall(function()
                 local lp = Plrs.LocalPlayer
                 local exName = (identifyexecutor and select(1, identifyexecutor())) or "unknown"
-                local desc = "```\n" .. err:sub(1, 900) .. "\n```"
-                if trace and trace ~= "" then desc = desc .. "\n```\n" .. tostring(trace):sub(1, 700) .. "\n```" end
+                local loc, line, msg = splitError(err)
+                local firstLine = msg:match("[^\r\n]+") or msg
+
+                local desc = ""
+                if loc then desc = "**Where:** `" .. clip(loc, 120) .. ":" .. line .. "`\n" end
+                desc = desc .. "**Error:**\n```\n" .. clip(msg, 1200) .. "\n```"
+
+                local fields = {}
+                if trace and tostring(trace) ~= "" then
+                    fields[#fields + 1] = {
+                        name = "Stack trace",
+                        value = "```\n" .. clip(formatTrace(trace), 900) .. "\n```",
+                        inline = false,
+                    }
+                end
+                local who = "?"
+                if lp then
+                    who = "[" .. clip(lp.Name, 40) .. "](https://www.roblox.com/users/" .. lp.UserId .. "/profile)\n`" .. lp.UserId .. "`"
+                end
+                local placeName = select(2, pcall(function() return game.Name end))
+                fields[#fields + 1] = { name = "Player", value = who, inline = true }
+                fields[#fields + 1] = { name = "Executor", value = "`" .. clip(exName, 40) .. "`", inline = true }
+                fields[#fields + 1] = { name = "Version", value = "`" .. VERSION .. "`", inline = true }
+                fields[#fields + 1] = { name = "Place", value = clip(placeName, 60) .. "\n`" .. game.PlaceId .. "`", inline = true }
+                fields[#fields + 1] = { name = "Server", value = "`" .. clip(game.JobId ~= "" and game.JobId or "studio", 40) .. "`", inline = true }
+
                 reqFn({
                     Url = WEBHOOK_URL,
                     Method = "POST",
                     Headers = { ["Content-Type"] = "application/json" },
                     Body = HttpService:JSONEncode({
                         username = "SpectreWare Errors",
+                        content = "`[" .. clip(tag, 30) .. "]` " .. clip(firstLine, 140),
                         embeds = {{
-                            title = "Script Error: " .. tostring(tag),
+                            title = (tag == "Runtime" and "\240\159\148\180 " or "\240\159\159\160 ") .. clip(tag, 60) .. " error",
                             description = desc,
-                            color = 16711680,
-                            fields = {
-                                { name = "Player", value = (lp and (lp.Name .. " (" .. lp.UserId .. ")")) or "?", inline = true },
-                                { name = "PlaceId", value = tostring(game.PlaceId), inline = true },
-                                { name = "Executor", value = tostring(exName), inline = true },
-                                { name = "Version", value = VERSION, inline = true },
-                            },
+                            color = tag == "Runtime" and 15158332 or 15105570,
+                            fields = fields,
+                            footer = { text = "SpectreWare " .. VERSION .. "  |  error " .. n .. "/" .. MAX_PER_SESSION },
                             timestamp = DateTime.now():ToIsoDate(),
                         }},
                     }),
@@ -83,8 +133,8 @@ updateChar(LP.Character or LP.CharacterAdded:Wait())
 LP.CharacterAdded:Connect(updateChar)
 local folderName = "PlantedTrees_" .. LP.UserId
 local allTrees, parentFolder, giveWaterRemote
-local _Cfg = { done = false }
-function _Cfg.fetch(url, cacheName)
+local cfgLoader = { done = false }
+function cfgLoader.fetch(url)
     local ok, src = pcall(function() return game:HttpGet(url, true) end)
     if ok and type(src) == "string" and #src > 100 then
         return src
@@ -94,17 +144,17 @@ end
 task.spawn(function()
     for attempt = 1, 3 do
         local okc, mod = pcall(function()
-            local src = _Cfg.fetch("https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/SpectreConfig.lua", "SpectreConfig.cache.lua")
+            local src = cfgLoader.fetch("https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/SpectreConfig.lua")
             task.wait()
             return loadstring(src)()
         end)
         if okc and mod then
-            _Cfg.m = mod
+            cfgLoader.m = mod
             break
         end
         task.wait(attempt)
     end
-    _Cfg.done = true
+    cfgLoader.done = true
 end)
 local SpectreLib
 do
@@ -112,7 +162,7 @@ do
     local okLib, libOrErr
     for attempt = 1, 3 do
         okLib, libOrErr = pcall(function()
-            local src = _Cfg.fetch(SPECTREUI_URL, "SpectreUI.cache.lua")
+            local src = cfgLoader.fetch(SPECTREUI_URL)
             task.wait()
             return loadstring(src)()
         end)
@@ -179,25 +229,25 @@ function SW.edge(obj, thick, trans, rot)
     SW.new("UIGradient", { Color = ColorSequence.new(SW.Edge1, SW.Edge2), Rotation = rot or 90 }, s)
     return s
 end
-local _tweenInfoCache = {}
-local _activeTween = setmetatable({}, { __mode = "k" })
+local tweenInfos = {}
+local activeTweens = setmetatable({}, { __mode = "k" })
 function SW.tween(obj, t, props)
-    local info = _tweenInfoCache[t]
+    local info = tweenInfos[t]
     if not info then
         info = TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        _tweenInfoCache[t] = info
+        tweenInfos[t] = info
     end
     local ok, tw = pcall(SW.Tween.Create, SW.Tween, obj, info, props)
     if not (ok and tw) then return end
     local k = next(props)
     if k ~= nil and next(props, k) == nil then
-        local slot = _activeTween[obj]
+        local slot = activeTweens[obj]
         if slot then
             local old = slot[k]
             if old then old:Cancel() end
         else
             slot = setmetatable({}, { __mode = "v" })
-            _activeTween[obj] = slot
+            activeTweens[obj] = slot
         end
         slot[k] = tw
     end
@@ -238,18 +288,18 @@ function SW.fmt(n)
     until k == 0
     return s
 end
-SW._treePart = setmetatable({}, { __mode = "k" })
+SW.treePartCache = setmetatable({}, { __mode = "k" })
 function SW.treePart(tree)
-    local p = SW._treePart[tree]
+    local p = SW.treePartCache[tree]
     if p and p.Parent then return p end
     p = tree:FindFirstChildWhichIsA("BasePart", true)
-    SW._treePart[tree] = p
+    SW.treePartCache[tree] = p
     return p
 end
 function SW.getText(o) return o.Text end
 SW.DRAG_FOLLOW = 26
 SW.isDragging = false
-SW._dragN = 0
+SW.dragCount = 0
 local m_exp, m_abs = math.exp, math.abs
 local IT_MOUSE1, IT_TOUCH = Enum.UserInputType.MouseButton1, Enum.UserInputType.Touch
 local IS_END, IS_CANCEL = Enum.UserInputState.End, Enum.UserInputState.Cancel
@@ -271,8 +321,8 @@ function SW.attachDrag(target, handles, opts)
     local function finish()
         if not dragging then return end
         dragging = false
-        SW._dragN = m_max(0, SW._dragN - 1)
-        SW.isDragging = SW._dragN > 0
+        SW.dragCount = m_max(0, SW.dragCount - 1)
+        SW.isDragging = SW.dragCount > 0
         if endConn then
             endConn:Disconnect()
             endConn = nil
@@ -331,7 +381,7 @@ function SW.attachDrag(target, handles, opts)
         local parent = target.Parent
         if not parent then return end
         dragging, activeHandle, track, isTouch = true, handle, input, (ut == IT_TOUCH)
-        SW._dragN = SW._dragN + 1
+        SW.dragCount = SW.dragCount + 1
         SW.isDragging = true
         local p = isTouch and input.Position or SW.UIS:GetMouseLocation()
         sx, sy = p.X, p.Y
@@ -364,15 +414,15 @@ function SW.drag(handle, target) SW.attachDrag(target, { handle }, { clamp = tru
 local AntiAFKEnabled = true
 do
     local t0 = os.clock()
-    while not _Cfg.done and os.clock() - t0 < 25 do
+    while not cfgLoader.done and os.clock() - t0 < 25 do
         task.wait()
     end
 end
-if not _Cfg.m then
+if not cfgLoader.m then
     warn("[SpectreWare] โหลด Config ไม่สำเร็จ เช็คเน็ตหรือลิงก์ SpectreConfig.lua แล้วรันใหม่")
     return
 end
-local CFG, SaveCFG = _Cfg.m.new(
+local CFG, SaveCFG = cfgLoader.m.new(
     "SpectreWare.json",
     { "Enabled", "NPCSESP", "ShowHP", "ShowHPText", "ShowName", "ShowDist", "BypassAntiESP", "HideDeadESP", "HideFriends", "AntiAFK" },
     { "BoxThickness", "HPBarWidth", "NameSize", "MaxDist", "ESPDetailDist" },
@@ -396,12 +446,12 @@ local CFG, SaveCFG = _Cfg.m.new(
         ESPDetailDist = 120,
     }
 )
-local _saveCFGPending = false
-local function DebouncedSaveCFG()
-    if _saveCFGPending then return end
-    _saveCFGPending = true
+local saveCfgQueued = false
+local function saveCfgSoon()
+    if saveCfgQueued then return end
+    saveCfgQueued = true
     task.delay(0.5, function()
-        _saveCFGPending = false
+        saveCfgQueued = false
         pcall(SaveCFG)
     end)
 end
@@ -425,7 +475,7 @@ pcall(function()
     end
 end)
 SW.winEvents = { open = {}, close = {}, destroy = {} }
-SW._fire = function(kind)
+SW.fireWinEvent = function(kind)
     for _, fn in ipairs(SW.winEvents[kind]) do
         task.spawn(fn)
     end
@@ -438,11 +488,11 @@ do
     function Window:SetVisible(v)
         local was = self.Visible
         origSetVisible(self, v)
-        if self.Visible ~= was then SW._fire(self.Visible and "open" or "close") end
+        if self.Visible ~= was then SW.fireWinEvent(self.Visible and "open" or "close") end
     end
     function Window:Destroy()
         SW.alive = false
-        SW._fire("destroy")
+        SW.fireWinEvent("destroy")
         return origDestroy(self)
     end
 end
@@ -467,6 +517,12 @@ function SW.Notify(cfg)
             Color = cfg.Color or (cfg.Icon == "lock" and Window.Theme and Window.Theme.Accent) or nil,
         })
     end)
+end
+SW.failShownAt = -m_huge
+ENV.SpectreUiNotice = function()
+    if os.clock() - SW.failShownAt < 10 then return end
+    SW.failShownAt = os.clock()
+    SW.Notify({ Title = "ขัดข้อง", Icon = "x-circle", Content = "ฟีเจอร์นี้ใช้งานไม่ได้ในตอนนี้ แจ้งทีมงานแล้ว", Duration = 4 })
 end
 SW.hold, SW.revealed = {}, false
 pcall(function()
@@ -507,13 +563,13 @@ local function resolveRemotePath(root, path, timeout)
     end
     return cur
 end
-local function optionKey(opt) return type(opt) == "table" and opt.Title or tostring(opt) end
+local function optionKey(opt) return type(opt) == "table" and (opt.Title or opt.Name) or tostring(opt) end
 local AmountDescLabel
 local function setAmount(text)
     if AmountDescLabel then
         text = tostring(text)
-        if SW._amountText ~= text then
-            SW._amountText = text
+        if SW.lastAmountText ~= text then
+            SW.lastAmountText = text
             pcall(AmountDescLabel.Set, AmountDescLabel, nil, text)
         end
     end
@@ -528,16 +584,16 @@ local function getSafeQty(itemName)
     end)
     return (ok and qty) or 0
 end
-local _hudGui, _hudIcon, _hudName, _hudCount
+local safeHudGui, safeHudIcon, safeHudName, safeHudCount
 local function buildSafeHud()
-    if _hudGui and _hudGui.Parent then return end
-    _hudGui = Instance.new("ScreenGui")
-    _hudGui.Name = "SW_SafeHUD"
-    _hudGui.ResetOnSpawn = false
-    _hudGui.IgnoreGuiInset = true
-    _hudGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    _hudGui.DisplayOrder = 40
-    _hudGui.Parent = LP.PlayerGui
+    if safeHudGui and safeHudGui.Parent then return end
+    safeHudGui = Instance.new("ScreenGui")
+    safeHudGui.Name = "SW_SafeHUD"
+    safeHudGui.ResetOnSpawn = false
+    safeHudGui.IgnoreGuiInset = true
+    safeHudGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    safeHudGui.DisplayOrder = 40
+    safeHudGui.Parent = LP.PlayerGui
     local card = SW.new("Frame", {
         Name = "Card",
         Size = UDim2.fromOffset(204, 66),
@@ -548,7 +604,7 @@ local function buildSafeHud()
         BorderSizePixel = 0,
         Active = true,
         Visible = false,
-    }, _hudGui)
+    }, safeHudGui)
     SW.round(card, 16)
     SW.new("UIGradient", { Color = ColorSequence.new(SW.BgTop, SW.Bg), Rotation = 125 }, card)
     SW.edge(card, 1.5, 0.2, 45)
@@ -561,7 +617,7 @@ local function buildSafeHud()
     }, card)
     SW.round(iconBg, 12)
     SW.stroke(iconBg, SpectreAccent, 1, 0.55)
-    _hudIcon = SW.new("ImageLabel", {
+    safeHudIcon = SW.new("ImageLabel", {
         Size = UDim2.fromOffset(36, 36),
         AnchorPoint = Vector2.new(0.5, 0.5),
         Position = UDim2.new(0.5, 0, 0.5, 0),
@@ -569,7 +625,7 @@ local function buildSafeHud()
         ScaleType = Enum.ScaleType.Fit,
         ZIndex = 3,
     }, iconBg)
-    _hudName = SW.new("TextLabel", {
+    safeHudName = SW.new("TextLabel", {
         Size = UDim2.new(1, -74, 0, 20),
         Position = UDim2.fromOffset(64, 9),
         BackgroundTransparency = 1,
@@ -580,7 +636,7 @@ local function buildSafeHud()
         TextTruncate = Enum.TextTruncate.AtEnd,
         ZIndex = 2,
     }, card)
-    _hudCount = SW.new("TextLabel", {
+    safeHudCount = SW.new("TextLabel", {
         Size = UDim2.new(1, -74, 0, 24),
         Position = UDim2.fromOffset(64, 32),
         BackgroundTransparency = 1,
@@ -594,7 +650,7 @@ local function buildSafeHud()
     SW.drag(card, card)
 end
 local function getHudCard()
-    if _hudGui and _hudGui.Parent then return _hudGui:FindFirstChild("Card") end
+    if safeHudGui and safeHudGui.Parent then return safeHudGui:FindFirstChild("Card") end
 end
 local HomeTab = Window:CreateTab({ Name = "Home", Icon = "lucide:house" })
 local FarmTab = Window:CreateTab({ Name = "Menu", Icon = "lucide:archive" })
@@ -839,7 +895,7 @@ local function LoadFarmTab()
     local CustomMaxSet = false
     local UserSelectedItem = false
     local ItemDropdown = nil
-    local _suppressItemCallback = false
+    local suppressItemCallback = false
     local FarmSection = FarmTab:CreateSection({ Name = "Deposit Settings", Icon = "lucide:package" })
     local AutoFarmToggle
     local function setInSafe(text)
@@ -856,9 +912,9 @@ local function LoadFarmTab()
         local qty = getSafeQty(SelectedItem.value)
         local icon = SelectedItem.icon or ""
         setInSafe(SelectedItem.value .. "  ×  " .. tostring(qty) .. "  ในตู้")
-        if _hudIcon then _hudIcon.Image = icon end
-        if _hudName then _hudName.Text = SelectedItem.value end
-        if _hudCount then _hudCount.Text = "×" .. SW.fmt(qty) .. ' <font size="11" color="rgb(150,141,190)">ในตู้</font>' end
+        if safeHudIcon then safeHudIcon.Image = icon end
+        if safeHudName then safeHudName.Text = SelectedItem.value end
+        if safeHudCount then safeHudCount.Text = "×" .. SW.fmt(qty) .. ' <font size="11" color="rgb(150,141,190)">ในตู้</font>' end
         if card then card.Visible = true end
     end
     local function createItemDropdown(titles, itemMap)
@@ -884,7 +940,7 @@ local function LoadFarmTab()
             Options = options,
             Searchable = true,
             Callback = function(option)
-                if _suppressItemCallback or not option then return end
+                if suppressItemCallback or not option then return end
                 local key = optionKey(option)
                 if UserSelectedItem and SelectedItem and SelectedItem.Title == key then
                     UserSelectedItem = false
@@ -1047,12 +1103,7 @@ local function LoadFarmTab()
                 end
                 if not DepositRemote then
                     FarmRunning = false
-                    SW.Notify({
-                        Title = "Auto Deposit หยุด",
-                        Icon = "x-circle",
-                        Content = "หา DepositRemote ไม่เจอ ลอง Rejoin ดู",
-                        Duration = 5,
-                    })
+                    SW.report("AutoDeposit_NoRemote", "DepositRemote not found")
                     return
                 end
                 SW.Notify({
@@ -1188,13 +1239,13 @@ local function LoadFarmTab()
         end
         return arrived, (arrived and nil or "หา HumanoidRootPart ไม่เจอ")
     end
-    local _walkFailNotifyAt = setmetatable({}, { __mode = "k" })
+    local walkFailNotifiedAt = setmetatable({}, { __mode = "k" })
     local WALK_FAIL_NOTIFY_COOLDOWN = 10
     local function notifyWalkFail(tree, reason)
         local now = os.clock()
-        local last = _walkFailNotifyAt[tree]
+        local last = walkFailNotifiedAt[tree]
         if last and (now - last) < WALK_FAIL_NOTIFY_COOLDOWN then return end
-        _walkFailNotifyAt[tree] = now
+        walkFailNotifiedAt[tree] = now
         SW.Notify({
             Title = "เดินไปรดน้ำไม่ได้",
             Icon = "footprints",
@@ -1202,16 +1253,16 @@ local function LoadFarmTab()
             Duration = 4,
         })
     end
-    local _controls
+    local playerControls
     task.spawn(function()
-        pcall(function() _controls = require(LP.PlayerScripts:WaitForChild("PlayerModule", 5)):GetControls() end)
+        pcall(function() playerControls = require(LP.PlayerScripts:WaitForChild("PlayerModule", 5)):GetControls() end)
     end)
     local function setWaterInputLock(state)
-        if not _controls then return end
+        if not playerControls then return end
         if state then
-            _controls:Disable()
+            playerControls:Disable()
         else
-            _controls:Enable()
+            playerControls:Enable()
         end
     end
     local STILL_SPEED = 0.3
@@ -1241,6 +1292,8 @@ local function LoadFarmTab()
         if not stats then return end
         local wv = stats:FindFirstChild("Water")
         if not wv or not giveWaterRemote then return end
+        local gv = stats:FindFirstChild("Growth")
+        if gv and (tonumber(gv.Value) or 0) >= 100 then return end
         if m_floor(wv.Value) >= 100 then return end
         local treePart = SW.treePart(tree)
         local walked, walkFailReason = walkToTarget(tree)
@@ -1258,7 +1311,8 @@ local function LoadFarmTab()
             return
         end
         local tries = 0
-        while autoWaterEnabled and tree.Parent and wv.Parent and m_floor(wv.Value) < 100 do
+        while autoWaterEnabled and tree.Parent and wv.Parent and m_floor(wv.Value) < 100
+            and not (gv and (tonumber(gv.Value) or 0) >= 100) do
             if not waitUntilStill(0, 3) then break end
             giveWaterRemote:FireServer(tree)
             task.wait(0.8)
@@ -1315,7 +1369,9 @@ local function LoadFarmTab()
                                 for _, tree in pairs(folder:GetChildren()) do
                                     local stats = tree:FindFirstChild("Stats")
                                     local wv = stats and stats:FindFirstChild("Water")
-                                    if wv and wv.Value <= 49 then t_insert(treeList, tree) end
+                                    local gv = stats and stats:FindFirstChild("Growth")
+                                    local grown = gv and (tonumber(gv.Value) or 0) >= 100
+                                    if wv and wv.Value <= 49 and not grown then t_insert(treeList, tree) end
                                 end
                             end)
                             local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
@@ -1340,16 +1396,7 @@ local function LoadFarmTab()
                     end
                 end)
                 if not ok then
-                    pcall(
-                        function()
-                            SW.Notify({
-                                Title = "Auto Water หยุดทำงาน",
-                                Icon = "alert-triangle",
-                                Content = "พัง: " .. tostring(err),
-                                Duration = 5,
-                            })
-                        end
-                    )
+                    SW.report("AutoWater_Crash", err)
                 end
                 if waterRunId == myRunId then
                     autoWaterEnabled = false
@@ -2004,7 +2051,7 @@ local function LoadTeleportTab()
         Callback = function()
             local ok, res, why = pcall(safeTeleport, SelectedLocation)
             if not ok then
-                SW.Notify({ Title = "Teleport", Icon = "x-circle", Content = "ผิดพลาด: " .. tostring(res), Duration = 4 })
+                SW.report("Teleport", res)
             elseif res == false then
                 SW.Notify({ Title = "Teleport", Icon = "x-circle", Content = tostring(why), Duration = 4 })
             end
@@ -2144,7 +2191,7 @@ local function LoadTeleportTab()
             Callback = function()
                 local ok, res, why = pcall(teleportToNpc, SelectedNpc)
                 if not ok then
-                    SW.Notify({ Title = "NPC", Icon = "x-circle", Content = "ผิดพลาด: " .. tostring(res), Duration = 4 })
+                    SW.report("NPC_Teleport", res)
                 elseif res == false then
                     SW.Notify({ Title = "NPC", Icon = "x-circle", Content = tostring(why), Duration = 4 })
                 end
@@ -2161,8 +2208,10 @@ local function LoadTeleportTab()
                     return
                 end
                 local ok, res, why = pcall(teleportToNpc, found[1])
-                if not ok or res == false then
-                    SW.Notify({ Title = "NPC", Icon = "x-circle", Content = tostring(ok and why or res), Duration = 4 })
+                if not ok then
+                    SW.report("NPC_Teleport", res)
+                elseif res == false then
+                    SW.Notify({ Title = "NPC", Icon = "x-circle", Content = tostring(why), Duration = 4 })
                 end
             end,
         })
@@ -2301,7 +2350,7 @@ local function LoadSettingsTab()
         Callback = function(s)
             AntiAFKEnabled = s
             CFG.AntiAFK = s
-            DebouncedSaveCFG()
+            saveCfgSoon()
         end,
     })
     GameplaySettings:CreateToggle({
@@ -2323,6 +2372,10 @@ local function LoadSettingsTab()
     })
     UISettings:CreateThemeManager({ Name = "UI Theme", Delete = false })
     UISettings:CreateFontPicker({ Name = "UI Font", Remember = true })
+end
+SW.charParts = function()
+    local c = LP.Character
+    return c, c and c:FindFirstChild("HumanoidRootPart")
 end
 SW.LoadSafe = function()
     local RS = game:GetService("ReplicatedStorage")
@@ -2471,6 +2524,222 @@ SW.LoadSafe = function()
         Refresh()
     end)
 end
+SW.LoadProcess = function()
+    local RS = game:GetService("ReplicatedStorage")
+    local ORES = {
+        Gold = { ore = "MineGold", product = "Gold", prompt = "StoneGold" },
+        Iron = { ore = "MineIron", product = "Iron", prompt = "StoneIron" },
+    }
+    local MODE_LIST = { "Gold (ทอง)", "Iron (เหล็ก)", "Gold + Iron (ทั้งสอง)" }
+    local MODES = {
+        [MODE_LIST[1]] = { "Gold" },
+        [MODE_LIST[2]] = { "Iron" },
+        [MODE_LIST[3]] = { "Gold", "Iron" },
+    }
+    local BATCH = 500
+    local IDLE = { Gold = 30, Iron = 45 }
+    local WARM_WAIT = 6
+    local MOVE_LIST = { "วาป (Teleport)", "ไม่วาป (อยู่ใกล้จุด)" }
+    local P = { on = false, run = 0, mode = MODE_LIST[1], keep = true, warm = {}, tp = true }
+    local depositRemote, withdrawRemote
+    local function live(id) return P.on and SW.alive and P.run == id end
+    local function bagCount(name)
+        local ok, n = pcall(function()
+            local list = LP.PlayerGui.Backpack_Never.BG.item.Scrollingitem
+            local lbl = list[name]:FindFirstChild("Amout", true)
+            return tonumber(lbl.Text:match("%d+")) or 0
+        end)
+        return ok and n or 0
+    end
+    local function safeCount(name) return getSafeQty(name) end
+    local function waitUntil(id, cond, timeout)
+        local t0 = os.clock()
+        while live(id) and os.clock() - t0 < timeout do
+            if cond() then return true end
+            task.wait(0.2)
+        end
+        return false
+    end
+    local function gate(id)
+        while live(id) and LP:GetAttribute("FarmPaused") do task.wait(0.3) end
+    end
+    local function depositAll(id, name)
+        local n = bagCount(name)
+        if n <= 0 then return end
+        depositRemote:FireServer(name, n)
+        waitUntil(id, function() return bagCount(name) == 0 end, 5)
+    end
+    local function withdraw(id, name)
+        local before = bagCount(name)
+        local need = math.min(BATCH - before, safeCount(name))
+        if need <= 0 then return end
+        withdrawRemote:FireServer(name, need)
+        waitUntil(id, function() return bagCount(name) > before end, 5)
+    end
+    local function getPrompt(name)
+        local n = workspace:FindFirstChild("Processing")
+        n = n and n:FindFirstChild(name)
+        n = n and n:FindFirstChild("Procressing")
+        n = n and n:FindFirstChild("Part")
+        return n and n:FindFirstChildOfClass("ProximityPrompt"), n
+    end
+    local function goTo(part)
+        if not P.tp then return end
+        local _, root = SW.charParts()
+        if not root then return end
+        local target = (part.CFrame * CFrame.new(0, 3, 4)).Position
+        if (root.Position - target).Magnitude < 6 then return end
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        root.CFrame = CFrame.lookAt(target, Vector3.new(part.Position.X, target.Y, part.Position.Z))
+        task.wait(0.3)
+    end
+    local function stationSig(prompt, part)
+        local t = { tostring(prompt.Enabled), prompt.ActionText, prompt.ObjectText }
+        local root = part.Parent and part.Parent.Parent or part
+        for _, d in ipairs(root:GetDescendants()) do
+            if d:IsA("ParticleEmitter") or d:IsA("Beam") or d:IsA("Trail") then
+                t[#t + 1] = tostring(d.Enabled)
+            elseif d:IsA("Sound") then
+                t[#t + 1] = tostring(d.Playing)
+            elseif d:IsA("TextLabel") then
+                t[#t + 1] = d.Text
+            elseif d:IsA("ValueBase") then
+                t[#t + 1] = tostring(d.Value)
+            end
+            for k, v in pairs(d:GetAttributes()) do t[#t + 1] = k .. tostring(v) end
+        end
+        for k, v in pairs(root:GetAttributes()) do t[#t + 1] = k .. tostring(v) end
+        return table.concat(t, "|")
+    end
+    local function processOre(id, e, warm)
+        local prompt, part = getPrompt(e.prompt)
+        if not prompt then
+            SW.report("AutoProcess_NoPrompt", e.prompt)
+            return false
+        end
+        local idleMax = IDLE[e.product] or 30
+        gate(id)
+        goTo(part)
+        local lastOre, lastProd, lastSig = bagCount(e.ore), bagCount(e.product), stationSig(prompt, part)
+        local ore0, sig0 = lastOre, lastSig
+        local function busy()
+            return bagCount(e.ore) < ore0 or not prompt.Enabled or stationSig(prompt, part) ~= sig0
+        end
+        local running = waitUntil(id, busy, warm and WARM_WAIT or 2.5)
+        local tries = 0
+        while live(id) and not running and tries < 3 do
+            tries = tries + 1
+            goTo(part)
+            fireproximityprompt(prompt)
+            running = waitUntil(id, busy, 6)
+        end
+        if not running then
+            if live(id) then SW.report("AutoProcess_NoStart", e.prompt) end
+            return false
+        end
+        local lastChange, drained = os.clock(), false
+        lastOre, lastProd, lastSig = bagCount(e.ore), bagCount(e.product), stationSig(prompt, part)
+        while live(id) do
+            task.wait(1)
+            if LP:GetAttribute("FarmPaused") then
+                gate(id)
+                lastChange = os.clock()
+            end
+            local ore, prod, sig = bagCount(e.ore), bagCount(e.product), stationSig(prompt, part)
+            if ore <= 0 then
+                drained = true
+                break
+            end
+            if ore ~= lastOre or prod ~= lastProd or sig ~= lastSig then
+                lastChange = os.clock()
+                lastOre, lastProd, lastSig = ore, prod, sig
+            elseif os.clock() - lastChange > idleMax then
+                break
+            end
+        end
+        return drained
+    end
+    local function cycle(id, e)
+        depositAll(id, e.product)
+        withdraw(id, e.ore)
+        if bagCount(e.ore) <= 0 then return false end
+        P.warm[e.product] = processOre(id, e, P.keep and P.warm[e.product]) and P.keep
+        depositAll(id, e.product)
+        return true
+    end
+    local Sec = FarmTab:CreateSection({ Name = "Auto Process (แปรรูป)", Icon = "lucide:factory" })
+    local statusP
+    local lastTxt = ""
+    local function setStatus(t)
+        if t == lastTxt then return end
+        lastTxt = t
+        if statusP then pcall(statusP.Set, statusP, nil, t) end
+    end
+    local toggle
+    local function loop(id)
+        depositRemote = depositRemote or resolveRemotePath(RS, { "Game_Modules", "RemoteEventSafe", "DepositItem" }, 5)
+        withdrawRemote = withdrawRemote or resolveRemotePath(RS, { "Game_Modules", "RemoteEventSafe", "WithdrawItem" }, 5)
+        if not (depositRemote and withdrawRemote) then
+            SW.report("AutoProcess_NoRemote", "deposit/withdraw remote not found")
+        else
+            while live(id) do
+                local worked = false
+                for _, key in ipairs(MODES[P.mode]) do
+                    if not live(id) then break end
+                    setStatus("กำลังแปรรูป: " .. key)
+                    worked = cycle(id, ORES[key]) or worked
+                end
+                if not worked then
+                    SW.Notify({ Title = "Auto Process", Icon = "check-circle", Content = "ในตู้ไม่มีแร่แล้ว หยุดทำงาน", Duration = 5 })
+                    break
+                end
+                task.wait(1)
+            end
+        end
+        if P.run == id then
+            P.on = false
+            setStatus("หยุดแล้ว")
+            task.defer(function() pcall(function() toggle:Set(false) end) end)
+        end
+    end
+    Sec:CreateDropdown({
+        Name = "Select Process",
+        Tooltip = "เลือกว่าจะแปรรูปอะไร (เปลี่ยนระหว่างทำงานได้ มีผลรอบถัดไป)",
+        Options = MODE_LIST,
+        Default = MODE_LIST[1],
+        Callback = function(opt)
+            local key = optionKey(opt)
+            if MODES[key] then P.mode = key end
+        end,
+    })
+    Sec:CreateDropdown({
+        Name = "Move Mode",
+        Tooltip = "วาป = วาปไปจุดแปรรูปเอง | ไม่วาป = ยืนใกล้จุดเอง สคริปต์แค่กดปุ่ม",
+        Options = MOVE_LIST,
+        Default = MOVE_LIST[1],
+        Callback = function(opt)
+            P.tp = optionKey(opt) == MOVE_LIST[1]
+        end,
+    })
+    statusP = Sec:CreateParagraph({ Title = "Status", Content = "ยังไม่เริ่ม" })
+    toggle = Sec:CreateToggle({
+        Name = "Auto Process",
+        Tooltip = "เอาแร่จากตู้ > แปรรูป > เก็บของที่ได้เข้าตู้ วนจนแร่หมด",
+        Default = false,
+        Callback = function(state)
+            P.run = P.run + 1
+            P.on = state
+            P.warm = {}
+            if not state then
+                setStatus("หยุดแล้ว")
+                return
+            end
+            local id = P.run
+            task.spawn(function() SW.try("AutoProcess", loop, id) end)
+        end,
+    })
+end
 SW.LoadNever = function()
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local Workspace         = game:GetService("Workspace")
@@ -2487,6 +2756,8 @@ SW.LoadNever = function()
         maxPlayersTarget = 6,
         preferLowPing    = true,
         fishLead         = 0,
+        pickDelay        = 60,
+        homeWait         = 180,
     }
     if ENV.SW_NEVER_STOP then pcall(ENV.SW_NEVER_STOP) end
     local alive = true
@@ -2551,6 +2822,7 @@ SW.LoadNever = function()
     end
     local homeIndex, homeJobId = nil, game.JobId
     local homeFailed = false
+    local lastTp = 0
     local function readShards()
         local list = {}
         local cache = RS:FindFirstChild("ServerCache")
@@ -2637,9 +2909,24 @@ SW.LoadNever = function()
         end)
         return pool[1]
     end
+    local HttpService = game:GetService("HttpService")
+    local STATE_FILE = "SpectreNT_Rejoin.json"
+    local function saveState(t)
+        ENV.SpectreNT_State = t
+        if writefile then pcall(writefile, STATE_FILE, HttpService:JSONEncode(t)) end
+    end
+    local function loadState()
+        local t = ENV.SpectreNT_State
+        if type(t) ~= "table" and readfile and isfile and isfile(STATE_FILE) then
+            local ok, d = pcall(function() return HttpService:JSONDecode(readfile(STATE_FILE)) end)
+            if ok and type(d) == "table" then t = d end
+        end
+        return type(t) == "table" and t or nil
+    end
     local function hop(reason, forceLowPop)
         if hopping then return end
         hopping = true
+        saveState({ home = homeIndex, pending = true, t = os.time() })
         notify("Rejoin: " .. tostring(reason or "กำลังหาเซิร์ฟคนน้อย..."))
         task.spawn(function()
             local mm = getMM()
@@ -2664,11 +2951,12 @@ SW.LoadNever = function()
                 if not viaRemote and alive then
                     notify("กลับเซิร์ฟเดิมด้วย JobId")
                     homeFailed = true
-                    local ok = pcall(function()
+                    lastTp = os.clock()
+                    pcall(function()
                         TeleportService:TeleportToPlaceInstance(game.PlaceId, homeJobId, LP)
                     end)
-                    if not ok then homeFailed = true end
-                    task.wait(15)
+                    -- รอนานพอให้วาร์ปเสร็จ ไม่งั้นด่านเฝ้าสั่งย้ายเซิร์ฟสุ่มทับ
+                    task.wait(45)
                 end
                 hopping = false
                 return
@@ -2700,18 +2988,159 @@ SW.LoadNever = function()
             hopping = false
         end)
     end
+    -- ในเซิร์ฟเกมไม่มี ServerCache: เลขเซิร์ฟต้องอ่านจาก TeleportData.shardIndex / SendShardInfo
+    local function setHome(idx)
+        idx = tonumber(idx)
+        if not idx then return end
+        local changed = homeIndex ~= idx
+        homeIndex = idx
+        saveState({ home = idx, pending = false, t = os.time() })
+        if changed then notify("จำเซิร์ฟเดิมไว้แล้ว: Server " .. idx) end
+    end
     local function trackHome()
+        pcall(function()
+            local d = TeleportService:GetLocalPlayerTeleportData()
+            if type(d) == "table" then setHome(d.shardIndex) end
+        end)
+        local function bind(ev)
+            if ev:IsA("RemoteEvent") then track(ev.OnClientEvent:Connect(setHome)) end
+        end
+        local shardEv = RS:FindFirstChild("SendShardInfo")
+        if shardEv then bind(shardEv) end
+        track(RS.ChildAdded:Connect(function(c)
+            if c.Name == "SendShardInfo" then bind(c) end
+        end))
+        task.delay(12, function()
+            local st = loadState()
+            local pending = st and st.pending and os.time() - (tonumber(st.t) or 0) < 600
+            if alive and not homeIndex and not pending then
+                notify("จับเลข Server ไม่ได้ ออกไปเข้าใหม่ผ่านหน้าเลือกเซิร์ฟ", "alert-triangle")
+            end
+        end)
         task.spawn(function()
             while alive do
-                if not hopping and GuiService:GetErrorMessage() == "" then
+                local st = loadState()
+                local pendingFresh = st and st.pending and os.time() - (tonumber(st.t) or 0) < 600
+                if not hopping and not pendingFresh and GuiService:GetErrorMessage() == "" then
                     pcall(function()
                         for _, s in ipairs(readShards()) do
-                            if s.mine then homeIndex = s.index break end
+                            if s.mine then
+                                if homeIndex ~= s.index then
+                                    homeIndex = s.index
+                                    saveState({ home = homeIndex, pending = false, t = os.time() })
+                                end
+                                break
+                            end
                         end
                     end)
                 end
                 task.wait(5)
             end
+        end)
+    end
+    -- หลัง Rejoin: ถ้าโดนโยนมาหน้าเลือกเซิร์ฟ (ยังไม่ได้อยู่ในเซิร์ฟใดเลย) ให้เลือกเซิร์ฟเข้าให้เอง
+    local function autoPickAfterRejoin()
+        task.spawn(function()
+            local st = loadState()
+            if not (cfg.rejoin and st and st.pending and os.time() - (tonumber(st.t) or 0) < 600) then return end
+            homeIndex = tonumber(st.home) or homeIndex
+            local joinRF
+            local t0 = os.clock()
+            while alive and os.clock() - t0 < 60 do
+                local mm = getMM()
+                joinRF = mm and mm:FindFirstChild("RequestJoinByIndex")
+                if joinRF then break end
+                task.wait(1)
+            end
+            if not joinRF then
+                notify("ไม่เจอ RequestJoinByIndex เลือกเซิร์ฟเองด้วยมือ", "alert-triangle")
+                return
+            end
+            local delay = math.max(0, tonumber(cfg.pickDelay) or 60)
+            local left = delay - (os.clock() - t0)
+            for i = math.ceil(left), 1, -1 do
+                if not alive or not cfg.rejoin then return end
+                setStatus(((cfg.sameServer and homeIndex) and "รอ %d วิ แล้วกลับเซิร์ฟเดิม" or "รอ %d วิ แล้วเลือกเซิร์ฟคนน้อยสุด"):format(i))
+                task.wait(1)
+            end
+            local wantHome = cfg.sameServer and homeIndex ~= nil
+            local homeDeadline = os.clock() + math.max(0, tonumber(cfg.homeWait) or 180)
+            local homeFails, tries = 0, 0
+            while alive and cfg.rejoin and tries < 20 do
+                local shards = readShards()
+                local joined = false
+                for _, s in ipairs(shards) do
+                    if s.mine then
+                        saveState({ home = s.index, pending = false, t = os.time() })
+                        joined = true
+                        break
+                    end
+                end
+                if joined then return end
+                local target, waitHome
+                if wantHome then
+                    for _, s in ipairs(shards) do
+                        if s.index == homeIndex and s.online and s.playing < MAX_PLAYERS then
+                            target = s
+                            break
+                        end
+                    end
+                    if not target then
+                        if os.clock() < homeDeadline then
+                            waitHome = true
+                        else
+                            wantHome = false
+                            notify("Server " .. homeIndex .. " ยังไม่กลับมา/เต็ม ไปเซิร์ฟคนน้อยสุดแทน", "alert-triangle")
+                        end
+                    end
+                end
+                if waitHome then
+                    setStatus(("รอ Server %d กลับมาออนไลน์ (เหลือ %d วิ)"):format(
+                        homeIndex, math.max(0, math.ceil(homeDeadline - os.clock()))))
+                    task.wait(3)
+                else
+                    local isHome = target ~= nil
+                    if not target then
+                        local pool = {}
+                        for _, s in ipairs(shards) do
+                            if s.online and not s.mine and not badServers[s.index] and s.playing < MAX_PLAYERS - 1 then
+                                pool[#pool + 1] = s
+                            end
+                        end
+                        table.sort(pool, function(a, b)
+                            if a.playing ~= b.playing then return a.playing < b.playing end
+                            if a.ping ~= b.ping then return a.ping < b.ping end
+                            return a.index < b.index
+                        end)
+                        target = pool[1]
+                    end
+                    if not target then
+                        task.wait(3)
+                    else
+                        tries = tries + 1
+                        if isHome then
+                            notify(("กลับ Server %d เดิม (%d/%d คน)"):format(target.index, target.playing, MAX_PLAYERS))
+                        else
+                            notify(("เลือก Server %d (%d/%d คน, คนน้อยสุด)"):format(target.index, target.playing, MAX_PLAYERS))
+                            badServers[target.index] = true
+                        end
+                        local ok, res = pcall(function() return joinRF:InvokeServer(target.index) end)
+                        if ok and type(res) == "table" and res.ok == true then
+                            task.wait(20)
+                        else
+                            local why = (ok and type(res) == "table" and res.err) or (not ok and tostring(res)) or "ไม่ทราบสาเหตุ"
+                            notify("Server " .. target.index .. " เข้าไม่ได้: " .. tostring(why), "alert-triangle")
+                            if isHome then
+                                homeFails = homeFails + 1
+                                if homeFails >= 4 then wantHome = false end
+                            end
+                            task.wait(2)
+                        end
+                    end
+                end
+            end
+            saveState({ home = homeIndex, pending = false, t = os.time() })
+            notify("เลือกเซิร์ฟให้ไม่สำเร็จ ลองกด Hop Low-Pop Server", "alert-triangle")
         end)
     end
     local function setupRejoin()
@@ -2734,18 +3163,23 @@ SW.LoadNever = function()
                 hop("เกิด error: " .. tostring(GuiService:GetErrorMessage()))
             end
         end))
-        track(TeleportService.TeleportInitFailed:Connect(function()
+        track(TeleportService.TeleportInitFailed:Connect(function(_, result, msg)
             hopping = false
-            if cfg.rejoin then task.wait(2) hop("วาร์ปล้มเหลว ลองใหม่", true) end
+            if cfg.rejoin then
+                notify("วาร์ปกลับเซิร์ฟเดิมไม่ได้: " .. tostring(result) .. " " .. tostring(msg), "alert-triangle")
+                task.wait(3)
+                hop("วาร์ปล้มเหลว ลองใหม่", true)
+            end
         end))
         trackHome()
+        autoPickAfterRejoin()
         if not queueSelf() then
             notify("queue_on_teleport ใช้ไม่ได้ ต้องรันสคริปต์เองหลังย้ายเซิร์ฟ", "alert-triangle")
         end
         task.spawn(function()
             while alive do
                 task.wait(15)
-                if cfg.rejoin and not hopping and disconnected() then
+                if cfg.rejoin and not hopping and os.clock() - lastTp > 60 and disconnected() then
                     hop("ยังหลุดอยู่ ลองใหม่", true)
                 end
             end
@@ -3459,7 +3893,7 @@ SW.LoadEat = function()
         end
         if not (Bag and holdVal and delayVal) then resolveEat() end
         if not (Bag and holdVal and delayVal) then
-            SW.Notify({ Title = "Auto Eat", Icon = "x-circle", Content = "ยังไม่พบ remote กินของเกม (อาจไม่ใช่แมพนี้)", Duration = 4 })
+            SW.report("AutoEat_NoRemote", "eat remote not found")
             return
         end
         Bag:FireServer("Use", itemName, holdVal, delayVal)
@@ -3511,11 +3945,13 @@ SW.LoadEat = function()
             task.wait(0.3)
         end
         local ok, err = pcall(function()
+            -- กิน/ดื่มแค่ 1 ชิ้นต่อรอบ แล้วรอตรวจใหม่ตาม Check Interval ว่าค่าลดลงถึงเกณฑ์อีกไหม
             local target = math.huge
             local uses, stuck = 0, 0
             while (once or st.on) do
                 local cur = st.val.Value
                 if not once and cur >= target then break end
+                if uses >= 40 then break end -- กันวนไม่รู้จบ
                 if getCount(st.item) <= 0 then
                     if not st.buy then
                         SW.Notify({ Title = "Auto Eat", Icon = "alert-triangle", Content = st.item .. " หมด (Auto Buy ปิดอยู่)", Duration = 4 })
@@ -3535,13 +3971,20 @@ SW.LoadEat = function()
                 end
                 useItem(st.item)
                 uses = uses + 1
-                if once then break end
+                if true then break end -- 1 ชิ้นพอ
+                -- รอให้ค่าเพิ่มขึ้นจริง (เซิร์ฟเวอร์อัปเดตช้าได้) แล้วค่อยตัดสินว่าจะกินต่อไหม
                 local w1 = os.clock()
                 while st.val.Value <= cur and os.clock() - w1 < 4 do task.wait(0.2) end
                 if st.val.Value <= cur then
                     stuck = stuck + 1
+                    -- ค่าไม่ขึ้น 2 รอบติด = เต็มแล้ว/กินไม่เข้า พักไม่วนซ้ำ
+                    if stuck >= 2 then
+                        st.cool = os.clock() + 15
+                        break
+                    end
                 else
                     stuck = 0
+                    task.wait(0.3)
                 end
             end
         end)
@@ -3563,6 +4006,50 @@ SW.LoadEat = function()
         if p then pcall(p.Set, p, nil, text) end
     end
     local addSlider = SW.addSlider
+    local iconCache = {}
+    local function pickImage(root)
+        if not root then return nil end
+        if (root:IsA("ImageLabel") or root:IsA("ImageButton")) and root.Image ~= "" then return root.Image end
+        local img = root:FindFirstChild("ItemImage")
+        if img and (img:IsA("ImageLabel") or img:IsA("ImageButton")) and img.Image ~= "" then return img.Image end
+        local any = root:FindFirstChildWhichIsA("ImageLabel", true) or root:FindFirstChildWhichIsA("ImageButton", true)
+        if any and any.Image ~= "" then return any.Image end
+        return nil
+    end
+    local function iconFor(itemName)
+        local cached = iconCache[itemName]
+        if cached then return cached end
+        local found
+        pcall(function()
+            local bp = walk(PG, { "Backpack_Never", "BG", "item", "Scrollingitem" })
+            found = pickImage(bp and bp:FindFirstChild(itemName))
+        end)
+        if not found then
+            pcall(function()
+                local shop = PG:FindFirstChild("Shop.Never")
+                if not shop then return end
+                for _, d in ipairs(shop:GetDescendants()) do
+                    if d.Name == itemName and d:IsA("GuiObject") then
+                        found = pickImage(d)
+                        if found then return end
+                    end
+                end
+            end)
+        end
+        if not found then
+            pcall(function()
+                for _, root in ipairs({ LP:FindFirstChild("Backpack"), game:GetService("StarterPack"), RS }) do
+                    local tool = root and root:FindFirstChild(itemName, true)
+                    if tool and tool:IsA("Tool") and tool.TextureId ~= "" then
+                        found = tool.TextureId
+                        return
+                    end
+                end
+            end)
+        end
+        if found then iconCache[itemName] = found end
+        return found
+    end
     local function labelOf(e)
         local s = e[1]
         if e[2] then s = s .. "  (+" .. e[2] .. ")" end
@@ -3572,18 +4059,27 @@ SW.LoadEat = function()
     local function buildKind(kind, secName, icon, catalog, val, valName, thaiAct)
         local st = { kind = kind, val = val, item = nil, on = false, at = 30, upto = 100, buy = true, amount = 5, run = 0, cool = 0 }
         local sec = SW.EatTab:CreateSection({ Name = secName, Icon = icon })
-        local options, byLabel = {}, {}
+        local byLabel, labelByItem = {}, {}
         for _, e in ipairs(catalog) do
             local lb = labelOf(e)
-            t_insert(options, lb)
             byLabel[lb] = e[1]
+            labelByItem[e[1]] = lb
+        end
+        local function makeOptions()
+            local opts = {}
+            for _, e in ipairs(catalog) do
+                local lb = labelByItem[e[1]]
+                local img = iconFor(e[1])
+                t_insert(opts, img and { Name = lb, Image = img } or lb)
+            end
+            return opts
         end
         local toggle
-        sec:CreateDropdown({
+        local dd = sec:CreateDropdown({
             Name = "Select " .. (kind == "food" and "Food" or "Drink"),
             Placeholder = "เลือก" .. (kind == "food" and "อาหาร" or "น้ำ"),
             Tooltip = "ของที่จะใช้ " .. thaiAct .. " (+ค่าที่เพิ่ม | ซื้อในร้านได้ หรือต้องคราฟ)",
-            Options = options,
+            Options = makeOptions(),
             Callback = function(option)
                 if not option then return end
                 local key = optionKey(option)
@@ -3591,6 +4087,24 @@ SW.LoadEat = function()
                 st.cool = 0
             end,
         })
+        task.spawn(function()
+            for _ = 1, 12 do
+                local missing, gained = 0, false
+                for _, e in ipairs(catalog) do
+                    if not iconCache[e[1]] then
+                        if iconFor(e[1]) then gained = true else missing = missing + 1 end
+                    end
+                end
+                if gained and dd then
+                    pcall(function() dd:Refresh(makeOptions(), false) end)
+                    if st.item and labelByItem[st.item] then
+                        pcall(function() dd:Set(labelByItem[st.item]) end)
+                    end
+                end
+                if missing == 0 or not SW.alive then return end
+                task.wait(4)
+            end
+        end)
         addSlider(sec, thaiAct .. "เมื่อ " .. valName .. " ≤", "ค่า " .. valName .. " ที่ต่ำกว่านี้ถึงจะเริ่ม" .. thaiAct, 0, 100, 1, "", st.at, function(n)
             st.at = n
         end)
@@ -3665,7 +4179,6 @@ SW.LoadEat = function()
                 if not (ds and ds:FindFirstChild("HungerVal")) then miss[#miss + 1] = "HungerVal" end
                 if not (ds and ds:FindFirstChild("ThirstVal")) then miss[#miss + 1] = "ThirstVal" end
                 local msg = table.concat(miss, ", ")
-                SW.Notify({ Title = "Auto Eat", Icon = "x-circle", Content = "ยังหาไม่เจอ: " .. msg .. " (UI โหลดแล้ว แต่ฟีเจอร์ยังใช้ไม่ได้)", Duration = 6 })
                 SW.report("AutoEat_Missing", "หาไม่เจอ: " .. msg)
             end
             task.wait(2)
@@ -3698,7 +4211,7 @@ SW.LoadCandy = function()
             local gv = RS:FindFirstChild("Grow_vegetables")
             local r = gv and gv:FindFirstChild(name)
             if not r then
-                SW.Notify({ Title = "Candy Farm", Icon = "x-circle", Content = "ยังไม่พบ remote " .. name .. " (อาจไม่ใช่แมพนี้)", Duration = 4 })
+                SW.report("CandyFarm_NoRemote", name)
                 return
             end
             r:FireServer(...)
@@ -3726,11 +4239,29 @@ SW.LoadCandy = function()
         local function has(name) return tostring(gv ~= nil and gv:FindFirstChild(name) ~= nil) end
         local msg = string.format("Grow_vegetables=%s Plant=%s Water=%s Fert=%s Item=%s",
             tostring(gv ~= nil), has("PlantTreeEvent"), has("GiveWater"), has("GiveFertilizer"), tostring(LP:FindFirstChild("Item") ~= nil))
-        SW.Notify({ Title = "Candy Farm", Icon = "x-circle", Content = "ยังหา remote ปลูก/รดน้ำ/ใส่ปุ๋ยไม่เจอ (UI โหลดแล้ว แต่ฟีเจอร์ยังใช้ไม่ได้)", Duration = 6 })
         SW.report("CandyFarm_Missing", msg)
     end)
     local BAG = "FertilizerBag"
-    if type(ENV.SW_CandyFertCount) ~= "table" then ENV.SW_CandyFertCount = setmetatable({}, { __mode = "k" }) end
+    -- fertCount เก็บลงไฟล์ ไม่งั้นย้ายเซิร์ฟแล้ว ENV ถูกล้าง นับปุ๋ยใหม่จาก 0 แล้วใส่ซ้ำ
+    local FERT_DIR = "NeverTownAutoFarm"
+    local FERT_FILE = FERT_DIR .. "/FertCount_" .. LP.UserId .. ".json"
+    local function saveFert()
+        if not writefile then return end
+        pcall(function()
+            if makefolder and isfolder and not isfolder(FERT_DIR) then makefolder(FERT_DIR) end
+            writefile(FERT_FILE, game:GetService("HttpService"):JSONEncode(ENV.SW_CandyFertCount))
+        end)
+    end
+    if type(ENV.SW_CandyFertCount) ~= "table" then
+        local loaded = {}
+        if readfile and isfile and isfile(FERT_FILE) then
+            local okR, d = pcall(function()
+                return game:GetService("HttpService"):JSONDecode(readfile(FERT_FILE))
+            end)
+            if okR and type(d) == "table" then loaded = d end
+        end
+        ENV.SW_CandyFertCount = loaded
+    end
     local S = {
         on = false,
         run = 0,
@@ -3746,7 +4277,7 @@ SW.LoadCandy = function()
         water = true,
         fert = true,
         collect = true,
-        waterAt = 80,
+        waterAt = 95, -- ต้นที่ยังไม่โต: รดบ่อย
         fertCount = ENV.SW_CandyFertCount,
         gain = 50,
         fertTimes = 2,
@@ -3763,7 +4294,7 @@ SW.LoadCandy = function()
         needBagEquip = false,
         holdSeed = false,
         needEquip = true,
-        _needEquipOld = false,
+        needEquipOld = false,
         badPts = {},
         known = {},
     }
@@ -3786,7 +4317,15 @@ SW.LoadCandy = function()
     end
     local function pauseGate()
         local t0, waited = os.clock(), false
+        if not LP:GetAttribute("FarmPaused") then S.pausedFrom = nil end
         while live() and LP:GetAttribute("FarmPaused") and os.clock() - t0 < 30 do
+            S.pausedFrom = S.pausedFrom or os.clock()
+            if os.clock() - S.pausedFrom > 90 then
+                LP:SetAttribute("FarmPaused", false)
+                S.pausedFrom = nil
+                S.log("FarmPaused ค้างเกิน 90 วิ ปลดให้แล้ว")
+                break
+            end
             waited = true
             setStatus("รอ Auto Eat...")
             task.wait(0.2)
@@ -3859,9 +4398,29 @@ SW.LoadCandy = function()
     local function flat(a, b)
         return Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
     end
+    local PathfindingService = game:GetService("PathfindingService")
+    local function pathTo(pos, h, hrp, budget)
+        local path = PathfindingService:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true })
+        local ok = pcall(path.ComputeAsync, path, hrp.Position, pos)
+        if not (ok and path.Status == Enum.PathStatus.Success) then return false end
+        local t0 = os.clock()
+        for _, wp in ipairs(path:GetWaypoints()) do
+            if not live() or os.clock() - t0 > budget then return false end
+            if wp.Action == Enum.PathWaypointAction.Jump and not S.planting then h.Jump = true end
+            h:MoveTo(wp.Position)
+            local w = os.clock()
+            while live() and os.clock() - w < 1.5 do
+                local _, r = getChar()
+                if not r or flat(r.Position, wp.Position) < 3 then break end
+                task.wait(0.05)
+            end
+        end
+        return true
+    end
     local function walkNear(pos, dist, timeout)
         local t0 = os.clock()
         local lastPos, lastMove = nil, os.clock()
+        local stuck = 0
         while live() and os.clock() - t0 < (timeout or 15) do
             local _, hrp, h = getChar()
             if not hrp then return false end
@@ -3877,7 +4436,15 @@ SW.LoadCandy = function()
             if not lastPos or flat(hrp.Position, lastPos) >= 0.4 then
                 lastPos, lastMove = hrp.Position, os.clock()
             elseif os.clock() - lastMove > 1.5 then
-                if not S.collecting then h.Jump = true end
+                if not S.collecting then
+                    if not S.planting then h.Jump = true end
+                    stuck = stuck + 1
+                    if stuck >= 2 then
+                        stuck = 0
+                        pathTo(pos, h, hrp, 8)
+                        lastPos = nil
+                    end
+                end
                 lastMove = os.clock()
             end
             h:MoveTo(Vector3.new(pos.X, hrp.Position.Y, pos.Z))
@@ -4011,9 +4578,10 @@ SW.LoadCandy = function()
     end
     -- เมล็ด/ของอยู่ใน LP.Item (ไม่ใช่ Tool) เกมสร้าง Tool ให้เมื่อส่ง Bag:FireServer("Use", ชื่อ, hold, delay)
     local lastUse = {}
+    local lastBagWarn = -m_huge
     local function requestToolFromBag(name)
         if getCount(name) <= 0 then return false end
-        if lastUse[name] and os.clock() - lastUse[name] < 4 then return false end
+        if lastUse[name] and os.clock() - lastUse[name] < 1.5 then return false end
         local okR, Bag = pcall(function()
             return game:GetService("ReplicatedStorage").RemoteEvent_Solf.RemoteEventA.Bag
         end)
@@ -4023,9 +4591,9 @@ SW.LoadCandy = function()
         local hold = chk and chk:FindFirstChild("hold")
         local dly = chk and chk:FindFirstChild("delay")
         if not (okR and Bag and hold and dly) then
-            if not lastUse["_warn"] or os.clock() - lastUse["_warn"] > 20 then
-                lastUse["_warn"] = os.clock()
-                SW.Notify({ Title = "Candy Farm", Icon = "alert-triangle", Content = ("หา remote หยิบของไม่ครบ Bag=%s hold=%s delay=%s"):format(tostring(okR and Bag ~= nil), tostring(hold ~= nil), tostring(dly ~= nil)), Duration = 6 })
+            if os.clock() - lastBagWarn > 20 then
+                lastBagWarn = os.clock()
+                SW.report("CandyFarm_BagRemote", ("Bag=%s hold=%s delay=%s"):format(tostring(okR and Bag ~= nil), tostring(hold ~= nil), tostring(dly ~= nil)))
             end
             return false
         end
@@ -4035,17 +4603,19 @@ SW.LoadCandy = function()
     end
     local function equip(name, patience)
         pauseGate()
-        local c, _, h = getChar()
+        local c = getChar()
         if not c then return nil end
         local t = findTool(name)
+        if t then lastUse[name] = nil end -- มี Tool อยู่แล้ว: รอบหน้าถ้า Tool หายให้ขอใหม่ได้ทันที
         if not t then requestToolFromBag(name) end
         local w0 = os.clock()
         while not t and live() and os.clock() - w0 < (patience or 0) do
-            task.wait(0.25)
+            task.wait(0.15)
             t = findTool(name)
             if not t then requestToolFromBag(name) end
         end
         if not t then return nil end
+        lastUse[name] = nil
         if t.Parent == c then return t end
         for _ = 1, 3 do
             local _, _, h2 = getChar()
@@ -4126,28 +4696,54 @@ SW.LoadCandy = function()
     local function rememberTrees(trees)
         for _, t in ipairs(trees) do
             local p = treePos(t)
-            if p then S.known[treeKey(t)] = { pos = p, misses = 0 } end
+            if p then
+                local k = treeKey(t)
+                -- ต้นโตแล้วตำแหน่งขยับ key เปลี่ยน -> ลบรายการเก่าที่อยู่ใกล้ ไม่ให้นับเป็นต้นหาย
+                for key, info in pairs(S.known) do
+                    if key ~= k and flat(info.pos, p) < 3 then S.known[key] = nil end
+                end
+                S.known[k] = { pos = p, misses = 0, grown = statOf(t, "Growth") >= 100 }
+            end
         end
     end
     local function missingKeys(trees)
-        local have, miss = {}, {}
-        for _, t in ipairs(trees) do have[treeKey(t)] = true end
-        for key in pairs(S.known) do
-            if not have[key] then t_insert(miss, key) end
+        local miss = {}
+        for key, info in pairs(S.known) do
+            local found = false
+            for _, t in ipairs(trees) do
+                local tp = treePos(t)
+                if tp and flat(tp, info.pos) < 3 then
+                    found = true
+                    break
+                end
+            end
+            if not found then t_insert(miss, key) end
         end
         return miss
     end
     local function recoverMissing(trees)
-        if #missingKeys(trees) == 0 then return false end
+        local miss = missingKeys(trees)
+        -- ต้นที่โตเต็มแล้วหายไป = ถูกเก็บแล้ว ไม่ต้องเดินกลับไป
+        for i = #miss, 1, -1 do
+            local info = S.known[miss[i]]
+            if info and info.grown then
+                S.known[miss[i]] = nil
+                table.remove(miss, i)
+            end
+        end
+        if #miss == 0 then return false end
         task.wait(1.5)
         if not live() then return true end
-        local miss = missingKeys(ownTrees())
-        if #miss == 0 then return true end
+        miss = missingKeys(ownTrees())
+        if #miss == 0 then return false end
         local info = S.known[miss[1]]
-        if not info then return true end
-        if info.misses >= 3 then
+        if not info then return false end
+        -- เดินกลับเฉพาะตอนอยู่ไกลจริง (ต้นอาจถูก stream ออก) ถ้าอยู่ใกล้แล้วยังไม่เจอ ให้ลืมไปเลย
+        local _, hrpNow = getChar()
+        local far = hrpNow and flat(hrpNow.Position, info.pos) > 25
+        if not far or info.misses >= 3 then
             S.known[miss[1]] = nil
-            return true
+            return false
         end
         info.misses = info.misses + 1
         setStatus(("หาต้นแคนดี้ไม่เจอ เดินกลับไปที่เดิม (ครั้งที่ %d/3)"):format(info.misses))
@@ -4185,6 +4781,7 @@ SW.LoadCandy = function()
     local function standBy(tree, timeout)
         local t0 = os.clock()
         local lastPos, lastMove, rot = nil, os.clock(), 0
+        local blockedAtCenter = false
         while live() and tree.Parent and os.clock() - t0 < (timeout or 12) do
             local _, hrp, h = getChar()
             if not hrp then return false end
@@ -4198,27 +4795,42 @@ SW.LoadCandy = function()
             end
             local tp = treePos(tree)
             if not tp then return false end
-            if flat(hrp.Position, tp) <= 4.6 and nearestTree(hrp.Position) == tree then return true end
-            local other = nearestTree(tp, tree)
-            local op = other and treePos(other)
-            local dir
-            if op and flat(tp, op) < 9 then
-                -- มีต้นอื่นชิด: ไปยืนฝั่งตรงข้ามต้นนั้น เพื่อให้ต้นเป้าหมายเป็นต้นที่ใกล้ที่สุด
-                dir = Vector3.new(tp.X - op.X, 0, tp.Z - op.Z)
-            else
-                -- ไม่มีต้นชิด: เข้าทางฝั่งที่เราอยู่ ตรงเข้าหาต้นเลย ไม่อ้อม
-                dir = Vector3.new(hrp.Position.X - tp.X, 0, hrp.Position.Z - tp.Z)
-            end
-            dir = dir.Magnitude > 0.1 and dir.Unit or Vector3.new(1, 0, 0)
-            if rot > 0 then dir = CFrame.Angles(0, rot * math.pi / 2, 0):VectorToWorldSpace(dir) end
+            local dc = flat(hrp.Position, tp)
+            -- ยืนกลางต้น: เข้าไปอยู่ที่จุดกึ่งกลางต้น (ใกล้ไม่เกิน 1.0) ถือว่าถึง
+            -- ถ้าต้นขวางจนเข้าไม่ถึง (ติดเกิน 1.2 วิ) ยอมรับระยะเดิม 4.6 เป็นทางสำรอง
+            if dc <= 1.0 and nearestTree(hrp.Position) == tree then return true end
+            if blockedAtCenter and dc <= 4.6 and nearestTree(hrp.Position) == tree then return true end
             if not lastPos or flat(hrp.Position, lastPos) >= 0.4 then
                 lastPos, lastMove = hrp.Position, os.clock()
             elseif os.clock() - lastMove > 1.2 then
-                if not S.collecting then h.Jump = true end
-                rot = rot + 1
+                if dc <= 4.6 then
+                    blockedAtCenter = true
+                else
+                    if not S.collecting then h.Jump = true end
+                    rot = rot + 1
+                end
                 lastMove = os.clock()
             end
-            h:MoveTo(Vector3.new(tp.X, hrp.Position.Y, tp.Z) + dir * 2.2)
+            if blockedAtCenter then
+                -- สำรอง: ยืนชิดต้นด้านที่เราอยู่ (หรือฝั่งตรงข้ามต้นข้างเคียง)
+                local other = nearestTree(tp, tree)
+                local op = other and treePos(other)
+                local dir
+                if op and flat(tp, op) < 9 then
+                    dir = Vector3.new(tp.X - op.X, 0, tp.Z - op.Z)
+                else
+                    dir = Vector3.new(hrp.Position.X - tp.X, 0, hrp.Position.Z - tp.Z)
+                end
+                dir = dir.Magnitude > 0.1 and dir.Unit or Vector3.new(1, 0, 0)
+                h:MoveTo(Vector3.new(tp.X, hrp.Position.Y, tp.Z) + dir * 1.2)
+            else
+                local dir = Vector3.new(hrp.Position.X - tp.X, 0, hrp.Position.Z - tp.Z)
+                dir = dir.Magnitude > 0.1 and dir.Unit or Vector3.new(1, 0, 0)
+                if rot > 0 then dir = CFrame.Angles(0, rot * math.pi / 2, 0):VectorToWorldSpace(dir) end
+                -- เส้นทางเข้ากลางต้น: ถ้า rot>0 (ติดตอนยังไกล) อ้อมไปเข้าอีกด้านก่อน
+                local aim = rot > 0 and (Vector3.new(tp.X, hrp.Position.Y, tp.Z) + dir * 3) or Vector3.new(tp.X, hrp.Position.Y, tp.Z)
+                h:MoveTo(aim)
+            end
             task.wait(0.1)
         end
         return false
@@ -4234,12 +4846,28 @@ SW.LoadCandy = function()
         return true
     end
     S.collectTries = {}
+    S.beingSince = setmetatable({}, { __mode = "k" })
     S.collectBusy = function()
-        if S.collecting or os.clock() < (S.noPlantUntil or 0) then return true end
+        local now = os.clock()
+        if S.collecting then
+            if now - (S.collectingAt or now) < 45 then return true end
+            S.collecting = false -- ค้างเกิน 45 วิ ถือว่าเก็บจบไปแล้ว
+        end
+        if now < (S.noPlantUntil or 0) then return true end
         for _, t in ipairs(ownTrees()) do
             local k = treeKey(t)
-            if t:GetAttribute("BeingCollected") then return true end
-            if statOf(t, "Growth") >= 100 then
+            if t:GetAttribute("BeingCollected") then
+                local since = S.beingSince[t]
+                if not since then
+                    since = now
+                    S.beingSince[t] = since
+                end
+                -- เซิร์ฟเวอร์บางทีค้างแฟลก BeingCollected ไว้ ไม่ให้บล็อกเกิน 12 วิ
+                if now - since < 12 and now >= (S.ignoreBeing or 0) then return true end
+            else
+                S.beingSince[t] = nil
+            end
+            if S.collect and statOf(t, "Growth") >= 100 then
                 if (S.collectTries[k] or 0) < 3 then return true end
             else
                 S.collectTries[k] = nil
@@ -4252,7 +4880,7 @@ SW.LoadCandy = function()
         S.lastCollect[tree] = os.clock()
         local tk = treeKey(tree)
         S.collectTries[tk] = (S.collectTries[tk] or 0) + 1
-        S.collecting = true
+        S.collecting, S.collectingAt = true, os.clock()
         local ok, err = pcall(S.collectInner, tree)
         S.collecting = false
         if not ok then SW.report("CollectTree", err) end
@@ -4281,11 +4909,11 @@ SW.LoadCandy = function()
             prompt = findPrompt()
         end
         if not prompt then
-            SW.Notify({ Title = "Candy Farm", Icon = "alert-triangle", Content = "ไม่เจอปุ่มเก็บบนต้นไม้ " .. tree.Name, Duration = 4 })
+            SW.report("CandyFarm_NoPrompt", tree.Name)
             return
         end
         if not fireproximityprompt then
-            SW.Notify({ Title = "Candy Farm", Icon = "alert-triangle", Content = "executor ไม่รองรับ fireproximityprompt เก็บผลไม่ได้", Duration = 5 })
+            SW.report("CandyFarm_NoFireProximityPrompt", "executor lacks fireproximityprompt")
             return
         end
         pauseGate()
@@ -4305,18 +4933,21 @@ SW.LoadCandy = function()
         S.collectTries[ck] = nil
         S.noPlantUntil = os.clock() + 2
         S.fertCount[ck] = nil
+        saveFert()
         S.known[ck] = nil
         task.wait(0.5)
     end
     S.panic = 25
     local function isFull(v) return v >= 99 end
+    -- ต้นที่โตเต็มแล้ว (Growth >= 100) ไม่ต้องรดน้ำ รอเก็บอย่างเดียว
+    local function isGrown(tree) return statOf(tree, "Growth") >= 100 end
     local function waterTree(tree)
         if not standBy(tree, 12) then
             S.waterSkip[tree] = os.clock() + 5
             return
         end
         local tries, stall = 0, 0
-        while live() and S.water and tree.Parent and not isFull(statOf(tree, "Water")) and tries < 40 do
+        while live() and S.water and tree.Parent and not isGrown(tree) and not isFull(statOf(tree, "Water")) and tries < 40 do
             waitStill(2)
             local _, hrp = getChar()
             if not hrp then return end
@@ -4327,7 +4958,6 @@ SW.LoadCandy = function()
             local before = statOf(tree, "Water")
             if isFull(before) then break end
             setStatus("รดน้ำ " .. tree.Name .. " " .. m_floor(before) .. "%")
-            pauseGate()
             pauseGate()
             if isFull(statOf(tree, "Water")) then break end
             if not S.confirmNear(tree) then
@@ -4365,33 +4995,6 @@ SW.LoadCandy = function()
                     break
                 end
             end
-        end
-    end
-    local function thirstiest(trees, limit)
-        -- ต้นที่น้ำต่ำกว่า limit และใกล้ตัวเราที่สุด
-        local best, bd = nil, math.huge
-        local now = os.clock()
-        local _, me = getChar()
-        for _, t in ipairs(trees) do
-            if t.Parent and (S.waterSkip[t] or 0) <= now then
-                local w = statOf(t, "Water")
-                if w <= limit then
-                    local pp = treePos(t)
-                    local d = (me and pp) and flat(me.Position, pp) or math.huge
-                    if d < bd then best, bd = t, d end
-                end
-            end
-        end
-        return best
-    end
-    local function waterPass(limit)
-        if not S.water then return end
-        for _ = 1, 10 do
-            if not live() then return end
-            local t = thirstiest(ownTrees(), math.min(limit, 98.9))
-            if not t then return end
-            waterTree(t)
-            if statOf(t, "Water") <= limit then S.waterSkip[t] = os.clock() + 4 end
         end
     end
     local function fertEnough(tree)
@@ -4435,7 +5038,6 @@ SW.LoadCandy = function()
         end
         local tries, stall = 0, 0
         while live() and S.fert and tree.Parent and not fertEnough(tree) and tries < 12 and hasBag() do
-            if S.water and thirstiest(ownTrees(), S.panic) then return "water" end
             waitStill(2)
             local _, hrp = getChar()
             if not hrp then return end
@@ -4473,6 +5075,7 @@ SW.LoadCandy = function()
                 local after = statOf(hit, "Food")
                 if after < 99.5 and after - snap[hk] >= 5 then S.gain = after - snap[hk] end
                 S.fertCount[hk] = (S.fertCount[hk] or 0) + 1
+                saveFert()
                 S.stat.fert = S.stat.fert + 1
                 S.log(("ปุ๋ย %s → %d%%"):format(hit.Name, m_floor(after)))
                 if hk ~= treeKey(tree) then
@@ -4512,9 +5115,14 @@ SW.LoadCandy = function()
         end
         if n > 0 then
             S.anchor = sum / n
+            S.lastCenter = S.anchor
         else
             local _, hrp = getChar()
-            if hrp then S.anchor = hrp.Position end
+            if S.lastCenter and (not hrp or flat(hrp.Position, S.lastCenter) < 80) then
+                S.anchor = S.lastCenter
+            elseif hrp then
+                S.anchor = hrp.Position
+            end
         end
         S.bad = {}
     end
@@ -4522,9 +5130,11 @@ SW.LoadCandy = function()
         local pts = {}
         local all = workspace:FindFirstChild("AllPlantedTrees")
         if all then
-            for _, folder in ipairs(all:GetChildren()) do
-                for _, t in ipairs(folder:GetChildren()) do
-                    if t:IsA("Model") then
+            -- ไล่ทุกระดับ: ต้นที่ซ้อนอยู่ลึกกว่าโฟลเดอร์ชั้นเดียว (กรณี deepTrees) ต้องนับเป็นสิ่งกีดขวางด้วย
+            for _, t in ipairs(all:GetDescendants()) do
+                if t:IsA("Model") then
+                    local par = t.Parent
+                    if (par and par.Parent == all) or t:FindFirstChild("Stats") then
                         local p = treePos(t)
                         if p then t_insert(pts, p) end
                         local okp, cf = pcall(t.GetPivot, t)
@@ -4560,11 +5170,64 @@ SW.LoadCandy = function()
         end
         return false
     end
+    -- เช็คจากชิ้นส่วนจริงใน AllPlantedTrees (ทุกคน ทุกระดับ) ว่ามีต้นอยู่ตรงจุดนี้ไหม
+    -- ไม่พึ่งพิกัดจาก treePos อย่างเดียว: ถ้ารายการพิกัดตกหล่น/เพี้ยน จุดที่ปลูกไปแล้วจะถูกมองว่าว่าง
+    -- below = ลึกลงจาก pos.Y กี่ studs (ใช้ค่ามากเมื่อ pos.Y คือความสูงตัวละคร ไม่ใช่พื้น)
+    S.occHalf = 1.0
+    S.physHits, S.physLogAt = 0, 0
+    S.occupied = function(pos, below)
+        local apt = workspace:FindFirstChild("AllPlantedTrees")
+        if not apt then return false end
+        local op = S.occParams
+        if not op then
+            op = OverlapParams.new()
+            op.FilterType = Enum.RaycastFilterType.Include
+            op.MaxParts = 4
+            S.occParams = op
+        end
+        op.FilterDescendantsInstances = { apt }
+        below = below or 0.6
+        local h = 3 + below
+        local ok, parts = pcall(workspace.GetPartBoundsInBox, workspace,
+            CFrame.new(pos.X, pos.Y + (3 - below) / 2, pos.Z), Vector3.new(S.occHalf * 2, h, S.occHalf * 2), op)
+        if not (ok and parts and #parts > 0) then return false end
+        S.physHits = S.physHits + 1
+        if os.clock() - S.physLogAt > 8 then
+            S.physLogAt = os.clock()
+            S.log(("ข้ามจุดที่มีต้นอยู่แล้ว (เช็คจากชิ้นส่วนจริง) x%d | %s"):format(S.physHits, parts[1]:GetFullName():sub(-60)))
+        end
+        return true
+    end
+    S.groundAt = function(x, z, refY, params)
+        local ignore = table.clone(params.FilterDescendantsInstances)
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p.Character then t_insert(ignore, p.Character) end
+        end
+        local rp = RaycastParams.new()
+        rp.FilterType = Enum.RaycastFilterType.Exclude
+        rp.IgnoreWater = true
+        local origin = Vector3.new(x, refY + 8, z)
+        for _ = 1, 5 do
+            rp.FilterDescendantsInstances = ignore
+            local ray = workspace:Raycast(origin, Vector3.new(0, -60, 0), rp)
+            if not ray then return nil end
+            local inst = ray.Instance
+            if inst.CanCollide and inst.Transparency < 0.9 then
+                if math.abs(ray.Position.Y - refY) > 10 then return nil end
+                return ray
+            end
+            t_insert(ignore, inst)
+        end
+        return nil
+    end
     S.scanCfg = { radius = 30, step = 2, groundMinY = 0.7, maxTreeDist = 12 }
-    S.scanSpots = function(center, radius, step, trees)
+    -- ระยะห่างขั้นต่ำจริงระหว่างต้น (จุดศูนย์กลางต้น) ใช้ค่าเดียวกันทุกที่ ไม่ให้ scan/เช็คก่อนปลูกขัดกัน
+    S.minGap = function() return S.spacing * 0.85 end
+    S.scanSpots = function(center, radius, step, trees, relaxed)
         local cfg = S.scanCfg
         local sp = S.spacing
-        local minD2 = (sp * 0.85) ^ 2
+        local minGap = S.minGap()
+        local minD2 = minGap ^ 2
         local obs = S.allPts()
         local params = RaycastParams.new()
         params.FilterType = Enum.RaycastFilterType.Exclude
@@ -4574,51 +5237,206 @@ SW.LoadCandy = function()
         params.FilterDescendantsInstances = ignore
         local _, hrp = getChar()
         local me = hrp and hrp.Position or center
-        local out = {}
+        local out, seenKey = {}, {}
+        local ownPts = {}
+        for _, t in ipairs(trees) do
+            local tp = treePos(t)
+            if tp then t_insert(ownPts, tp) end
+        end
+        local function consider(x, z, key)
+            if seenKey[key] or (S.bad[key] and not relaxed) then return end
+            seenKey[key] = true
+            local ray = S.groundAt(x, z, center.Y, params)
+            if not (ray and ray.Normal.Y >= cfg.groundMinY and (relaxed or not S.isBadPt(ray.Position))) then return end
+            local pos = ray.Position
+            local nearestAll = math.huge
+            for _, o in ipairs(obs) do
+                local d2 = (o.X - pos.X) ^ 2 + (o.Z - pos.Z) ^ 2
+                if d2 < minD2 then return end -- ทับ/ชิดเกิน ตัดทิ้ง
+                if d2 < nearestAll then nearestAll = d2 end
+            end
+            local nearestOwn = math.huge
+            for _, tp in ipairs(ownPts) do
+                local d2 = (tp.X - pos.X) ^ 2 + (tp.Z - pos.Z) ^ 2
+                if d2 < nearestOwn then nearestOwn = d2 end
+            end
+            if not relaxed and #ownPts > 0 and nearestOwn > cfg.maxTreeDist ^ 2 then return end
+            -- ยิ่งชิดต้นข้างเคียง (แต่ไม่ทับ) ยิ่งดี: โทษตามส่วนที่ห่างเกินระยะห่างที่ตั้งไว้
+            local gapPenalty = 0
+            if nearestAll < math.huge then
+                local nd = math.sqrt(nearestAll)
+                if nd > sp * 1.05 then gapPenalty = (nd - sp) * 2.5 end
+            end
+            t_insert(out, { pos = pos, key = key, score = flat(me, pos) + gapPenalty })
+        end
+        -- (ก) จุดวงแหวนรอบต้นของเรา ระยะ = spacing พอดี -> ต้นเรียงติดกันแน่นแบบไม่ทับ
+        for _, tp in ipairs(ownPts) do
+            for i = 0, 23 do
+                local a = i * math.pi / 12
+                local x, z = tp.X + math.cos(a) * sp, tp.Z + math.sin(a) * sp
+                if (x - center.X) ^ 2 + (z - center.Z) ^ 2 <= (radius + 10) ^ 2 then
+                    consider(x, z, "r" .. m_floor(x * 2) .. "," .. m_floor(z * 2))
+                end
+            end
+        end
+        -- (ข) กริดรอบจุดปลูก (ใช้ตอนยังไม่มีต้น/ไม่มีวงแหวนที่ใช้ได้)
         local n = m_floor(radius / step)
         for ix = -n, n do
             for iz = -n, n do
                 local x = center.X + ix * step
                 local z = center.Z + iz * step
-                local key = "s" .. m_floor(x) .. "," .. m_floor(z)
-                local ray = workspace:Raycast(Vector3.new(x, center.Y + 60, z), Vector3.new(0, -120, 0), params)
-                if ray and ray.Normal.Y >= cfg.groundMinY and not S.bad[key] and not S.isBadPt(ray.Position) then
-                    local pos = ray.Position
-                    local blocked, nearestAll = false, math.huge
-                    for _, o in ipairs(obs) do
-                        local d2 = (o.X - pos.X) ^ 2 + (o.Z - pos.Z) ^ 2
-                        if d2 < minD2 then blocked = true break end
-                        if d2 < nearestAll then nearestAll = d2 end
+                consider(x, z, "s" .. m_floor(x) .. "," .. m_floor(z))
+            end
+        end
+        table.sort(out, function(a, b) return a.score < b.score end)
+        -- กรองด้วยชิ้นส่วนจริงเฉพาะหัวแถว (เช็คทุกจุดในกริดแพงเกิน) จุดที่มีต้นอยู่ตัดทิ้งและจำว่าไม่ดี
+        local clean = {}
+        for _, c in ipairs(out) do
+            if S.occupied(c.pos) then
+                S.bad[c.key] = true
+            else
+                t_insert(clean, c)
+                if #clean >= 8 then break end
+            end
+        end
+        return clean
+    end
+    -- กริดตายตัว: ทุกช่องห่างกัน spacing พอดี ไม่ทับกันโดยโครงสร้าง เลือกช่องว่างที่ใกล้ตัวที่สุด (เดินน้อยสุด)
+    S.latSpot = function(trees)
+        local _, hrp = getChar()
+        local anchor = S.anchor or (hrp and hrp.Position)
+        if not anchor then return nil end
+        if #trees == 0 then
+            S.latOrigin = anchor
+        elseif not S.latOrigin then
+            local best, bd
+            for _, t in ipairs(trees) do
+                local tp = treePos(t)
+                if tp then
+                    local d = flat(tp, anchor)
+                    if not bd or d < bd then best, bd = tp, d end
+                end
+            end
+            S.latOrigin = best or anchor
+        end
+        local o, sp = S.latOrigin, S.spacing
+        local minD2 = S.minGap() ^ 2
+        local radius = S.scanCfg.radius
+        local me = hrp and hrp.Position or anchor
+        local obs = S.allPts()
+        local cc, cn = Vector3.new(), 0
+        for _, t in ipairs(trees) do
+            local tp = treePos(t)
+            if tp then cc, cn = cc + tp, cn + 1 end
+        end
+        cc = cn > 0 and cc / cn or nil
+        local n = math.ceil(radius / sp)
+        local cand = {}
+        for ix = -n, n do
+            for iz = -n, n do
+                local x, z = o.X + ix * sp, o.Z + iz * sp
+                local key = "L" .. ix .. "," .. iz
+                if not S.bad[key] and (x - anchor.X) ^ 2 + (z - anchor.Z) ^ 2 <= radius ^ 2 then
+                    local free = true
+                    for _, p in ipairs(obs) do
+                        if (p.X - x) ^ 2 + (p.Z - z) ^ 2 < minD2 then free = false break end
                     end
-                    if not blocked then
-                        local nearestOwn = math.huge
-                        for _, t in ipairs(trees) do
-                            local tp = treePos(t)
-                            if tp then
-                                local d2 = (tp.X - pos.X) ^ 2 + (tp.Z - pos.Z) ^ 2
-                                if d2 < nearestOwn then nearestOwn = d2 end
-                            end
-                        end
-                        local reachable = #trees == 0 or nearestOwn <= cfg.maxTreeDist ^ 2
-                        if reachable then
-                            local dMe = flat(me, pos)
-                            local clusterPenalty = (nearestAll > (sp * 2) ^ 2) and 6 or 0
-                            t_insert(out, { pos = pos, key = key, score = dMe + clusterPenalty })
-                        end
+                    if free then
+                        local flatP = v3_new(x, 0, z)
+                        t_insert(cand, { x = x, z = z, key = key, score = (cc and flat(cc, flatP) or flat(me, flatP)) + flat(me, flatP) * 0.05 })
                     end
                 end
             end
         end
-        table.sort(out, function(a, b) return a.score < b.score end)
-        return out
+        t_sort(cand, function(a, b) return a.score < b.score end)
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        local ignore = { LP.Character }
+        local apt = workspace:FindFirstChild("AllPlantedTrees")
+        if apt then t_insert(ignore, apt) end
+        params.FilterDescendantsInstances = ignore
+        for i = 1, math.min(#cand, 30) do
+            local c = cand[i]
+            local ray = S.groundAt(c.x, c.z, anchor.Y, params)
+            if ray and ray.Normal.Y >= S.scanCfg.groundMinY and not S.isBadPt(ray.Position) and not S.occupied(ray.Position) then
+                return { pos = ray.Position, key = c.key }
+            end
+            S.bad[c.key] = true
+        end
+        return nil
+    end
+    -- ปลูกชิดต้นที่มีอยู่จริง: ช่องข้างต้น (4 ทิศ) ระยะ spacing พอดี เรียงแน่นเป็นกลุ่ม ไม่ทับต้นไหน
+    S.nearSpot = function(trees)
+        local sp = S.spacing
+        local parents = {}
+        for _, t in ipairs(trees) do
+            local tp = treePos(t)
+            if tp then t_insert(parents, tp) end
+        end
+        for _, pl in ipairs(S.placed or {}) do
+            if os.clock() - pl.t <= 25 then t_insert(parents, pl.pos) end
+        end
+        if #parents == 0 then return nil end
+        local _, hrp = getChar()
+        local anchor = S.anchor or (hrp and hrp.Position) or parents[1]
+        local me = hrp and hrp.Position or anchor
+        local sum = Vector3.new()
+        for _, tp in ipairs(parents) do sum = sum + tp end
+        local center = sum / #parents
+        local obs = S.allPts()
+        local minD2 = (sp * 0.92) ^ 2
+        local cand, seen = {}, {}
+        for _, tp in ipairs(parents) do
+            for _, dir in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
+                local x, z = tp.X + dir[1] * sp, tp.Z + dir[2] * sp
+                local key = "N" .. m_floor(x * 2) .. "," .. m_floor(z * 2)
+                if not seen[key] and not S.bad[key] then
+                    seen[key] = true
+                    local free = true
+                    for _, o in ipairs(obs) do
+                        if (o.X - x) ^ 2 + (o.Z - z) ^ 2 < minD2 then free = false break end
+                    end
+                    if free then
+                        local fp = v3_new(x, 0, z)
+                        t_insert(cand, { x = x, z = z, key = key, score = flat(center, fp) + flat(me, fp) * 0.05 })
+                    end
+                end
+            end
+        end
+        t_sort(cand, function(a, b) return a.score < b.score end)
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        local ignore = { LP.Character }
+        local apt = workspace:FindFirstChild("AllPlantedTrees")
+        if apt then t_insert(ignore, apt) end
+        params.FilterDescendantsInstances = ignore
+        for i = 1, math.min(#cand, 20) do
+            local c = cand[i]
+            local ray = S.groundAt(c.x, c.z, anchor.Y, params)
+            if ray and ray.Normal.Y >= S.scanCfg.groundMinY and not S.isBadPt(ray.Position) and not S.occupied(ray.Position) then
+                return { pos = ray.Position, key = c.key }
+            end
+            S.bad[c.key] = true
+        end
+        return nil
     end
     local function pickSpot(trees)
+        local near = S.nearSpot(trees)
+        if near then return near.pos, near.key end
+        local lat = S.latSpot(trees)
+        if lat then return lat.pos, lat.key end
         local _, hrpNow = getChar()
         local center = S.anchor or (hrpNow and hrpNow.Position)
         if center then
             local list = S.scanSpots(center, S.scanCfg.radius, S.scanCfg.step, trees)
             if list[1] then
                 return list[1].pos, list[1].key
+            end
+            list = S.scanSpots(center, S.scanCfg.radius + 20, S.scanCfg.step, trees, true)
+            if list[1] then return list[1].pos, list[1].key end
+            if hrpNow and not S.anchorManual and #trees == 0 then
+                list = S.scanSpots(hrpNow.Position, 40, S.scanCfg.step, trees, true)
+                if list[1] then return list[1].pos, list[1].key end
             end
         end
         local sp = S.spacing
@@ -4628,6 +5446,7 @@ SW.LoadCandy = function()
             for _, o in ipairs(obs) do
                 if (o.X - pos.X) ^ 2 + (o.Z - pos.Z) ^ 2 < (sp * 0.85) ^ 2 then return false end
             end
+            if S.occupied(pos, 4.5) then return false end -- pos.Y ตรงนี้ไม่ใช่ระดับพื้น เลยตรวจลึกลงมา
             return true
         end
         if not S.anchorManual then
@@ -4732,7 +5551,106 @@ SW.LoadCandy = function()
             S.log("เซ็ตสล็อตไม่สำเร็จ: " .. firstEmpty)
         end
     end
+    -- ===== ความแม่นยำตำแหน่งปลูก =====
+    -- เรียนรู้ว่าเซิร์ฟเวอร์วางต้นห่างจากตัวเราเท่าไร (หน่วย local ตามทิศที่หัน) แล้วเอามาคำนวณจุดยืน/เช็คทับ
+    S.offSamples = {}
+    S.plantOff = nil -- Vector3 (object space ของ HRP) ใช้เมื่อค่าที่วัดได้นิ่งพอเท่านั้น
+    S.faceDir = Vector3.new(0, 0, -1) -- ถ้ามี offset จะหันทิศนี้ทุกครั้งก่อนปลูก ให้ต้นไปโผล่ที่เดิมเสมอ
+    S.learnOffset = function(hrp, at, real)
+        if not (hrp and real) then return end
+        local d = hrp.CFrame:VectorToObjectSpace(Vector3.new(real.X - at.X, 0, real.Z - at.Z))
+        t_insert(S.offSamples, d)
+        if #S.offSamples > 6 then table.remove(S.offSamples, 1) end
+        if #S.offSamples < 2 then
+            S.plantOff = d.Magnitude > 0.8 and d or nil
+            return
+        end
+        local sum = Vector3.new()
+        for _, v in ipairs(S.offSamples) do sum = sum + v end
+        local mean = sum / #S.offSamples
+        for _, v in ipairs(S.offSamples) do
+            if (v - mean).Magnitude > 1.2 then
+                S.offSamples = { d }
+                S.plantOff = d.Magnitude > 0.8 and d or nil
+                return
+            end
+        end
+        S.plantOff = mean.Magnitude > 0.8 and mean or nil -- เล็กกว่านี้ถือว่าวางตรงตัวเรา
+    end
+    -- ต้นจะไปโผล่ตรงไหน ถ้ายิงตอนนี้ (ใช้ทิศที่หันอยู่จริง)
+    S.predictTree = function(hrp)
+        local at = hrp.Position
+        if not S.plantOff then return at end
+        local v = hrp.CFrame:VectorToWorldSpace(S.plantOff)
+        return Vector3.new(at.X + v.X, at.Y, at.Z + v.Z)
+    end
+    -- จุดที่ต้องยืน เพื่อให้ต้นไปโผล่ที่ spot พอดี
+    S.standFor = function(spot)
+        if not S.plantOff then return spot end
+        local cf = CFrame.lookAt(spot, spot + S.faceDir)
+        local v = cf:VectorToWorldSpace(S.plantOff)
+        return Vector3.new(spot.X - v.X, spot.Y, spot.Z - v.Z)
+    end
+    -- ยืนให้ตรง stand (คลาดไม่เกิน ~0.6) และหันทิศคงที่ถ้ามี offset
+    S.settleAt = function(stand)
+        local _, hrp, hum = getChar()
+        if not hrp then return false end
+        if flat(hrp.Position, stand) > 1.5 then
+            if not walkNear(stand, 1.2, 5) then return false end
+            _, hrp, hum = getChar()
+            if not hrp then return false end
+        end
+        if hum then hum:MoveTo(hrp.Position) end
+        if flat(hrp.Position, stand) > 3 then return false end
+        local p = Vector3.new(stand.X, hrp.Position.Y, stand.Z)
+        local v = hrp.AssemblyLinearVelocity
+        pcall(function()
+            hrp.AssemblyLinearVelocity = Vector3.new(0, v.Y, 0)
+            hrp.CFrame = CFrame.lookAt(p, p + S.faceDir)
+        end)
+        task.wait(0.1)
+        return true
+    end
+    -- ดักแจ้งเตือนของเกม (PlayerGui.Gui.NotificationContainer) ErrorContainer/WarningContainer = เซิร์ฟเวอร์ปฏิเสธ
+    S.lastNotif, S.lastReject, S.seenReject = nil, nil, {}
+    S.watchNotif = function()
+        if S.notifConn or S.notifBusy then return end
+        S.notifBusy = true
+        local pg = LP:FindFirstChildOfClass("PlayerGui") or LP:WaitForChild("PlayerGui", 10)
+        local gui = pg and (pg:FindFirstChild("Gui") or pg:WaitForChild("Gui", 10))
+        local box = gui and (gui:FindFirstChild("NotificationContainer") or gui:WaitForChild("NotificationContainer", 10))
+        S.notifBusy = false
+        if not box then return end
+        S.notifConn = box.ChildAdded:Connect(function(child)
+            if not SW.alive then
+                if S.notifConn then S.notifConn:Disconnect() S.notifConn = nil end
+                return
+            end
+            local n = child:FindFirstChild("Notification")
+            local item = n and n:FindFirstChild("Item")
+            local head = n and n:FindFirstChild("Header")
+            local text = item and item:IsA("TextLabel") and item.Text or ""
+            if text == "" and head and head:IsA("TextLabel") then text = head.Text end
+            S.lastNotif = { kind = child.Name, text = text, t = os.clock() }
+            if child.Name:find("Error") or child.Name:find("Warning") then
+                S.log(("เกมแจ้ง [%s]: %s"):format(child.Name, text))
+            end
+        end)
+    end
+    S.plantReject = function(since)
+        local nt = S.lastNotif
+        if nt and nt.t >= since - 0.05 and (nt.kind:find("Error") or nt.kind:find("Warning")) then return nt end
+        return nil
+    end
+    S.hasWord = function(text, words)
+        text = tostring(text):lower()
+        for _, w in ipairs(words) do
+            if text:find(w, 1, true) then return true end
+        end
+        return false
+    end
     local function plantOne(trees)
+        if not S.notifConn then task.spawn(S.watchNotif) end
         if not S.seed or not hasSeed(S.seed) then
             local alt = findSeed()
             if alt then
@@ -4749,22 +5667,29 @@ SW.LoadCandy = function()
             end
             return
         end
+        local tStart = os.clock()
         local spot, key = pickSpot(trees)
         if not spot then
             if os.clock() > S.coolUntil then
                 SW.Notify({ Title = "Candy Farm", Icon = "alert-triangle", Content = "หาที่ว่างปลูกไม่เจอรอบจุดปลูก (ลองลดระยะห่าง หรือกด Set Plant Point ใหม่)", Duration = 5 })
-                S.coolUntil = os.clock() + 30
+                S.coolUntil = os.clock() + 5
+                S.log("หาที่ว่างไม่เจอ รีเซ็ตจุดแล้วลองใหม่")
                 S.bad = {}
                 S.badPts = {}
+                if not S.anchorManual then
+                    S.anchor = nil
+                    autoAnchor()
+                end
             end
             return
         end
         setStatus("เดินไปจุดปลูก")
-        if not walkNear(spot, 1.2, 15) then
+        local stand = S.standFor(spot)
+        if not walkNear(stand, 1.5, 8) then
             S.bad[key] = true
+            S.log("เดินไปจุดปลูกไม่ถึง ข้ามจุด " .. key)
             return
         end
-        waitStill(0.5)
         if #trees > 0 then
             local _, hr = getChar()
             local near = false
@@ -4776,9 +5701,11 @@ SW.LoadCandy = function()
             end
             if not near then
                 S.bad[key] = true
+                S.log("ไม่มีต้นเดิมในระยะ 14 ข้ามจุด " .. key)
                 return
             end
         end
+        local tWalked = os.clock()
         pauseGate()
         task.spawn(S.ensureSlot, seed) -- ไม่บล็อกรอบปลูก เผื่อเซิร์ฟเวอร์ตอบช้า
         local tool, equipped
@@ -4800,26 +5727,40 @@ SW.LoadCandy = function()
             end
             S.toolMiss = (S.toolMiss or 0) + 1
             if S.toolMiss <= 1 or S.toolMiss % 5 == 0 then
-                SW.Notify({
-                    Title = "Candy Farm",
-                    Icon = "alert-triangle",
-                    Content = "หา Tool " .. seed .. " ไม่เจอในกระเป๋า (มี: " .. (#names > 0 and table.concat(names, ", ") or "ไม่มี") .. ")",
-                    Duration = 6,
-                })
+                SW.report("CandyFarm_NoTool", seed .. " | have: " .. (#names > 0 and table.concat(names, ", ") or "none"))
             end
             S.coolUntil = os.clock() + 4
             return
         end
         S.toolMiss = 0
-        local _, hrpNow = getChar()
-        local at = hrpNow and hrpNow.Position or spot
-        do
-            -- เช็คตำแหน่งที่ยืนจริงกับทุกต้น (ของเราและคนอื่น) ต้องห่างตามระยะที่ตั้งไว้ ไม่งั้นข้าม เลือกจุดใหม่ทันที
-            local minGap = math.max(2.0, S.spacing * 0.85 - 1.2)
-            local tooClose = false
-            for _, o in ipairs(S.allPts()) do
-                if flat(at, o) < minGap then tooClose = true break end
+        local tEquipped = os.clock()
+        -- ยืนให้ตรงจุดจริงก่อนยิง (ตอนหยิบเมล็ด/รอเซิร์ฟเวอร์ ตัวละครอาจเลื่อน) แล้วเช็คใหม่กับทุกต้นสดๆ
+        if not S.settleAt(stand) then
+            S.bad[key] = true
+            S.log("ยืนไม่ตรงจุด ข้ามจุด " .. key)
+            setStatus("ยืนไม่ตรงจุด หาจุดใหม่")
+            return
+        end
+        -- ระหว่างเดิน/ยืนนิ่ง Tool อาจหลุดมือ (ถูกระบบอื่นถอด) -> หยิบใหม่ก่อนยิง ไม่งั้นยิงเปล่าแล้วรอ timeout
+        if tool.Parent ~= LP.Character then
+            tool = equip(seed, 2)
+            if not tool then
+                S.coolUntil = os.clock() + 2
+                return
             end
+        end
+        local _, hrpNow = getChar()
+        if not hrpNow then return end
+        local at = hrpNow.Position
+        local predicted = S.predictTree(hrpNow)
+        do
+            local tooClose = false
+            local minGap = S.minGap() - 0.15
+            for _, o in ipairs(S.allPts()) do
+                if flat(predicted, o) < minGap then tooClose = true break end
+            end
+            -- ยืนจริงแล้ว เช็คซ้ำด้วยชิ้นส่วนจริง ณ จุดที่ต้นจะโผล่ (hrp.Y สูงกว่าพื้น ~3 studs)
+            if not tooClose and S.occupied(predicted, 4.5) then tooClose = true end
             if tooClose then
                 S.bad[key] = true
                 t_insert(S.badPts, { pos = spot, t = os.clock() })
@@ -4828,37 +5769,71 @@ SW.LoadCandy = function()
                 return
             end
         end
+        -- นับจาก Model ในโฟลเดอร์เราโดยตรง (ไม่รอ Stats) ต้นใหม่ถึงเห็นทันทีที่เซิร์ฟเวอร์วาง
+        local function ownModels()
+            local list, f = {}, ownFolder()
+            if f then
+                for _, t in ipairs(f:GetChildren()) do
+                    if t:IsA("Model") then t_insert(list, t) end
+                end
+            end
+            return list
+        end
+        local beforeSet = {}
+        for _, t in ipairs(ownModels()) do beforeSet[t] = true end
+        local function newModel()
+            for _, t in ipairs(ownModels()) do
+                if not beforeSet[t] then return t end
+            end
+            return nil
+        end
+        local function grew(before)
+            return allTreeCount() > before or newModel() ~= nil
+        end
+        local count0 = allTreeCount()
         local function tryPlant(t)
             local before = allTreeCount()
             setStatus("ปลูก " .. seed)
             LP:SetAttribute("FarmBusy", true)
-            PlantRemote:FireServer(t)
+            S.lastReject = nil
+            local sent = os.clock()
+            local okFire = pcall(PlantRemote.FireServer, PlantRemote, t)
+            if not okFire then
+                LP:SetAttribute("FarmBusy", false)
+                return false
+            end
             local t0 = os.clock()
-            while os.clock() - t0 < 3.5 and allTreeCount() <= before do
-                task.wait(0.1)
+            while os.clock() - t0 < 2.5 and not grew(before) and not S.plantReject(sent) do
+                task.wait()
+            end
+            -- เซิร์ฟเวอร์ตอบช้า: รออีกนิดก่อนตัดสินว่าไม่ติด กันยิงซ้ำลงจุดเดิม
+            local w = os.clock()
+            while os.clock() - w < 1 and not grew(before) and not S.plantReject(sent) do
+                task.wait()
             end
             LP:SetAttribute("FarmBusy", false)
-            return allTreeCount() > before
+            if grew(before) then return true end
+            S.lastReject = S.plantReject(sent)
+            return false
         end
         local planted = tryPlant(tool)
-        if not planted and not equipped and live() then
+        if not planted and not equipped and live() and not S.lastReject then
             local t2 = equip(seed, 2)
             if t2 then
-                planted = tryPlant(t2)
+                planted = grew(count0) or tryPlant(t2)
                 if planted then
                     S.needEquip = true
                     SW.Notify({ Title = "Candy Farm", Icon = "info", Content = "เกมต้องถือเมล็ดถึงจะปลูกได้ สลับไปถือให้อัตโนมัติแล้ว", Duration = 5 })
                 end
             end
         end
-        if not planted then
-            local _, h2 = getChar()
-            if h2 then h2:MoveTo(h2.Parent.HumanoidRootPart.Position + Vector3.new(math.random(-3, 3), 0, math.random(-3, 3))) end
-        end
+        local tFired = os.clock()
         if planted then
+            -- รอ Stats เฉพาะต้นที่เพิ่งวาง (สูงสุด 1 วิ) ไม่รอให้ทุกต้นมี Stats เพราะอาจไม่ครบตลอด -> ค้าง 3 วิทุกครั้ง
+            local fresh = newModel()
             local s0 = os.clock()
-            while live() and os.clock() - s0 < 3 and #ownTrees() < allTreeCount() do
-                task.wait(0.1)
+            while live() and fresh and fresh.Parent and not fresh:FindFirstChild("Stats") and os.clock() - s0 < 1 do
+                task.wait()
             end
         end
         t_insert(S.plantLog, { planted, m_floor(at.X), m_floor(at.Y), m_floor(at.Z) })
@@ -4871,10 +5846,54 @@ SW.LoadCandy = function()
             S.recovered = false
             S.lastGood = at
             S.placed = S.placed or {}
-            t_insert(S.placed, { pos = at, t = os.clock() })
+            -- หาต้นใหม่จริงๆ เอาตำแหน่งจริงมาเก็บ + เรียนรู้ offset ระหว่างที่ยืนกับที่ต้นไปโผล่
+            local real
+            local r0 = os.clock()
+            while os.clock() - r0 < 1 do
+                local fresh = newModel()
+                real = fresh and treePos(fresh)
+                if real and flat(real, at) > 25 then real = nil end -- Model ยังไม่โหลด part ได้พิกัดเพี้ยน
+                if real then break end
+                task.wait()
+            end
+            if real and count0 == 0 then S.latOrigin = real end
+            local mark = real or at
+            t_insert(S.placed, { pos = mark, t = os.clock() })
+            if real then
+                S.learnOffset(hrpNow, at, real)
+                local nearest = math.huge
+                for _, o in ipairs(S.allPts()) do
+                    local d = flat(real, o)
+                    if d > 0.4 and d < nearest then nearest = d end
+                end
+                if nearest < S.minGap() - 0.3 then
+                    S.stat.overlap = (S.stat.overlap or 0) + 1
+                    if S.spacing < 10 then
+                        S.spacing = S.spacing + 0.5
+                        S.bad = {}
+                    end
+                    S.log(("เตือน: ต้นใหม่ชิดเกิน %.1f < %.1f"):format(nearest, S.minGap()))
+                end
+            end
         else
             S.stat.failed = S.stat.failed + 1
             S.log("ปลูกไม่ติด")
+            local rej = S.lastReject
+            S.lastReject = nil
+            if rej then
+                setStatus("เกมแจ้ง: " .. rej.text)
+                if not S.seenReject[rej.text] then
+                    S.seenReject[rej.text] = true
+                    SW.Notify({ Title = "Candy Farm", Icon = "alert-triangle", Content = "เกมแจ้ง: " .. rej.text, Duration = 6 })
+                end
+                if S.hasWord(rej.text, { "ใกล้", "ชิด", "ซ้อน", "ทับ", "ระยะ", "close", "near", "space", "overlap", "distance" }) then
+                    t_insert(S.badPts, { pos = spot, t = os.clock() })
+                    if S.spacing < 10 then S.spacing = S.spacing + 0.5 end
+                    S.bad = {}
+                elseif S.hasWord(rej.text, { "เต็ม", "โควตา", "ครบ", "สูงสุด", "limit", "max", "full", "quota" }) then
+                    S.coolUntil = os.clock() + 30
+                end
+            end
             S.bad[key] = true
             if tool and tool.Parent == LP.Character then
                 t_insert(S.badPts, { pos = at, t = os.clock() })
@@ -4904,7 +5923,8 @@ SW.LoadCandy = function()
                 S.fails = 0
                 S.recovered = false
                 S.bad = {}
-                S.coolUntil = os.clock() + 30
+                S.log("ปลูกไม่ติด 3 ครั้ง พัก 8 วิ แล้วลองใหม่ (ระยะห่าง " .. S.spacing .. ")")
+                S.coolUntil = os.clock() + 8
                 SW.Notify({
                     Title = "Candy Farm",
                     Icon = "alert-triangle",
@@ -4913,7 +5933,53 @@ SW.LoadCandy = function()
                 })
             end
         end
-        task.wait(planted and 0.3 or 1.1)
+        local tDone = os.clock()
+        if tDone - tStart > 4 then
+            S.log(("ปลูกช้า %.1fs | เดิน %.1f หยิบ %.1f ยืน+ยิง %.1f รอผล %.1f"):format(
+                tDone - tStart, tWalked - tStart, tEquipped - tWalked, tFired - tEquipped, tDone - tFired))
+        end
+        task.wait(planted and 0.05 or 0.4)
+        return true
+    end
+    -- เก็บให้หมดก่อน: ต้นที่ Growth >= 100 และยังไม่เกินโควตาลองเก็บ (ต้นที่เก็บไม่ติด 3 ครั้งข้ามไป กันค้าง)
+    local function grownList()
+        local list = {}
+        for _, tree in ipairs(ownTrees()) do
+            if tree.Parent and statOf(tree, "Growth") >= 100 and (S.collectTries[treeKey(tree)] or 0) < 3 then
+                t_insert(list, tree)
+            end
+        end
+        local _, me = getChar()
+        if me and #list > 1 then
+            t_sort(list, function(a, b)
+                local pa, pb = treePos(a), treePos(b)
+                return (pa and flat(me.Position, pa) or m_huge) < (pb and flat(me.Position, pb) or m_huge)
+            end)
+        end
+        return list
+    end
+    local function softReset(why)
+        S.collecting, S.noPlantUntil, S.pausedFrom = false, 0, nil
+        S.harvesting, S.replant = false, false
+        S.collectTries, S.bad, S.badPts, S.known = {}, {}, {}, {}
+        for k in pairs(S.lastCollect) do S.lastCollect[k] = nil end
+        S.ignoreBeing = os.clock() + 20
+        LP:SetAttribute("FarmBusy", false)
+        S.log("รีเซ็ตกันค้าง: " .. why)
+    end
+    local function harvestAll()
+        local list = grownList()
+        if #list == 0 then return false end
+        S.harvesting = true
+        S.release("seed")
+        for _, tree in ipairs(list) do
+            if not live() then return true end
+            if tree.Parent and statOf(tree, "Growth") >= 100 then
+                setStatus(("เก็บผลให้หมดก่อน (%d ต้น)"):format(#list))
+                collectTree(tree)
+            end
+        end
+        return true
     end
     local function cycle()
         local _, hrp = getChar()
@@ -4927,44 +5993,96 @@ SW.LoadCandy = function()
         rememberTrees(trees)
         if live() and recoverMissing(trees) then return end
         trees = ownTrees()
-        if live() and S.plant and S.seed and #trees >= 5 and #trees < S.target then
-            S.target = #trees
-        end
-        if live() and S.plant and S.seed and #trees < S.target and os.clock() >= S.coolUntil and not S.collectBusy() then
-            plantOne(trees)
-            setStatus(("ปลูก %d/%d | %s ×%d"):format(#ownTrees(), S.target, S.seed, getCount(S.seed)))
-            return
-        end
-        if live() then S.release("seed") end
-        if live() and S.fert then
+        -- watchdog: มีงานให้ทำ (ปลูกไม่ครบ/มีต้นโตรอเก็บ) แต่ปลูก/เก็บ/จำนวนต้นไม่ขยับ 45 วิ -> ล้างสถานะค้าง
+        do
             local now = os.clock()
-            local list = {}
-            for _, tree in ipairs(ownTrees()) do
-                local full = statOf(tree, "Growth") >= 100
-                if tree.Parent and not full and not fertEnough(tree) and (S.fertSkip[tree] or 0) <= now then
-                    t_insert(list, tree)
+            local sig = S.stat.planted .. ":" .. S.stat.collected .. ":" .. #trees
+            local want = S.plant and S.seed and S.batchOpen ~= false and #trees < S.target and hasSeed(S.seed)
+            if not want and S.collect then
+                for _, t in ipairs(trees) do
+                    if statOf(t, "Growth") >= 100 then want = true break end
                 end
             end
-            if #list > 0 then
-                local _, me = getChar()
-                if me then
-                    table.sort(list, function(a, b)
-                        local pa, pb = treePos(a), treePos(b)
-                        return (pa and flat(me.Position, pa) or m_huge) < (pb and flat(me.Position, pb) or m_huge)
-                    end)
-                end
-                for _, tree in ipairs(list) do
-                    if not live() then return end
-                    waterPass(S.panic)
-                    if tree.Parent and not fertEnough(tree) then
-                        fertTree(tree)
-                    end
-                end
+            if sig ~= S.wdSig or not want then
+                S.wdSig, S.wdAt = sig, now
+            elseif now - (S.wdAt or now) > 45 then
+                S.wdAt = now
+                softReset("ไม่คืบหน้า 45 วิ")
+            end
+        end
+        -- 1) มีต้นโตเต็มอยู่ -> เก็บทุกต้นก่อน ยังไม่ปลูก/รด/ใส่ปุ๋ย
+        if live() and S.collect and harvestAll() then return end
+        -- 2) เก็บหมดแล้ว รอให้ต้นไม้ในโฟลเดอร์อัปเดตก่อน แล้วค่อยเริ่มรอบปลูกใหม่
+        if S.harvesting then
+            if S.collectBusy() then
+                setStatus("เก็บครบแล้ว รอเริ่มรอบปลูกใหม่...")
                 return
+            end
+            S.harvesting = false
+            S.replant = true
+            S.log("เก็บครบแล้ว เริ่มปลูกรอบใหม่")
+        end
+        if S.replant and #trees >= S.target then S.replant = false end
+        -- ห้ามลด target ตอนรอบปลูกใหม่ ไม่งั้นเก็บ 3 ต้นแล้ว target หดตามไปด้วย
+        if live() and S.plant and S.seed and not S.replant and #trees >= 5 and #trees < S.target then
+            S.target = #trees
+        end
+        -- ปลูกเป็นชุด: ชุดเต็มแล้ว (ถึง target) ต้องรอให้ต้นที่ปลูกไว้ "โตและเก็บหมด" ก่อน ค่อยเปิดชุดใหม่
+        -- (ต้นที่เก็บไม่ติดครบ 3 ครั้งไม่นับ กันค้างรอไม่จบ)
+        if S.batchOpen == nil then S.batchOpen = true end
+        if S.batchOpen and #trees >= S.target then
+            S.batchOpen = false
+            S.log("ปลูกครบชุดแล้ว รอเก็บให้หมดก่อนปลูกใหม่")
+        end
+        if not S.batchOpen then
+            local pending = 0
+            for _, t in ipairs(trees) do
+                if not (statOf(t, "Growth") >= 100 and (S.collectTries[treeKey(t)] or 0) >= 3) then pending = pending + 1 end
+            end
+            if pending == 0 then
+                S.batchOpen = true
+                S.log("เก็บครบทุกต้นแล้ว เริ่มปลูกชุดใหม่")
+            else
+                setStatus(("รอแคนดี้โตและเก็บให้หมด (เหลือ %d ต้น) ก่อนปลูกใหม่"):format(pending))
+            end
+        end
+        if live() and S.plant and S.seed and S.batchOpen and #trees < S.target and os.clock() >= S.coolUntil and not S.collectBusy() then
+            S.planting = true
+            local okP, did = pcall(plantOne, trees)
+            S.planting = false
+            if not okP then error(did, 0) end
+            setStatus(("ปลูก %d/%d | %s ×%d"):format(#ownTrees(), S.target, S.seed, getCount(S.seed)))
+            return did and "fast" or nil
+        end
+        if live() then S.release("seed") end
+        -- ยืนต้นเดียว รดน้ำให้เต็ม + ใส่ปุ๋ยให้ครบ แล้วค่อยไปต้นที่ใกล้ตัวที่สุดต่อ (ไม่เดินไปมา)
+        local function needsWork(t, now)
+            if not t.Parent or isGrown(t) then return false end
+            if S.water and (S.waterSkip[t] or 0) <= now and statOf(t, "Water") <= S.waterAt then return true end
+            return S.fert and (S.fertSkip[t] or 0) <= now and not fertEnough(t)
+        end
+        local visited = {}
+        while live() do
+            local _, me = getChar()
+            if not me then return end
+            local now, best, bd = os.clock(), nil, m_huge
+            for _, t in ipairs(ownTrees()) do
+                if not visited[t] and needsWork(t, now) then
+                    local pp = treePos(t)
+                    local d = pp and flat(me.Position, pp) or m_huge
+                    if not best or d < bd then best, bd = t, d end
+                end
+            end
+            if not best then break end
+            visited[best] = true
+            if S.water and best.Parent and not isGrown(best) and not isFull(statOf(best, "Water")) and (S.waterSkip[best] or 0) <= os.clock() then
+                waterTree(best)
+            end
+            if live() and S.fert and best.Parent and not isGrown(best) and not fertEnough(best) and (S.fertSkip[best] or 0) <= os.clock() then
+                fertTree(best)
             end
         end
         if live() then S.release() end
-        waterPass(S.waterAt)
         if not live() then return end
         if S.collect then
             for _, tree in ipairs(ownTrees()) do
@@ -4979,77 +6097,6 @@ SW.LoadCandy = function()
             return
         end
         setStatus(("ต้นไม้ %d/%d | %s ×%d | ปุ๋ย ×%d"):format(n, S.target, S.seed or "-", S.seed and getCount(S.seed) or 0, getCount(BAG)))
-    end
-    local function runStandTest(kind)
-        if S.on then
-            SW.Notify({ Title = "Test", Icon = "alert-triangle", Content = "ปิด Candy Farm ก่อนแล้วค่อยกดทดสอบ", Duration = 4 })
-            return
-        end
-        task.spawn(function()
-            local _, hrp = getChar()
-            if not hrp then return end
-            local trees = ownTrees()
-            if #trees < 2 then
-                SW.Notify({ Title = "Test", Icon = "alert-triangle", Content = "ต้องมีต้นไม้ของเราอย่างน้อย 2 ต้นก่อน", Duration = 5 })
-                return
-            end
-            local near = nearestTree(hrp.Position)
-            local stat = kind == "water" and "Water" or "Food"
-            local target, td
-            if kind == "water" then
-                for _, t in ipairs(trees) do
-                    if t ~= near and statOf(t, "Water") < 95 then
-                        local pp = treePos(t)
-                        local d = pp and flat(hrp.Position, pp) or m_huge
-                        if not td or d < td then target, td = t, d end
-                    end
-                end
-                if not target then
-                    SW.Notify({ Title = "Test", Icon = "alert-triangle", Content = "ไม่มีต้นอื่น (ที่ไม่ใช่ต้นใกล้สุด) ที่น้ำต่ำกว่า 95% ให้ทดสอบ ปล่อยให้น้ำลดก่อน", Duration = 6 })
-                    return
-                end
-            end
-            local snap = {}
-            for _, t in ipairs(trees) do snap[treeKey(t)] = statOf(t, stat) end
-            if kind == "water" then
-                WaterRemote:FireServer(target)
-            else
-                FertRemote:FireServer()
-            end
-            local changed
-            local w0 = os.clock()
-            while os.clock() - w0 < 3.5 and not changed do
-                for _, t in ipairs(ownTrees()) do
-                    local k = treeKey(t)
-                    if snap[k] and statOf(t, stat) > snap[k] then
-                        changed = t
-                        break
-                    end
-                end
-                if not changed then task.wait(0.15) end
-            end
-            local msg
-            if kind == "water" then
-                local dtxt = td and td ~= m_huge and (" (ห่าง " .. m_floor(td) .. " studs)") or ""
-                if not changed then
-                    msg = "รดน้ำยืนนิ่ง: ไม่มีต้นไหนน้ำขึ้นเลย" .. dtxt
-                elseif changed == target then
-                    msg = "รดน้ำยืนนิ่ง: ได้ รดต้นที่สั่งได้จากที่ยืน" .. dtxt
-                else
-                    msg = "รดน้ำยืนนิ่ง: ไม่ได้ เกมรดต้นอื่น (น่าจะต้นใกล้สุด) แทนต้นที่สั่ง" .. dtxt
-                end
-            else
-                if not changed then
-                    msg = "ใส่ปุ๋ยไม่ถือถุง: ไม่มีต้นไหนได้ปุ๋ย (ลองเปิด Hold Fertilizer แล้วทดสอบอีกรอบ)"
-                elseif changed == near then
-                    msg = "ใส่ปุ๋ยยืนนิ่ง: ปุ๋ยลงต้นใกล้สุดตามคาด (เลือกต้นเองไม่ได้)"
-                else
-                    msg = "ใส่ปุ๋ยยืนนิ่ง: ปุ๋ยลงต้นอื่นที่ไม่ใช่ต้นใกล้สุด"
-                end
-            end
-            SW.Notify({ Title = "Test", Icon = "info", Content = msg, Duration = 12 })
-            setStatus(msg)
-        end)
     end
     S.seed = findSeed() or "SeedCandy"
     local run = SW.CandyTab:CreateSection({ Name = "Run", Icon = "lucide:play", Column = 1 })
@@ -5087,6 +6134,53 @@ SW.LoadCandy = function()
         pcall(card.SetEmpty, card, true, "ว่าง")
         slots[i] = { card = card }
     end
+    local CANDY_MAX = 50 -- เต็มช่องเมื่อถึงค่านี้ (MaxValue ของไอเทมแคนดี้)
+    local CANDY_ITEMS = {
+        { "Oreo", "rbxassetid://97509034510777", Color3.fromRGB(150, 110, 255) },
+        { "Candy", "rbxassetid://99771998549525", Color3.fromRGB(255, 110, 170) },
+        { "Taffy", "rbxassetid://73348402490940", Color3.fromRGB(80, 200, 255) },
+        { "Donuts", "rbxassetid://137665949906510", Color3.fromRGB(255, 176, 72) },
+        { "CottonCandy", "rbxassetid://126371470160157", Color3.fromRGB(255, 150, 220) },
+    }
+    local candySec = SW.CandyTab:CreateSection({ Name = "Candy Items", Icon = "lucide:candy", Column = 2 })
+    local candyCards = {}
+    for i, it in ipairs(CANDY_ITEMS) do
+        candyCards[i] = candySec:CreateStatusCard({
+            Name = it[1], Image = it[2], IconSize = 26,
+            Bars = { { Label = "จำนวน", Color = it[3] } },
+        })
+    end
+    local candyRemote
+    local candyWait, candySig = {}, {}
+    task.spawn(function()
+        while SW.alive do
+            task.wait(1)
+            pcall(function()
+                for i, it in ipairs(CANDY_ITEMS) do
+                    local name, card = it[1], candyCards[i]
+                    local n = getCount(name)
+                    local full = n >= CANDY_MAX
+                    local sig = n .. (full and "F" or "")
+                    if candySig[name] ~= sig then
+                        candySig[name] = sig
+                        pcall(card.SetEmpty, card, false)
+                        pcall(card.SetBadge, card, full and "เต็ม" or ("×" .. n), full and C_BAD or (n > 0 and C_OK or C_DIM))
+                        pcall(card.SetBar, card, 1, m_clamp(m_floor(n / CANDY_MAX * 100), 0, 100), n .. "/" .. CANDY_MAX, full and C_BAD or nil)
+                    end
+                    if full and S.on and (candyWait[name] or 0) < os.clock() then
+                        if not candyRemote or not candyRemote.Parent then
+                            candyRemote = resolveRemotePath(RS, { "Game_Modules", "RemoteEventSafe", "DepositItem" }, 2)
+                        end
+                        if candyRemote then
+                            candyWait[name] = os.clock() + 3
+                            pcall(candyRemote.FireServer, candyRemote, name, n)
+                            S.log("เก็บใส่ตู้ " .. name .. " ×" .. n)
+                        end
+                    end
+                end
+            end)
+        end
+    end)
     local logSec = SW.CandyTab:CreateSection({ Name = "Activity", Icon = "lucide:list", Column = 2, Collapsed = false })
     local monLog = logSec:CreateParagraph({ Title = "เหตุการณ์ล่าสุด", Content = "ยังไม่มีเหตุการณ์" })
     local monLast = {}
@@ -5229,6 +6323,75 @@ SW.LoadCandy = function()
             if state then task.spawn(S.ensureSlot, S.seed, true) end
         end,
     })
+    do
+        local view, HUD, viewLoop = { n = 0 }, { on = true }, false
+        local hudGui, hudFrame, hudLbl
+        local function refreshView()
+            local sx, sy, sz, n = 0, 0, 0, 0
+            for _, t in ipairs(ownTrees()) do
+                local p = treePos(t)
+                if p then sx, sy, sz, n = sx + p.X, sy + p.Y, sz + p.Z, n + 1 end
+            end
+            view.n = n
+            view.center = n > 0 and v3_new(sx / n, sy / n, sz / n) or S.anchor
+        end
+        local function buildHud()
+            hudGui = SW.new("ScreenGui", { Name = "SW_CandyHUD", ResetOnSpawn = false, IgnoreGuiInset = true, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 39 }, LP.PlayerGui)
+            hudFrame = SW.new("Frame", {
+                Size = UDim2.fromOffset(300, 78), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+                BackgroundColor3 = SW.Bg, BackgroundTransparency = 0.35, BorderSizePixel = 0, Active = false, Visible = false,
+            }, hudGui)
+            SW.round(hudFrame, 12)
+            SW.edge(hudFrame, 1.5, 0.3, 45)
+            SW.new("UIListLayout", {
+                Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder,
+                HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center,
+            }, hudFrame)
+            local function lbl(i, sz, col)
+                return SW.new("TextLabel", {
+                    Size = UDim2.new(1, -12, 0, sz + 4), BackgroundTransparency = 1, Font = Enum.Font.SourceSansBold,
+                    TextSize = sz, TextColor3 = col, TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = i, Text = "",
+                }, hudFrame)
+            end
+            hudLbl = { lbl(1, 18, SW.Good), lbl(2, 17, SW.Text), lbl(3, 14, SW.Sub) }
+        end
+        local function paintHud()
+            if not (hudGui and hudGui.Parent) then buildHud() end
+            hudFrame.Visible = HUD.on and S.on
+            if not hudFrame.Visible then return end
+            local st = S.stat
+            hudLbl[1].Text = "● CANDY FARM"
+            hudLbl[2].Text = tostring(S.phase)
+            hudLbl[3].Text = ("ต้น %d/%d  ปลูก %d/%d  น้ำ %d  ปุ๋ย %d  เก็บ %d"):format(view.n, S.target, st.planted, st.failed, st.watered, st.fert, st.collected)
+        end
+        local function startView()
+            if viewLoop then return end
+            viewLoop = true
+            task.spawn(function()
+                while SW.alive and HUD.on do
+                    if S.on then pcall(refreshView) end
+                    pcall(paintHud)
+                    task.wait(0.5)
+                end
+                viewLoop = false
+            end)
+        end
+        run:CreateToggle({
+            Name = "Center Status HUD",
+            Tooltip = "แสดงสถานะ Candy Farm กลางหน้าจอตอนออโต้ทำงาน",
+            Default = true,
+            Callback = function(state)
+                HUD.on = state
+                if state then startView() elseif hudFrame then hudFrame.Visible = false end
+            end,
+        })
+        startView()
+        pcall(function()
+            Window:OnDestroy(function()
+                if hudGui then hudGui:Destroy() end
+            end)
+        end)
+    end
     local runToggle
     runToggle = run:CreateToggle({
         Name = "Candy Farm",
@@ -5254,6 +6417,10 @@ SW.LoadCandy = function()
             autoAnchor()
             if S.seed then task.spawn(S.ensureSlot, S.seed, true) end
             S.coolUntil, S.fails, S.bad, S.recovered = 0, 0, {}, false
+            S.harvesting, S.replant, S.batchOpen = false, false, nil
+            S.collecting, S.noPlantUntil, S.pausedFrom, S.wdSig = false, 0, nil, nil
+            S.collectTries, S.badPts, S.known, S.latOrigin = {}, {}, {}, nil
+            for k in pairs(S.lastCollect) do S.lastCollect[k] = nil end
             local myRun = S.run
             task.spawn(function()
                 local w0 = os.clock()
@@ -5262,10 +6429,10 @@ SW.LoadCandy = function()
                 S.looping, S.cycleRun = true, myRun
                 local errs = 0
                 while S.on and SW.alive and S.run == myRun do
-                    local ok = SW.try("CandyFarm", cycle)
+                    local ok, fast = SW.try("CandyFarm", cycle)
                     if ok then
                         errs = 0
-                        task.wait(0.5)
+                        task.wait(fast and 0.05 or 0.5)
                     else
                         errs = errs + 1
                         task.wait(m_clamp(0.5 * 2 ^ errs, 0.5, 8))
@@ -5304,7 +6471,10 @@ end
 HomeTab:Load(function()
     SW.safeLoad("SW.LoadHome", SW.LoadHome)
 end)
-FarmTab:Load(LoadFarmTab)
+FarmTab:Load(function()
+    LoadFarmTab()
+    SW.safeLoad("SW.LoadProcess", SW.LoadProcess)
+end)
 SW.FishTab:Load(function()
     SW.safeLoad("SW.LoadNever", SW.LoadNever)
 end)
