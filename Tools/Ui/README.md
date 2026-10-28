@@ -1,4 +1,4 @@
-# SpectreUI v3.17 beta — คู่มือย่อ
+# SpectreUI v3.22 beta — คู่มือย่อ
 
 ไลบรารี UI สำหรับสคริปต์ Roblox (Lua): หน้าต่าง แท็บ control ครบ ระบบธีม Config และ Command Palette (`Ctrl+K`)
 แท็บ **SETTINGS** เป็นของสำเร็จรูป (ธีม ฟอนต์ เอฟเฟกต์ ปุ่มลัด Config Undo) เรียกบรรทัดเดียวจบ
@@ -133,7 +133,10 @@ Library:CreateWindow({ Splash = { Duration = 2.5, Skippable = true, Async = fals
 | โค้ด / log | `CreateConsole` | `:Info` `:Warn` `:Error` `:Print` |
 | | `CreateCodeBlock` | `Text` `Copy` · `:Append` |
 | อื่นๆ | `CreateDiscord` | `Invite` `Button` `Refresh` · `:GetInfo()` |
-| | `CreateConfigManager` | Save / Load / Delete หลาย Config ในชุดเดียว |
+| | `CreateConfigManager` | Save / Load / Delete หลาย Config ในชุดเดียว · คืน `{ Name, List, Refresh }` |
+| | `CreateChips` | ชิปเลือกหลายตัว (`Options` `Default` `Multi` `Max` `AllowNone`) · `:Set` `:Get` `:Refresh(options)` |
+| | `CreatePlayerPicker` | เลือกผู้เล่นในเซิร์ฟ (`Display = "DisplayName"` `IncludeSelf` `Placeholder`) · `:Get` `:GetName` `:Set(player)` `:Refresh` |
+| | `CreatePerformance` | โชว์ FPS / Ping / Memory สด (`Interval` ต่ำสุด 0.2) · `:Get()` → `{ Fps, Ping, Memory }` |
 
 ตัวอย่างที่ใช้บ่อย:
 
@@ -323,6 +326,7 @@ Library:CreateWindow({ Title = "X", AutoCheck = false })
 | `ToggleKey` | ปุ่มเปิด/ปิดเมนู |
 | `Theme` `Font` `FX` | ธีม / ฟอนต์ / เอฟเฟกต์ (`petals/orbs/grid/embers/rain`) |
 | `Background = false` / `Resizable = false` | ปิดพื้นหลัง / ห้ามปรับขนาด |
+| `TwoColumn` / `Compact` | บังคับ 2 คอลัมน์ / โหมดแคบ · บนมือถือ `TwoColumn` ต้องใส่ `true` เอง และพื้นที่เนื้อหาต้องกว้าง ≥ 520px |
 | `Splash` / `StagedLoad` / `AutoCheck` | หัวข้อ 4 / 4 / 12 |
 
 ### Window
@@ -335,6 +339,10 @@ Library:CreateWindow({ Title = "X", AutoCheck = false })
 | `Open` / `Close` / `Toggle` / `IsOpen` | เปิด/ปิดเมนู |
 | `SetToggleKey(key)` | เปลี่ยนปุ่มเมนู |
 | `SetTitle` `Center` `Resize` `SetMaximized` `Flash` | หน้าตาหน้าต่าง |
+| `SetTwoColumn(bool)` / `SetCompact(bool)` | สลับ 2 คอลัมน์ / โหมดแคบ |
+| `SetUIScale(0.6–1.6)` / `GetUIScale()` | ขนาด UI ทั้งหมด |
+| `SetAnimSpeed(0.25–3)` | ความเร็วอนิเมชัน (= `Library:SetAnimSpeed`) |
+| `AddFloatingButton({ Name, Text, Toggle, Default, Flag, Position, Size, Callback })` | ปุ่มลอยบนจอ · ใส่ `Flag` ของ toggle เดิมเพื่อสลับค่านั้น · `:Set` `:Get` `:SetText` `:SetVisible` `:Destroy` |
 | `Goto(obj\|"flag"\|"ชื่อ")` | กระโดดไป control |
 | `Destroy()` | ทำลายหน้าต่าง · `Library:Unload()` ทำลายทั้งหมด |
 
