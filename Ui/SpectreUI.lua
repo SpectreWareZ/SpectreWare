@@ -2995,209 +2995,466 @@ local h, m, x = sec // 3600, (sec % 3600) // 60, sec % 60
 if h > 0 then return ("%d:%02d:%02d"):format(h, m, x) end
 return ("%02d:%02d"):format(m, x)
 end
+-- Smooth area graph shared by the Profile panel and CreatePerformance.
+-- Gradient-filled area + smooth line + glowing end dot + reference line. Scrolls continuously
+-- between samples (no per-bar tweens). Owner calls :Push(v) per sample and :Step(dt) every frame.
+function Library._AreaGraph(parent, o)
+	local T = o.Theme
+	local GH = o.Height or 70
+	local M = o.Columns or 56
+	local L = o.LineSegs or 28
+	local N = o.Points or 40
+	local interval = o.Interval or 0.45
+	local minHi, hiStep = o.MinHi or 60, o.HiStep or 30
+	local stops, fmt = o.Stops, o.Format or tostring
+	local z = o.ZIndex or 1
+	local ref = o.Ref
+
+	local function ramp(v)
+		if v <= stops[1][1] then return stops[1][2] end
+		for i = 2, #stops do
+			local a, b = stops[i - 1], stops[i]
+			if v <= b[1] then return a[2]:Lerp(b[2], (v - a[1]) / (b[1] - a[1])) end
+		end
+		return stops[#stops][2]
+	end
+
+	local area = new("Frame", {
+		Position = o.Position or UDim2.new(), Size = o.Size or UDim2.new(1, 0, 0, GH),
+		BackgroundColor3 = T.Deep or T.Control, BackgroundTransparency = 0.3, BorderSizePixel = 0,
+		ClipsDescendants = true, ZIndex = z, Parent = parent,
+	}, { corner(o.Corner or 10), stroke(T.Border, 1, 0.55) })
+
+	for _, frac in ipairs({ 0.25, 0.5, 0.75 }) do
+		new("Frame", { Position = UDim2.new(0, 0, frac, 0), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.Border, BackgroundTransparency = 0.72, BorderSizePixel = 0, ZIndex = z, Parent = area })
+	end
+
+	local refLine
+	if ref then
+		refLine = new("Frame", { AnchorPoint = Vector2.new(0, 0.5), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.SubText, BackgroundTransparency = 0.6, BorderSizePixel = 0, Visible = false, ZIndex = z, Parent = area })
+	end
+
+	local cols = {}
+	for i = 1, M do
+		cols[i] = new("Frame", {
+			AnchorPoint = Vector2.new(0, 1), Position = UDim2.new((i - 1) / M, 0, 1, 0), Size = UDim2.new(1 / M, 1, 0, 0),
+			BackgroundColor3 = stops[#stops][2], BorderSizePixel = 0, Visible = false, ZIndex = z + 1, Parent = area,
+		}, { new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.42), NumberSequenceKeypoint.new(1, 0.93) }) }) })
+	end
+
+	local segs = {}
+	for j = 1, L do
+		segs[j] = new("Frame", { AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Visible = false, ZIndex = z + 2, Parent = area }, { corner(2) })
+	end
+	local halo = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(16, 16), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.8, BorderSizePixel = 0, Visible = false, ZIndex = z + 2, Parent = area }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	local dot = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(7, 7), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Visible = false, ZIndex = z + 3, Parent = area }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(Color3.new(1, 1, 1), 1, 0.4) })
+
+	local topLbl = new("TextLabel", {
+		Position = UDim2.fromOffset(6, 2), Size = UDim2.fromOffset(60, 12), BackgroundTransparency = 1, Text = "", Font = T.Font, TextSize = 10,
+		TextColor3 = T.SubText, TextTransparency = 0.35, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = z + 4, Parent = area,
+	})
+	new("TextLabel", {
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 6, 1, -2), Size = UDim2.fromOffset(30, 12), BackgroundTransparency = 1, Text = "0", Font = T.Font, TextSize = 10,
+		TextColor3 = T.SubText, TextTransparency = 0.5, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = z + 4, Parent = area,
+	})
+
+	local g = { Area = area }
+	local hist, t0 = {}, os.clock()
+	local hi, targetHi, lastLbl
+
+	local function sampleAt(s)
+		local len = #hist
+		local i = math.floor(s)
+		local f = s - i
+		local p0, p1 = hist[math.clamp(i - 1, 1, len)], hist[math.clamp(i, 1, len)]
+		local p2, p3 = hist[math.clamp(i + 1, 1, len)], hist[math.clamp(i + 2, 1, len)]
+		local f2 = f * f
+		return 0.5 * ((2 * p1) + (-p0 + p2) * f + (2 * p0 - 5 * p1 + 4 * p2 - p3) * f2 + (-p0 + 3 * p1 - 3 * p2 + p3) * f2 * f)
+	end
+
+	local function retarget()
+		local peak = 0
+		for i = math.max(1, #hist - N), #hist do if hist[i] > peak then peak = hist[i] end end
+		targetHi = math.max(minHi, math.ceil(peak * 1.08 / hiStep) * hiStep)
+		if not hi then hi = targetHi end
+		if lastLbl ~= targetHi then lastLbl = targetHi topLbl.Text = fmt(targetHi) end
+	end
+
+	function g:Push(v)
+		hist[#hist + 1] = v
+		if #hist > N + 2 then table.remove(hist, 1) end
+		t0 = os.clock()
+		retarget()
+	end
+	function g:Seed(v)
+		hist = {}
+		for i = 1, N + 2 do hist[i] = v end
+		t0 = os.clock()
+		hi = nil
+		retarget()
+	end
+	function g:Stats()
+		if #hist == 0 then return end
+		local mn, mx, sum, c = math.huge, -math.huge, 0, 0
+		for i = math.max(1, #hist - N + 1), #hist do
+			local v = hist[i]
+			mn = math.min(mn, v) mx = math.max(mx, v) sum += v c += 1
+		end
+		return mn, sum / c, mx
+	end
+	function g:History() return table.clone(hist) end
+
+	function g:Step(dt)
+		local len = #hist
+		if len == 0 or not hi then return end
+		local absY = area.AbsoluteSize.Y
+		if absY < 1 then return end
+		hi += (targetHi - hi) * (1 - math.exp(-(dt or 0.016) * 7))
+		local W = area.AbsoluteSize.X / (absY / GH)
+		local t = math.clamp((os.clock() - t0) / interval, 0, 1)
+		local R, span = len - 1 + t, N - 1
+
+		for i = 1, M do
+			local s = R - (1 - (i - 0.5) / M) * span
+			local v = sampleAt(s)
+			local c = cols[i]
+			c.Size = UDim2.new(1 / M, 1, 0, math.clamp(v / hi, 0.02, 1) * GH)
+			c.BackgroundColor3 = ramp(v)
+			c.Visible = true
+		end
+
+		local px, py, pcol
+		for j = 0, L do
+			local u = j / L
+			local v = sampleAt(R - (1 - u) * span)
+			local x, y = u * W, GH - math.clamp(v / hi, 0.02, 1) * GH
+			local col = ramp(v):Lerp(Color3.new(1, 1, 1), 0.22)
+			if j > 0 then
+				local dx, dy = x - px, y - py
+				local sg = segs[j]
+				sg.Position = UDim2.fromOffset(px, py)
+				sg.Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy) + 1, 2)
+				sg.Rotation = math.deg(math.atan2(dy, dx))
+				sg.BackgroundColor3 = col
+				sg.Visible = true
+			end
+			px, py, pcol = x, y, col
+		end
+		local ex = math.max(px - 5, 4)
+		dot.Position = UDim2.fromOffset(ex, py)
+		halo.Position = UDim2.fromOffset(ex, py)
+		dot.BackgroundColor3, halo.BackgroundColor3 = pcol, pcol
+		local pulse = 0.5 + 0.5 * math.sin(os.clock() * 3.2)
+		local hs = 13 + pulse * 7
+		halo.Size = UDim2.fromOffset(hs, hs)
+		halo.BackgroundTransparency = 0.72 + pulse * 0.2
+		dot.Visible, halo.Visible = true, true
+
+		if refLine then
+			local ry = ref / hi
+			refLine.Visible = ry < 0.98
+			refLine.Position = UDim2.fromOffset(0, GH - ry * GH)
+		end
+	end
+	return g
+end
+
 function Window:_BuildProfile()
-local win, T = self, self.Theme
-local lpl = Players.LocalPlayer
-if not lpl then return end
-local Market = game:GetService("MarketplaceService")
-local Stats = game:GetService("Stats")
-local main = self.Main
-local CARD_W = 288
-local RIGHT = Enum.TextXAlignment.Right
-local TRUNC = Enum.TextTruncate.AtEnd
-local baseY = -(FOOT_H + 22)
-local blocker = new("TextButton", {
-Name = "ProfileBlocker", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
-Visible = false, ZIndex = 54, Parent = main,
-})
-local card = new("Frame", {
-Name = "ProfileCard", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 12, 1, baseY),
-Size = UDim2.fromOffset(CARD_W, 300), BackgroundColor3 = T.Panel, BackgroundTransparency = 0.02, BorderSizePixel = 0,
-Visible = false, ZIndex = 56, ClipsDescendants = true, Parent = main,
-}, { corner(18), stroke(T.Accent, 1, 0.45) })
-local scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
-Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
-CanvasSize = UDim2.new(), AutomaticCanvasSize = AY, ScrollingDirection = Enum.ScrollingDirection.Y, Parent = card,
-}, { list(8), padding(12, 12, 12, 12) })
-local lay = scroll:FindFirstChildOfClass("UIListLayout")
-local order = 0
-local function nextOrder() order += 1 return order end
-local function copy(text)
-if type(setclipboard) == "function" then
-pcall(setclipboard, text)
-win:Notify({ Title = "Copied", Content = text, Kind = "Success", Duration = 1.6 })
-else
-win:Notify({ Title = "Clipboard not supported", Content = text, Kind = "Warning", Duration = 3 })
+	local win, T = self, self.Theme
+	local lpl = Players.LocalPlayer
+	if not lpl then return end
+	local Market = game:GetService("MarketplaceService")
+	local Stats = game:GetService("Stats")
+	local main = self.Main
+	local RIGHT = Enum.TextXAlignment.Right
+	local TRUNC = Enum.TextTruncate.AtEnd
+	local good, mid, bad = Color3.fromRGB(74, 222, 128), Color3.fromRGB(250, 204, 21), Color3.fromRGB(248, 113, 113)
+
+	-- Full-panel overlay: fills the content area below the header, not a small card.
+	local blocker = new("TextButton", {
+		Name = "ProfileBlocker", Position = UDim2.fromOffset(0, HEADER_H), Size = UDim2.new(1, 0, 1, -HEADER_H),
+		BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Visible = false, ZIndex = 54, Parent = main,
+	})
+	local card = new("Frame", {
+		Name = "ProfileCard", Position = UDim2.fromOffset(0, HEADER_H), Size = UDim2.new(1, 0, 1, -HEADER_H),
+		BackgroundColor3 = T.Panel, BackgroundTransparency = 0.02, BorderSizePixel = 0,
+		Visible = false, ZIndex = 56, ClipsDescendants = true, Parent = main,
+	})
+	local scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
+		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
+		ScrollBarImageColor3 = T.Accent, CanvasSize = UDim2.new(), AutomaticCanvasSize = AY,
+		ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 56, Parent = card,
+	}, { list(14), padding(22, 18, 22, 22) })
+	local lay = scroll:FindFirstChildOfClass("UIListLayout")
+	local order = 0
+	local function nextOrder() order += 1 return order end
+
+	local function copy(text)
+		if type(setclipboard) == "function" then
+			pcall(setclipboard, text)
+			win:Notify({ Title = "Copied", Content = text, Kind = "Success", Duration = 1.6 })
+		else
+			win:Notify({ Title = "Clipboard not supported", Content = text, Kind = "Warning", Duration = 3 })
+		end
+	end
+	local function label(props)
+		props.BackgroundTransparency = 1
+		props.Font = props.Font or T.Font
+		props.TextSize = props.TextSize or 13
+		props.TextColor3 = props.TextColor3 or T.Text
+		props.TextXAlignment = props.TextXAlignment or LEFT
+		props.TextTruncate = props.TextTruncate or TRUNC
+		props.ZIndex = 57
+		return new("TextLabel", props)
+	end
+	local function divider()
+		new("Frame", { Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.Border, BackgroundTransparency = 0.6, BorderSizePixel = 0, ZIndex = 57, LayoutOrder = nextOrder(), Parent = scroll })
+	end
+	local function caption(text)
+		label({ Size = UDim2.new(1, 0, 0, 18), Text = text, Font = T.FontBold, TextSize = 14, TextColor3 = T.SubText, LayoutOrder = nextOrder(), Parent = scroll })
+	end
+
+	-- Header row: close button, large avatar, name.
+	local topRow = new("Frame", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, ZIndex = 57, LayoutOrder = nextOrder(), Parent = scroll })
+	label({ Size = UDim2.new(1, -30, 1, 0), Text = "Profile", Font = T.FontBold, TextSize = 18, Parent = topRow })
+	local closeBtn = new("TextButton", {
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.fromOffset(26, 26),
+		BackgroundColor3 = T.Control, BackgroundTransparency = 0.35, Text = "", AutoButtonColor = false, ZIndex = 58, Parent = topRow,
+	}, { corner(13) })
+	feedback(closeBtn, closeBtn, "BackgroundTransparency", 0.35, 0.18, 0.08, true)
+	Library._searchIcon(closeBtn, "lucide:x", "X", T.SubText, 14, T).ZIndex = 58
+
+	local head = new("Frame", { Size = UDim2.new(1, 0, 0, 92), BackgroundTransparency = 1, ZIndex = 57, LayoutOrder = nextOrder(), Parent = scroll })
+	local av = new("ImageLabel", {
+		Size = UDim2.fromOffset(92, 92), BackgroundColor3 = T.Control, BorderSizePixel = 0, Image = "", ScaleType = Enum.ScaleType.Crop, ZIndex = 57, Parent = head,
+	}, { corner(46), stroke(T.Accent, 2.5, 0.15) })
+	label({ Position = UDim2.fromOffset(106, 16), Size = UDim2.new(1, -106, 0, 28), Text = lpl.DisplayName, Font = T.FontBold, TextSize = 24, Parent = head })
+	label({ Position = UDim2.fromOffset(106, 46), Size = UDim2.new(1, -106, 0, 20), Text = "@" .. lpl.Name, TextSize = 15, TextColor3 = T.SubText, Parent = head })
+	label({ Position = UDim2.fromOffset(106, 68), Size = UDim2.new(1, -106, 0, 18), Text = "User ID " .. lpl.UserId, TextSize = 12, TextColor3 = T.SubText, Parent = head })
+	task.spawn(function()
+		local ok, img = pcall(function() return Players:GetUserThumbnailAsync(lpl.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420) end)
+		if ok and img and av.Parent then av.Image = img end
+	end)
+	divider()
+
+	-- Current game card.
+	caption("CURRENT GAME")
+	local gcard = new("Frame", {
+		Size = UDim2.new(1, 0, 0, 70), BackgroundColor3 = T.Control, BackgroundTransparency = 0.45, BorderSizePixel = 0,
+		ZIndex = 57, LayoutOrder = nextOrder(), Parent = scroll,
+	}, { corner(14), stroke(T.Border, 1, 0.6) })
+	local gicon = new("ImageLabel", {
+		Position = UDim2.fromOffset(10, 10), Size = UDim2.fromOffset(50, 50), BackgroundColor3 = T.Panel, BorderSizePixel = 0,
+		Image = (game.GameId ~= 0) and ("rbxthumb://type=GameIcon&id=" .. game.GameId .. "&w=150&h=150") or "",
+		ScaleType = Enum.ScaleType.Crop, ZIndex = 57, Parent = gcard,
+	}, { corner(12) })
+	local gname = label({
+		Position = UDim2.fromOffset(70, 10), Size = UDim2.new(1, -80, 0, 32), Text = game.Name, Font = T.FontBold, TextSize = 15,
+		TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, Parent = gcard,
+	})
+	local gsub = label({ Position = UDim2.fromOffset(70, 44), Size = UDim2.new(1, -80, 0, 16), Text = "", TextSize = 13, TextColor3 = T.SubText, Parent = gcard })
+	local function applyInfo(info)
+		if not info then return end
+		if info.Name and info.Name ~= "" and gname.Parent then gname.Text = info.Name end
+		if info.IconImageAssetId and info.IconImageAssetId ~= 0 and gicon.Parent then gicon.Image = "rbxassetid://" .. info.IconImageAssetId end
+		if info.Creator and info.Creator.Name and gsub.Parent then gsub.Text = "by " .. tostring(info.Creator.Name) end
+	end
+	if Library._placeInfo then
+		applyInfo(Library._placeInfo)
+	else
+		task.spawn(function()
+			local ok, info = pcall(function() return Market:GetProductInfo(game.PlaceId) end)
+			if ok and type(info) == "table" then Library._placeInfo = info applyInfo(info) end
+		end)
+	end
+	divider()
+
+	-- Big live stat tiles, 3 across: FPS / Ping / Memory.
+	caption("LIVE PERFORMANCE")
+	local tiles = new("Frame", { Size = UDim2.new(1, 0, 0, 78), BackgroundTransparency = 1, ZIndex = 57, LayoutOrder = nextOrder(), Parent = scroll })
+	local tileVal, tileSub = {}, {}
+	for i, cap in ipairs({ "FPS", "PING", "MEMORY" }) do
+		local t = new("Frame", {
+			Position = UDim2.new((i - 1) / 3, i == 1 and 0 or 4, 0, 0), Size = UDim2.new(1 / 3, i == 2 and -8 or -4, 1, 0),
+			BackgroundColor3 = T.Control, BackgroundTransparency = 0.45, BorderSizePixel = 0, ZIndex = 57, Parent = tiles,
+		}, { corner(14), stroke(T.Border, 1, 0.6) })
+		tileVal[cap] = label({ Position = UDim2.fromOffset(0, 14), Size = UDim2.new(1, 0, 0, 30), Text = "-", Font = T.FontBold, TextSize = 24, TextXAlignment = Enum.TextXAlignment.Center, Parent = t })
+		tileSub[cap] = label({ Position = UDim2.fromOffset(0, 46), Size = UDim2.new(1, 0, 0, 16), Text = cap, TextSize = 11, TextColor3 = T.SubText, TextXAlignment = Enum.TextXAlignment.Center, Parent = t })
+	end
+
+	-- History graphs: smooth gradient area + line + glowing end dot, scrolls continuously between samples.
+	local GN, GH = 40, 76
+	local SAMPLE_T = 0.45
+	local fpsStops = { { 25, bad }, { 40, mid }, { 55, good } }
+	local pingStops = { { 70, good }, { 130, mid }, { 220, bad } }
+	local function makeGraph(title, stops, minHi, hiStep, fmt, ref)
+		local box = new("Frame", { Size = UDim2.new(1, 0, 0, 24 + GH), BackgroundTransparency = 1, ZIndex = 57, LayoutOrder = nextOrder(), Parent = scroll })
+		label({ Size = UDim2.new(0.4, 0, 0, 16), Text = title, Font = T.FontBold, TextSize = 12, TextColor3 = T.SubText, Parent = box })
+		local stat = label({ Position = UDim2.fromScale(0.4, 0), Size = UDim2.new(0.6, 0, 0, 16), Text = "", TextSize = 11, TextColor3 = T.SubText, TextXAlignment = RIGHT, Parent = box })
+		local g = Library._AreaGraph(box, {
+			Theme = T, Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, GH), Height = GH, Points = GN, Interval = SAMPLE_T,
+			Stops = stops, MinHi = minHi, HiStep = hiStep, Format = fmt, Ref = ref, ZIndex = 57,
+		})
+		g.stat = stat
+		return g
+	end
+	local function fmtFps(v) return tostring(math.floor(v + 0.5)) end
+	local function fmtPing(v) return math.floor(v + 0.5) .. "ms" end
+	local fpsG = makeGraph("FPS HISTORY", fpsStops, 60, 30, fmtFps, 60)
+	local pingG = makeGraph("PING HISTORY", pingStops, 100, 50, fmtPing, 100)
+	local function setStat(g, fmt)
+		local mn, av, mx = g:Stats()
+		if mn then g.stat.Text = ("min %s  ·  avg %s  ·  max %s"):format(fmt(mn), fmt(av), fmt(mx)) end
+	end
+	local function fpsColor(v) return v >= 50 and good or (v >= 30 and mid or bad) end
+	local function pingColor(v) return v <= 100 and good or (v <= 200 and mid or bad) end
+	divider()
+
+	-- Detail rows: players, time in server, account age, ids.
+	caption("DETAILS")
+	local statsFrame = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, ZIndex = 57, LayoutOrder = nextOrder(), Parent = scroll }, { list(4) })
+	local vals, getters, srow = {}, {}, 0
+	local function row(key, title, get, copyGet)
+		srow += 1
+		local r = new("TextButton", { Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 57, LayoutOrder = srow, Parent = statsFrame })
+		label({ Size = UDim2.new(0.5, 0, 1, 0), Text = title, TextColor3 = T.SubText, Parent = r })
+		vals[key] = label({ Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(0.5, 1), Text = "-", TextXAlignment = RIGHT, Font = T.FontBold, Parent = r })
+		getters[key] = get
+		if copyGet then
+			r.MouseButton1Click:Connect(function()
+				local okc, t = pcall(copyGet)
+				if okc and t and t ~= "" then copy(tostring(t)) end
+			end)
+		end
+	end
+	local jobId = game.JobId
+	row("players", "Players", function() return ("%d / %d"):format(#Players:GetPlayers(), Players.MaxPlayers) end)
+	row("time", "In server", function() return Library._profFmtTime(workspace.DistributedGameTime) end)
+	row("job", "Server ID (tap to copy)", function() return jobId ~= "" and (jobId:sub(1, 8) .. "...") or "Studio" end, function() return jobId end)
+	row("place", "Place ID (tap to copy)", function() return tostring(game.PlaceId) end, function() return tostring(game.PlaceId) end)
+	row("uid", "User ID (tap to copy)", function() return tostring(lpl.UserId) end, function() return tostring(lpl.UserId) end)
+	row("age", "Account age", function()
+		local d = lpl.AccountAge
+		return ("%dy %dm"):format(d // 365, (d % 365) // 30)
+	end)
+	if type(identifyexecutor) == "function" then
+		row("exec", "Executor", function()
+			local okx, n = pcall(identifyexecutor)
+			return okx and tostring(n) or "-"
+		end)
+	end
+	local function refresh()
+		for k, get in pairs(getters) do
+			local okg, v = pcall(get)
+			if okg and vals[k] and vals[k].Parent then vals[k].Text = tostring(v) end
+		end
+	end
+	divider()
+
+	local brow = new("Frame", { Size = UDim2.new(1, 0, 0, 36), BackgroundTransparency = 1, ZIndex = 57, LayoutOrder = nextOrder(), Parent = scroll })
+	local function button(text, x, cb)
+		local b = new("TextButton", {
+			Position = UDim2.new(x, x > 0 and 3 or 0, 0, 0), Size = UDim2.new(0.5, -3, 1, 0), BackgroundColor3 = T.Control,
+			BackgroundTransparency = 0.35, Text = text, Font = T.FontBold, TextSize = 13, TextColor3 = T.Text, AutoButtonColor = false,
+			BorderSizePixel = 0, ZIndex = 57, Parent = brow,
+		}, { corner(12), stroke(T.Accent, 1, 0.6) })
+		feedback(b, b, "BackgroundTransparency", 0.35, 0.2, 0.1, true)
+		b.MouseButton1Click:Connect(cb)
+	end
+	button("Copy join link", 0, function()
+		copy(("roblox://experiences/start?placeId=%d&gameInstanceId=%s"):format(game.PlaceId, jobId))
+	end)
+	button("Rejoin", 0.5, function()
+		win:Notify({ Title = "Rejoining", Content = "Teleporting back to this server...", Kind = "Info", Duration = 2 })
+		local TS = game:GetService("TeleportService")
+		pcall(function()
+			if jobId ~= "" then TS:TeleportToPlaceInstance(game.PlaceId, jobId, lpl) else TS:Teleport(game.PlaceId, lpl) end
+		end)
+	end)
+
+	local isOpen, perfConn = false, nil
+	local fps, ping, mem = 0, 0, 0
+	local acc, frames, maxDt, warm = 0, 0, 0, 0
+	local smoothFps, smoothPing
+	local pingItem
+	local function readPing()
+		if not pingItem then pcall(function() pingItem = Stats.Network.ServerStatsItem["Data Ping"] end) end
+		if pingItem then
+			local ok, v = pcall(pingItem.GetValue, pingItem)
+			if ok and type(v) == "number" and v >= 0 then return v end
+			pingItem = nil
+		end
+		local ok, v = pcall(function() return lpl:GetNetworkPing() * 1000 end)
+		return (ok and type(v) == "number" and v >= 0) and v or nil
+	end
+
+	function win:CloseProfile()
+		if not isOpen then return end
+		isOpen = false
+		if perfConn then perfConn:Disconnect() perfConn = nil end
+		blocker.Visible = false
+		card.Visible = false
+	end
+	function win:OpenProfile()
+		if isOpen or self._destroyed then return end
+		isOpen = true
+		refresh()
+		card.Visible = true
+		blocker.Visible = true
+		-- Seed the graphs with one reading so they span full width immediately.
+		local seedFps = (smoothFps and math.clamp(smoothFps, 1, 999)) or 60
+		local seedPing = readPing()
+		fpsG:Seed(seedFps)
+		setStat(fpsG, fmtFps)
+		if seedPing then pingG:Seed(seedPing) setStat(pingG, fmtPing) end
+		acc, frames, maxDt, warm, smoothFps, smoothPing = 0, 0, 0, 0, nil, nil
+		perfConn = RunService.Heartbeat:Connect(function(dt)
+			if not isOpen then return end
+			if warm < 3 then warm += 1 return end
+			if dt <= 0 then return end
+			fpsG:Step(dt)
+			pingG:Step(dt)
+			frames += 1
+			acc += dt
+			if dt > maxDt then maxDt = dt end
+			if acc < SAMPLE_T then return end
+			local rawFps = frames / acc
+			acc, frames, maxDt = 0, 0, 0
+			smoothFps = smoothFps and (smoothFps + (rawFps - smoothFps) * 0.3) or rawFps
+			fps = math.clamp(smoothFps, 0, 999)
+			local rawPing = readPing()
+			if rawPing then smoothPing = smoothPing and (smoothPing + (rawPing - smoothPing) * 0.3) or rawPing end
+			ping = smoothPing
+			local okm, v = pcall(function() return Stats:GetTotalMemoryUsageMb() end)
+			mem = okm and v or mem
+
+			tileVal.FPS.Text = tostring(math.floor(fps + 0.5))
+			tileVal.FPS.TextColor3 = fpsColor(fps)
+			if ping then
+				tileVal.PING.Text = math.floor(ping + 0.5) .. " ms"
+				tileVal.PING.TextColor3 = pingColor(ping)
+			else
+				tileVal.PING.Text = "--"
+			end
+			tileVal.MEMORY.Text = math.floor(mem + 0.5) .. " MB"
+
+			fpsG:Push(fps)
+			setStat(fpsG, fmtFps)
+			if ping then
+				pingG:Push(ping)
+				setStat(pingG, fmtPing)
+			end
+			refresh()
+		end)
+	end
+	function win:ToggleProfile()
+		if isOpen then self:CloseProfile() else self:OpenProfile() end
+	end
+	closeBtn.MouseButton1Click:Connect(function() win:CloseProfile() end)
+	blocker.MouseButton1Click:Connect(function() win:CloseProfile() end)
+	if win.ProfileButton then win.ProfileButton.MouseButton1Click:Connect(function() win:ToggleProfile() end) end
 end
-end
-local function label(props)
-props.BackgroundTransparency = 1
-props.Font = props.Font or T.Font
-props.TextSize = props.TextSize or 12
-props.TextColor3 = props.TextColor3 or T.Text
-props.TextXAlignment = props.TextXAlignment or LEFT
-props.TextTruncate = props.TextTruncate or TRUNC
-return new("TextLabel", props)
-end
-local function divider()
-new("Frame", { Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.Border, BackgroundTransparency = 0.6, BorderSizePixel = 0, LayoutOrder = nextOrder(), Parent = scroll })
-end
-local function caption(text)
-label({ Size = UDim2.new(1, 0, 0, 16), Text = text, Font = T.FontBold, TextSize = 13, TextColor3 = T.SubText, LayoutOrder = nextOrder(), Parent = scroll })
-end
-local head = new("Frame", { Size = UDim2.new(1, 0, 0, 52), BackgroundTransparency = 1, LayoutOrder = nextOrder(), Parent = scroll })
-local av = new("ImageLabel", {
-Size = UDim2.fromOffset(52, 52), BackgroundColor3 = T.Control, BorderSizePixel = 0, Image = "", ScaleType = Enum.ScaleType.Crop, Parent = head,
-}, { corner(26), stroke(T.Accent, 2, 0.2) })
-label({ Position = UDim2.fromOffset(62, 6), Size = UDim2.new(1, -62, 0, 22), Text = lpl.DisplayName, Font = T.FontBold, TextSize = 17, Parent = head })
-label({ Position = UDim2.fromOffset(62, 29), Size = UDim2.new(1, -62, 0, 16), Text = "@" .. lpl.Name, TextColor3 = T.SubText, Parent = head })
-task.spawn(function()
-local ok, img = pcall(function()
-return Players:GetUserThumbnailAsync(lpl.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
-end)
-if ok and img and av.Parent then av.Image = img end
-end)
-divider()
-caption("CURRENT GAME")
-local gcard = new("Frame", {
-Size = UDim2.new(1, 0, 0, 60), BackgroundColor3 = T.Control, BackgroundTransparency = 0.45, BorderSizePixel = 0,
-LayoutOrder = nextOrder(), Parent = scroll,
-}, { corner(12), stroke(T.Border, 1, 0.6) })
-local gicon = new("ImageLabel", {
-Position = UDim2.fromOffset(8, 8), Size = UDim2.fromOffset(44, 44), BackgroundColor3 = T.Panel, BorderSizePixel = 0,
-Image = (game.GameId ~= 0) and ("rbxthumb://type=GameIcon&id=" .. game.GameId .. "&w=150&h=150") or "",
-ScaleType = Enum.ScaleType.Crop, Parent = gcard,
-}, { corner(10) })
-local gname = label({
-Position = UDim2.fromOffset(60, 8), Size = UDim2.new(1, -68, 0, 30), Text = game.Name, Font = T.FontBold, TextSize = 14,
-TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, Parent = gcard,
-})
-local gsub = label({ Position = UDim2.fromOffset(60, 38), Size = UDim2.new(1, -68, 0, 14), Text = "", TextSize = 14, TextColor3 = T.SubText, Parent = gcard })
-local function applyInfo(info)
-if not info then return end
-if info.Name and info.Name ~= "" and gname.Parent then gname.Text = info.Name end
-if info.IconImageAssetId and info.IconImageAssetId ~= 0 and gicon.Parent then gicon.Image = "rbxassetid://" .. info.IconImageAssetId end
-if info.Creator and info.Creator.Name and gsub.Parent then gsub.Text = "by " .. tostring(info.Creator.Name) end
-end
-if Library._placeInfo then
-applyInfo(Library._placeInfo)
-else
-task.spawn(function()
-local ok, info = pcall(function() return Market:GetProductInfo(game.PlaceId) end)
-if ok and type(info) == "table" then Library._placeInfo = info applyInfo(info) end
-end)
-end
-divider()
-local stats = new("Frame", {
-Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, LayoutOrder = nextOrder(), Parent = scroll,
-}, { list(2) })
-local vals, getters, srow = {}, {}, 0
-local function row(key, title, get, copyGet)
-srow += 1
-local r = new("TextButton", {
-Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, LayoutOrder = srow, Parent = stats,
-})
-label({ Size = UDim2.new(0.4, 0, 1, 0), Text = title, TextColor3 = T.SubText, Parent = r })
-vals[key] = label({ Position = UDim2.fromScale(0.4, 0), Size = UDim2.fromScale(0.6, 1), Text = "-", TextXAlignment = RIGHT, Font = T.FontBold, Parent = r })
-getters[key] = get
-if copyGet then
-r.MouseButton1Click:Connect(function()
-local okc, t = pcall(copyGet)
-if okc and t and t ~= "" then copy(tostring(t)) end
-end)
-end
-end
-local fps = 0
-local jobId = game.JobId
-row("players", "Players", function() return ("%d / %d"):format(#Players:GetPlayers(), Players.MaxPlayers) end)
-row("ping", "Ping", function()
-local okp, v = pcall(function() return Stats.Network.ServerStatsItem["Data Ping"]:GetValue() end)
-return okp and (math.floor(v + 0.5) .. " ms") or "-"
-end)
-row("fps", "FPS", function() return tostring(fps) end)
-row("time", "In server", function() return Library._profFmtTime(workspace.DistributedGameTime) end)
-row("job", "Server ID (tap to copy)", function() return jobId ~= "" and (jobId:sub(1, 8) .. "...") or "Studio" end, function() return jobId end)
-row("place", "Place ID (tap to copy)", function() return tostring(game.PlaceId) end, function() return tostring(game.PlaceId) end)
-row("uid", "User ID (tap to copy)", function() return tostring(lpl.UserId) end, function() return tostring(lpl.UserId) end)
-row("age", "Account age", function()
-local d = lpl.AccountAge
-return ("%dy %dm"):format(d // 365, (d % 365) // 30)
-end)
-if type(identifyexecutor) == "function" then
-row("exec", "Executor", function()
-local okx, n = pcall(identifyexecutor)
-return okx and tostring(n) or "-"
-end)
-end
-local function refresh()
-for k, get in pairs(getters) do
-local okg, v = pcall(get)
-if okg and vals[k] and vals[k].Parent then vals[k].Text = tostring(v) end
-end
-end
-divider()
-local brow = new("Frame", { Size = UDim2.new(1, 0, 0, 32), BackgroundTransparency = 1, LayoutOrder = nextOrder(), Parent = scroll })
-local function button(text, x, cb)
-local b = new("TextButton", {
-Position = UDim2.new(x, x > 0 and 3 or 0, 0, 0), Size = UDim2.new(0.5, -3, 1, 0), BackgroundColor3 = T.Control,
-BackgroundTransparency = 0.35, Text = text, Font = T.FontBold, TextSize = 13, TextColor3 = T.Text, AutoButtonColor = false,
-BorderSizePixel = 0, Parent = brow,
-}, { corner(10), stroke(T.Accent, 1, 0.6) })
-feedback(b, b, "BackgroundTransparency", 0.35, 0.2, 0.1, true)
-b.MouseButton1Click:Connect(cb)
-end
-button("Copy join link", 0, function()
-copy(("roblox://experiences/start?placeId=%d&gameInstanceId=%s"):format(game.PlaceId, jobId))
-end)
-button("Rejoin", 0.5, function()
-win:Notify({ Title = "Rejoining", Content = "Teleporting back to this server...", Kind = "Info", Duration = 2 })
-local TS = game:GetService("TeleportService")
-pcall(function()
-if jobId ~= "" then TS:TeleportToPlaceInstance(game.PlaceId, jobId, lpl) else TS:Teleport(game.PlaceId, lpl) end
-end)
-end)
-local isOpen, fpsConn = false, nil
-function win:CloseProfile()
-if not isOpen then return end
-isOpen = false
-if fpsConn then fpsConn:Disconnect() fpsConn = nil end
-blocker.Visible = false
-card.Visible = false
-if self.FooterArrow then self.FooterArrow.Rotation = 0 end
-end
-function win:OpenProfile()
-if isOpen or self._destroyed then return end
-isOpen = true
-refresh()
-local avail = (main.AbsoluteSize.Y / math.max(self.Scale.Scale, 0.01)) - (FOOT_H + 22) - (HEADER_H + 8)
-local h = math.clamp(lay.AbsoluteContentSize.Y + 24, 140, math.max(avail, 140))
-card.Size = UDim2.fromOffset(CARD_W, h)
-scroll.CanvasPosition = Vector2.zero
-card.Position = UDim2.new(0, 12, 1, baseY + 10)
-blocker.Visible = true
-card.Visible = true
-nextFrame(function() if isOpen then tween(card, 0.22, { Position = UDim2.new(0, 12, 1, baseY) }) end end)
-if self.FooterArrow then tween(self.FooterArrow, 0.2, { Rotation = 180 }) end
-local frames, last = 0, os.clock()
-fpsConn = RunService.RenderStepped:Connect(function()
-frames += 1
-local now = os.clock()
-if now - last >= 0.5 then fps = math.floor(frames / (now - last) + 0.5) frames, last = 0, now end
-end)
-task.spawn(function()
-while isOpen and not self._destroyed do
-task.wait(0.5)
-if isOpen then refresh() end
-end
-if fpsConn then fpsConn:Disconnect() fpsConn = nil end
-end)
-end
-function win:ToggleProfile()
-if isOpen then self:CloseProfile() else self:OpenProfile() end
-end
-blocker.MouseButton1Click:Connect(function() win:CloseProfile() end)
-if win.ProfileButton then win.ProfileButton.MouseButton1Click:Connect(function() win:ToggleProfile() end) end
-end
+
 function Window:SetTitle(title, sub)
 if sub == nil and type(title) == "string" then
 local b, s = title:match("^(.-)%s*|%s*(.+)$")
@@ -5725,7 +5982,8 @@ local h = rowH()
 local optH = touch and 44 or 36
 local searchH = touch and 50 or 44
 local footH = touch and 50 or 44
-local GAP, PAD = 5, 16
+local GAP, PAD = 3, 14
+local POP_STROKE = 0.55
 local options = cfg.Options or {}
 local multi = cfg.Multi and true or false
 local placeholder = cfg.Placeholder or "Select..."
@@ -5740,6 +5998,9 @@ local function splitName(opt)
 local t, d = tostring(opt):match("^(.-)%s*|%s*(.+)$")
 if t and t ~= "" and d then return t, d end
 return tostring(opt), nil
+end
+local function escRich(s)
+return (tostring(s):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"))
 end
 local function normalize(list)
 images = {}
@@ -5765,7 +6026,7 @@ end
 return out
 end
 local function imgSz()
-local sz = cfg.ImageSize or (touch and 28 or 32)
+local sz = cfg.ImageSize or (touch and 26 or 28)
 if touch then sz = math.min(sz, 30) end
 return sz
 end
@@ -5877,7 +6138,7 @@ if not dd.IsOpen then tween(btnStroke, 0.2, { Color = T.Border, Transparency = 0
 end)
 end)
 local ddTok = 0
-local popup, popupStroke, popGrad, popScale, scroll, searchHolder, searchBox, emptyLbl, fade, clearBtn
+local popup, popupStroke, popGrad, popScale, scroll, searchHolder, searchBox, emptyLbl, fade, clearBtn, searchDiv
 local rows = {}
 local popW, maxH = 190, 240
 local function updateFade()
@@ -5950,11 +6211,11 @@ local sel = isSel(opt)
 if r.sel ~= sel then
 r.sel = sel
 local an = live and r.btn.Visible
-put(r.btn, 0.16, { BackgroundTransparency = sel and 0.08 or 1 }, an)
+put(r.btn, 0.16, { BackgroundTransparency = sel and 0.3 or 1 }, an)
 put(r.bar, 0.16, { BackgroundTransparency = sel and 0 or 1 }, an)
 put(r.label, 0.16, { TextColor3 = sel and selText or T.Text }, an)
 r.label.Font = sel and T.FontBold or T.Font
-if r.stroke then put(r.stroke, 0.16, { Transparency = sel and 0.5 or 1 }, an) end
+if r.stroke then put(r.stroke, 0.16, { Transparency = sel and 0.7 or 1 }, an) end
 if r.chk then put(r.chk, 0.16, { BackgroundTransparency = sel and 0 or 1 }, an) end
 put(r.check, 0.16, { TextTransparency = sel and 0 or 1 }, an)
 if multi then
@@ -6033,6 +6294,7 @@ end
 local function applyChrome()
 local top, bot = chrome()
 searchHolder.Visible = top > 0
+searchDiv.Visible = top > 0
 scroll.Position = UDim2.fromOffset(0, top)
 scroll.Size = UDim2.new(1, 0, 1, -(top + bot))
 end
@@ -6054,7 +6316,7 @@ for i, opt in ipairs(options) do
 local b = new("TextButton", {
 LayoutOrder = i, Size = UDim2.new(1, 0, 0, optH), BackgroundColor3 = selBG, BackgroundTransparency = 1,
 AutoButtonColor = false, Text = "", Parent = scroll,
-}, { rc(12) })
+}, { rc(15) })
 if not lowPower() then
 new("UIGradient", { Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(190, 190, 205)), Rotation = 0, Parent = b })
 end
@@ -6076,13 +6338,20 @@ th.Parent = b
 lblX = 18 + isz + 10
 end
 local title, detail = splitName(opt)
+local richTitle
+if not detail and cfg.DimParens ~= false then
+local main, par = title:match("^(.-)%s*(%b())%s*$")
+if main and main ~= "" and par and par ~= "" then
+richTitle = escRich(main) .. "  <font transparency=\"0.5\">" .. escRich(par) .. "</font>"
+end
+end
 local holder = new("Frame", {
 AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, lblX, 0.5, 0), Size = UDim2.new(1, -(lblX + 34), 0, 0),
 AutomaticSize = AY, BackgroundTransparency = 1, Parent = b,
 }, { new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 1), VerticalAlignment = Enum.VerticalAlignment.Center }) })
 local lbl = new("TextLabel", {
-LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Text = title,
-Font = T.Font, TextSize = touch and 15 or 14, TextColor3 = T.Text, TextXAlignment = LEFT,
+LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Text = richTitle or title,
+RichText = richTitle ~= nil, Font = T.Font, TextSize = touch and 15 or 14, TextColor3 = T.Text, TextXAlignment = LEFT,
 TextTruncate = Enum.TextTruncate.AtEnd, Parent = holder,
 })
 local sub
@@ -6170,6 +6439,7 @@ searchBox.TextColor3, searchBox.PlaceholderColor3 = T.Text, T.SubText
 local ss = searchBox:FindFirstChildOfClass("UIStroke")
 if ss then ss.Color = T.Accent end
 scroll.ScrollBarImageColor3 = T.Accent
+if searchDiv then searchDiv.BackgroundColor3 = T.Border end
 if fade then fade.BackgroundColor3 = popBG:Lerp(Color3.new(0, 0, 0), 0.14) end
 for _, r in pairs(rows) do
 r.sel = nil
@@ -6183,8 +6453,8 @@ local function build()
 popup = new("Frame", {
 Visible = false, ZIndex = 61, BackgroundColor3 = popBG, BorderSizePixel = 0, ClipsDescendants = true,
 Active = true, Parent = win.Gui,
-}, { rc(18),
-new("UIStroke", { Color = T.Accent, Thickness = 1, Transparency = 0.3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
+}, { rc(20),
+new("UIStroke", { Color = T.Accent, Thickness = 1, Transparency = POP_STROKE, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
 wash(cseq({ 0, popBG }, { 1, popBG }), 90) })
 popupStroke = popup:FindFirstChildOfClass("UIStroke")
 popGrad = popup:FindFirstChildOfClass("UIGradient")
@@ -6194,7 +6464,14 @@ searchBox = new("TextBox", {
 Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Control, Text = "", PlaceholderText = "Search…",
 PlaceholderColor3 = T.SubText, TextColor3 = T.Text, Font = T.Font, TextSize = touch and 14 or 13, TextXAlignment = LEFT,
 ClearTextOnFocus = false, Parent = searchHolder,
-}, { rc(12), new("UIStroke", { Color = T.Accent, Thickness = 1, Transparency = 0.6, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }), padding(36, 0, 32, 0) })
+}, { rc(16), new("UIStroke", { Color = T.Accent, Thickness = 1, Transparency = 0.75, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }), padding(36, 0, 32, 0) })
+searchDiv = new("Frame", {
+Position = UDim2.new(0, 12, 0, searchH - 1), Size = UDim2.new(1, -24, 0, 1), BackgroundColor3 = T.Border,
+BackgroundTransparency = 0.6, BorderSizePixel = 0, Parent = popup,
+})
+local sbStroke = searchBox:FindFirstChildOfClass("UIStroke")
+searchBox.Focused:Connect(function() tween(sbStroke, 0.15, { Transparency = 0.15 }) end)
+searchBox.FocusLost:Connect(function() tween(sbStroke, 0.2, { Transparency = 0.75 }) end)
 if Library:IsIconName("lucide:search") then
 local d = Library:ResolveIcon("lucide:search")
 if d then
@@ -6217,11 +6494,11 @@ scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
 Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = touch and 5 or 4, ScrollBarImageTransparency = 0.3,
 ScrollBarImageColor3 = T.Accent, CanvasSize = UDim2.new(), AutomaticCanvasSize = AY,
 ScrollingDirection = Enum.ScrollingDirection.Y, Parent = popup,
-}, { list(GAP), padding(10, 8, 10, 10) })
+}, { list(GAP), padding(8, 8, 8, 8) })
 fade = new("Frame", {
 AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, multi and -footH or 0), Size = UDim2.new(1, 0, 0, 28),
 BackgroundColor3 = popBG:Lerp(Color3.new(0, 0, 0), 0.14), BorderSizePixel = 0, Visible = false, ZIndex = 2, Parent = popup,
-}, { new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) }) }) })
+}, { new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) }) }), rc(20) })
 scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(updateFade)
 scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(updateFade)
 scroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(updateFade)
@@ -6319,8 +6596,8 @@ local minH = top + bot + optH + PAD
 popW = math.min(math.max(size.X / k, 190, math.min(desiredWidth(), touch and 340 or 320)), vp.X - 12)
 layoutRows()
 local want = math.min(top + bot + math.max(rowsHeight(), optH + GAP) + PAD, cap)
-local below = (bmax.Y - (pos.Y + size.Y + 4 * k)) / k - 8
-local above = (pos.Y - 4 * k - bmin.Y) / k - 8
+local below = (bmax.Y - (pos.Y + size.Y + 4 * k)) / k - 28
+local above = (pos.Y - 4 * k - bmin.Y) / k - 20
 local down = want <= below or below >= above
 maxH = math.max(math.min(cap, down and below or above), math.min(minH, vp.Y - 16))
 local x = math.clamp(pos.X, bmin.X + 6 * k, math.max(bmin.X + 6 * k, bmax.X - popW * k - 6 * k))
@@ -6365,7 +6642,7 @@ scroll.CanvasPosition = Vector2.new()
 if target > 0 then tween(scroll, 0.3, { CanvasPosition = Vector2.new(0, target) }, QUINT, OUT) end
 fit(true)
 tween(popup, 0.18, { BackgroundTransparency = 0 }, SINE, OUT)
-tween(popupStroke, 0.18, { Transparency = 0.3 }, SINE, OUT)
+tween(popupStroke, 0.18, { Transparency = POP_STROKE }, SINE, OUT)
 end)
 end
 function dd:Close()
@@ -15559,19 +15836,26 @@ function Section:CreatePlayerPicker(cfg)
 	return regObj(cfg, obj)
 end
 
--- Live FPS / ping / memory card. Updates only while the window is visible.
+-- Live FPS / ping / memory card with history graphs. Updates only while the window is visible.
 function Section:CreatePerformance(cfg)
 	cfg = cfg or {}
 	local win, T = self.Window, self.Window.Theme
 	local interval = math.max(0.2, tonumber(cfg.Interval) or 0.5)
-	local h = 50
+	local showGraph = cfg.Graph ~= false
+	local N = math.clamp(tonumber(cfg.Points) or 40, 10, 120)
+	local GH = tonumber(cfg.GraphHeight) or 44
+	local topH = 50
+	local h = showGraph and (topH + 8 + (GH + 6) * 2 + 4) or topH
 	local frame = new("Frame", { Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = T.Control, BorderSizePixel = 0, Parent = self.Body },
 		{ corner(10), stroke(T.Border, 1, 0.5) })
+	local good, mid, bad = Color3.fromRGB(74, 222, 128), Color3.fromRGB(250, 204, 21), Color3.fromRGB(248, 113, 113)
+
 	local cells = {}
 	for i, cap in ipairs({ "FPS", "PING", "MEM" }) do
 		local cell = new("Frame", {
-			Position = UDim2.fromScale((i - 1) / 3, 0), Size = UDim2.fromScale(1 / 3, 1), BackgroundTransparency = 1, Parent = frame,
+			Position = UDim2.fromScale((i - 1) / 3, 0), Size = UDim2.fromScale(1 / 3, 0), BackgroundTransparency = 1, Parent = frame,
 		})
+		cell.Size = UDim2.new(1 / 3, 0, 0, topH)
 		cells[i] = new("TextLabel", {
 			Position = UDim2.fromOffset(0, 6), Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1, Text = "-",
 			Font = T.FontBold, TextSize = 17, TextColor3 = T.Accent, Parent = cell,
@@ -15581,33 +15865,105 @@ function Section:CreatePerformance(cfg)
 			Font = T.Font, TextSize = 11, TextColor3 = T.SubText, Parent = cell,
 		})
 	end
-	local good, mid, bad = Color3.fromRGB(74, 222, 128), Color3.fromRGB(250, 204, 21), Color3.fromRGB(248, 113, 113)
-	local last = { Fps = 0, Ping = 0, Memory = 0 }
-	local frames, t0 = 0, os.clock()
+
+	-- Smooth area graphs (shared with the Profile panel).
+	local fpsG, pingG
+	if showGraph then
+		local function mk(y, stops, minHi, hiStep, fmt, ref)
+			return Library._AreaGraph(frame, {
+				Theme = T, Position = UDim2.new(0, 8, 0, y), Size = UDim2.new(1, -16, 0, GH), Height = GH, Points = N, Interval = interval,
+				Stops = stops, MinHi = minHi, HiStep = hiStep, Format = fmt, Ref = ref, Corner = 6, Columns = 48, LineSegs = 24,
+			})
+		end
+		fpsG = mk(topH + 8, { { 25, bad }, { 40, mid }, { 55, good } }, 60, 30, function(v) return "FPS " .. math.floor(v + 0.5) end, 60)
+		pingG = mk(topH + 8 + GH + 6, { { 70, good }, { 130, mid }, { 220, bad } }, 100, 50, function(v) return "PING " .. math.floor(v + 0.5) end, 100)
+	end
+
+	local function fpsColor(v) return v >= 50 and good or (v >= 30 and mid or bad) end
+	local function pingColor(v) return v <= 100 and good or (v <= 200 and mid or bad) end
+
+	-- Ping: Data Ping first, local player network ping as fallback. Returns nil when unavailable.
+	local pingItem
+	local function readPing()
+		if not pingItem then
+			pcall(function() pingItem = StatsService.Network.ServerStatsItem["Data Ping"] end)
+		end
+		if pingItem then
+			local ok, v = pcall(pingItem.GetValue, pingItem)
+			if ok and type(v) == "number" and v >= 0 then return v end
+			pingItem = nil
+		end
+		local ok, v = pcall(function() return game:GetService("Players").LocalPlayer:GetNetworkPing() * 1000 end)
+		if ok and type(v) == "number" and v >= 0 then return v end
+		return nil
+	end
+	local function readMem()
+		local ok, v = pcall(function() return StatsService:GetTotalMemoryUsageMb() end)
+		return ok and type(v) == "number" and v or 0
+	end
+
+	local last = { Fps = 0, Ping = 0, Memory = 0, FpsMin = 0 }
+	local acc, frames, maxDt, warm = 0, 0, 0, 0
+	local smoothFps, smoothPing
+	local setText = function(lbl, txt) if lbl.Text ~= txt then lbl.Text = txt end end
 	local conn
-	conn = RunService.Heartbeat:Connect(function()
+	conn = RunService.Heartbeat:Connect(function(dt)
+		-- Hidden window: drop the sample so reopening does not show a stale spike.
+		if win.Visible == false then
+			acc, frames, maxDt, warm = 0, 0, 0, 0
+			return
+		end
+		-- Skip the first frames after opening, they are always slow.
+		if warm < 3 then warm += 1 return end
+		if dt <= 0 then return end
+		if showGraph then fpsG:Step(dt) pingG:Step(dt) end
 		frames += 1
-		local now = os.clock()
-		if now - t0 < interval then return end
-		local fps = frames / (now - t0)
-		frames, t0 = 0, now
-		if win.Visible == false then return end
-		local ping = 0
-		pcall(function() ping = StatsService.Network.ServerStatsItem["Data Ping"]:GetValue() end)
-		local mem = 0
-		pcall(function() mem = StatsService:GetTotalMemoryUsageMb() end)
-		last.Fps, last.Ping, last.Memory = fps, ping, mem
-		cells[1].Text = tostring(math.floor(fps + 0.5))
-		cells[1].TextColor3 = fps >= 50 and good or (fps >= 30 and mid or bad)
-		cells[2].Text = math.floor(ping + 0.5) .. " ms"
-		cells[2].TextColor3 = ping <= 100 and good or (ping <= 200 and mid or bad)
-		cells[3].Text = math.floor(mem + 0.5) .. " MB"
+		acc += dt
+		if dt > maxDt then maxDt = dt end
+		if acc < interval then return end
+
+		local rawFps = frames / acc
+		local lowFps = maxDt > 0 and 1 / maxDt or rawFps
+		acc, frames, maxDt = 0, 0, 0
+
+		-- EMA smoothing keeps the number readable without hiding real drops.
+		smoothFps = smoothFps and (smoothFps + (rawFps - smoothFps) * 0.5) or rawFps
+		local fps = math.clamp(smoothFps, 0, 999)
+
+		local rawPing = readPing()
+		if rawPing then smoothPing = smoothPing and (smoothPing + (rawPing - smoothPing) * 0.5) or rawPing end
+		local ping = smoothPing
+		local mem = readMem()
+
+		last.Fps, last.FpsMin, last.Ping, last.Memory = fps, math.min(lowFps, fps), ping or 0, mem
+		setText(cells[1], tostring(math.floor(fps + 0.5)))
+		cells[1].TextColor3 = fpsColor(fps)
+		if ping then
+			setText(cells[2], math.floor(ping + 0.5) .. " ms")
+			cells[2].TextColor3 = pingColor(ping)
+		else
+			setText(cells[2], "--")
+			cells[2].TextColor3 = T.SubText
+		end
+		setText(cells[3], math.floor(mem + 0.5) .. " MB")
+
+		if showGraph then
+			if not fpsG.Seeded then fpsG.Seeded = true fpsG:Seed(fps) end
+			fpsG:Push(fps)
+			if ping then
+				if not pingG.Seeded then pingG.Seeded = true pingG:Seed(ping) end
+				pingG:Push(ping)
+			end
+		end
+
 	end)
 	table.insert(win.Conns, conn)
 	frame.Destroying:Connect(function() conn:Disconnect() end)
 	self:_Register(frame, cfg.Name or "Performance", h)
 	local obj = { Frame = frame }
-	function obj:Get() return { Fps = last.Fps, Ping = last.Ping, Memory = last.Memory } end
+	function obj:Get() return { Fps = last.Fps, FpsMin = last.FpsMin, Ping = last.Ping, Memory = last.Memory } end
+	function obj:GetHistory() return { Fps = fpsG and fpsG:History() or {}, Ping = pingG and pingG:History() or {} } end
+	function obj:SetInterval(v) interval = math.max(0.2, tonumber(v) or interval) end
 	return obj
 end
 end
