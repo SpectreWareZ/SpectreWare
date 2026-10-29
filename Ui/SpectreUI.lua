@@ -785,10 +785,11 @@ local function isPress(i)
 return i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch
 end
 local function v2(p) return Vector2.new(p.X, p.Y) end
+Library.HideOpenButtonOnPC = false
 Library.AutoScale = true
-Library.AutoScaleRef = nil
+Library.AutoScaleRef = 720
 Library.AutoScaleMin = nil
-Library.AutoScaleMax = nil
+Library.AutoScaleMax = 1
 function Library._autoK(vp)
 if Library.AutoScale == false then return 1 end
 if not vp or vp.X <= 0 or vp.Y <= 0 then
@@ -2565,7 +2566,7 @@ local autoH = touch and vp.Y * 0.95 or math.clamp(vp.Y * 0.72, 640, 820)
 if not sized then
 eL, eR, eB = math.max(eL, 14), math.max(eR, 14), math.max(eB, 14)
 topPad = math.max(topPad, 14)
-autoW, autoH = vp.X * 0.8, vp.Y * 0.86
+autoW, autoH = math.min(vp.X * 0.8, 640), math.min(vp.Y * 0.86, 420)
 fw = math.min(self.Cfg.MinWidth or 520, vp.X - eL - eR)
 fh = math.min(self.Cfg.MinHeight or 240, vp.Y - topPad - eB)
 end
@@ -2886,7 +2887,10 @@ tween(self.OpenScale, 0.25, { Scale = 1 }, QUINT, OUT)
 end)
 end
 function Window:_OpenBtnAllowed()
-return not (self.Cfg.HideOpenButtonOnPC == true and not false)
+local hide = self.Cfg.HideOpenButtonOnPC
+if hide == nil then hide = Library.HideOpenButtonOnPC end
+local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+return not (hide == true and not isMobile)
 end
 function Window:SetHideOpenButtonOnPC(v)
 self.Cfg.HideOpenButtonOnPC = v and true or false
@@ -7803,20 +7807,20 @@ self:CloseDropdowns()
 Library:CloseMenu()
 local T, gui = self.Theme, self.Gui
 local vp = gui.AbsoluteSize
-local top = (vp.Y < 520) and 8 or 56
-local W = math.min(420, vp.X - 20)
-local H = math.clamp(vp.Y - top - 16, 150, 400)
+local top = (vp.Y < 520) and 8 or 40
+local W = math.min(320, vp.X - 20)
+local H = math.clamp(vp.Y - top - 16, 120, 260)
 local cx = nil
 do
 local main = self.Main
 if main and main.Visible and main.AbsoluteSize.X > 0 and self.Visible ~= false then
 local o = gui.AbsolutePosition
 local mp, ms = main.AbsolutePosition - o, main.AbsoluteSize
-local gap = (ms.Y < 360) and 8 or 56
+local gap = (ms.Y < 360) and 8 or 40
 top = mp.Y + gap
 cx = mp.X + ms.X / 2
-W = math.min(420, ms.X - 20)
-H = math.clamp(ms.Y - gap - 16, 150, 400)
+W = math.min(320, ms.X - 20)
+H = math.clamp(ms.Y - gap - 16, 120, 260)
 end
 end
 local cardX = cx and UDim2.fromOffset(cx, 0) or UDim2.fromScale(0.5, 0)
@@ -7829,13 +7833,13 @@ AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(cardX.X.Scale, cardX.X.O
 BackgroundColor3 = T.Panel, BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, Parent = overlay,
 }, { corner(12), stroke(T.Accent, 1, 0.35), wash(cseq({ 0, T.Top }, { 1, T.Panel }), 90) })
 local box = new("TextBox", {
-Position = UDim2.fromOffset(12, 10), Size = UDim2.new(1, -24, 0, 36), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1,
+Position = UDim2.fromOffset(8, 8), Size = UDim2.new(1, -16, 0, 28), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1,
 BorderSizePixel = 0, Text = initial or "", PlaceholderText = "Search settings or run a command   (try: speed = 50)",
-PlaceholderColor3 = T.SubText, TextColor3 = T.Text, Font = T.Font, TextSize = 14, TextXAlignment = LEFT,
+PlaceholderColor3 = T.SubText, TextColor3 = T.Text, Font = T.Font, TextSize = 12, TextXAlignment = LEFT,
 ClearTextOnFocus = false, TextTruncate = Enum.TextTruncate.AtEnd, Parent = card,
 }, { corner(8), stroke(T.Border, 1, 0.35), padding(10, 0, 10, 0) })
 local scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
-Position = UDim2.fromOffset(8, 54), Size = UDim2.new(1, -16, 1, -62), BackgroundTransparency = 1, BorderSizePixel = 0,
+Position = UDim2.fromOffset(6, 42), Size = UDim2.new(1, -12, 1, -48), BackgroundTransparency = 1, BorderSizePixel = 0,
 ScrollBarThickness = 3, ScrollBarImageColor3 = T.Accent, CanvasSize = UDim2.new(), AutomaticCanvasSize = AY,
 ScrollingDirection = Enum.ScrollingDirection.Y, Parent = card,
 }, { list(4) })
@@ -7846,8 +7850,8 @@ if self._palette == state then self:ClosePalette() end
 end
 overlay.MouseButton1Click:Connect(close)
 local rows, current, sel = {}, {}, 1
-local ROWH = 44
-local PADY = (ROWH - 40) / 2
+local ROWH = 34
+local PADY = (ROWH - 30) / 2
 local function paintSel()
 for i, r in ipairs(rows) do
 local m = r:FindFirstChild("Sel")
@@ -7860,29 +7864,29 @@ LayoutOrder = idx, Size = UDim2.new(1, 0, 0, ROWH), BackgroundColor3 = T.Control
 Text = "", AutoButtonColor = false, Parent = scroll,
 }, { corner(8) })
 new("Frame", {
-Name = "Sel", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 2, 0.5, 0), Size = UDim2.fromOffset(3, ROWH - 16),
+Name = "Sel", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 2, 0.5, 0), Size = UDim2.fromOffset(3, ROWH - 12),
 BackgroundColor3 = T.Accent, BorderSizePixel = 0, Visible = false, Parent = btn,
 }, { corner(2) })
 feedback(btn, btn, "BackgroundTransparency", 1, 0.8, 0.55, true)
-Library._iconBadge(btn, it.icon, it.letter, T.Accent, 32, nil, T).Position = UDim2.new(0, 8, 0.5, 0)
-local subX = 48
+Library._iconBadge(btn, it.icon, it.letter, T.Accent, 24, nil, T).Position = UDim2.new(0, 6, 0.5, 0)
+local subX = 38
 if it.tabLetter then
-Library._iconBadge(btn, it.tabIcon, it.tabLetter, T.SubText, 14, nil, T, true).Position = UDim2.fromOffset(48, 21 + PADY + 7)
-subX = 66
+Library._iconBadge(btn, it.tabIcon, it.tabLetter, T.SubText, 12, nil, T, true).Position = UDim2.fromOffset(38, 17 + PADY + 3)
+subX = 54
 end
 new("TextLabel", {
-Position = UDim2.fromOffset(48, 3 + PADY), Size = UDim2.new(1, -140, 0, 18), BackgroundTransparency = 1, Text = it.title,
-Font = T.FontBold, TextSize = 14, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
+Position = UDim2.fromOffset(38, 2 + PADY), Size = UDim2.new(1, -112, 0, 15), BackgroundTransparency = 1, Text = it.title,
+Font = T.FontBold, TextSize = 12, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 })
 new("TextLabel", {
-Position = UDim2.fromOffset(subX, 21 + PADY), Size = UDim2.new(1, -(subX + 92), 0, 14), BackgroundTransparency = 1, Text = it.sub or "",
-Font = T.Font, TextSize = 14, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
+Position = UDim2.fromOffset(subX, 17 + PADY), Size = UDim2.new(1, -(subX + 74), 0, 12), BackgroundTransparency = 1, Text = it.sub or "",
+Font = T.Font, TextSize = 10, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 })
 local chip = new("TextLabel", {
-Name = "Chip", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(80, 20),
-BackgroundColor3 = T.AccentSoft, BorderSizePixel = 0, Text = it.chip or "", Font = T.FontBold, TextSize = 14,
+Name = "Chip", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0), Size = UDim2.fromOffset(60, 16),
+BackgroundColor3 = T.AccentSoft, BorderSizePixel = 0, Text = it.chip or "", Font = T.FontBold, TextSize = 10,
 TextColor3 = T.Accent, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
-}, { corner(10), padding(6, 0, 6, 0) })
+}, { corner(8), padding(4, 0, 4, 0) })
 btn.MouseButton1Click:Connect(function() it.run(chip) end)
 return btn
 end

@@ -327,6 +327,7 @@ Library:CreateWindow({ Title = "X", AutoCheck = false })
 | `Title` | `"แบรนด์ \| ย่อย"` |
 | `Logo` `Width` `Height` | โลโก้ (asset id) / ขนาด |
 | `ToggleKey` | ปุ่มเปิด/ปิดเมนู |
+| `HideOpenButtonOnPC = true` | ซ่อนปุ่มเปิด UI บน PC (มือถือยังเห็น) · ตั้งทั้งไลบรารีได้ด้วย `Library.HideOpenButtonOnPC = true` · ใช้คู่กับ `ToggleKey` |
 | `Theme` `Font` `FX` | ธีม / ฟอนต์ / เอฟเฟกต์ (`petals/orbs/grid/embers/rain`) |
 | `Background = false` / `Resizable = false` | ปิดพื้นหลัง / ห้ามปรับขนาด |
 | `TwoColumn` / `Compact` | บังคับ 2 คอลัมน์ / โหมดแคบ · บนมือถือ `TwoColumn` ต้องใส่ `true` เอง และพื้นที่เนื้อหาต้องกว้าง ≥ 520px |
@@ -341,6 +342,7 @@ Library:CreateWindow({ Title = "X", AutoCheck = false })
 | `LockTab(tab, reason)` / `UnlockTab(tab)` | ล็อกแท็บ VIP |
 | `Open` / `Close` / `Toggle` / `IsOpen` | เปิด/ปิดเมนู |
 | `SetToggleKey(key)` | เปลี่ยนปุ่มเมนู |
+| `SetHideOpenButtonOnPC(bool)` | ซ่อน/แสดงปุ่มเปิด UI บน PC · มือถือไม่ได้รับผล |
 | `SetTitle` `Center` `Resize` `SetMaximized` `Flash` | หน้าตาหน้าต่าง |
 | `SetTwoColumn(bool)` / `SetCompact(bool)` | สลับ 2 คอลัมน์ / โหมดแคบ |
 | `SetUIScale(0.6–1.6)` / `GetUIScale()` | ขนาด UI ทั้งหมด |
@@ -408,7 +410,7 @@ Library:CreateWindow({ Title = "X", AutoCheck = false })
 | `section:CreateThemeManager({ Name, Flag, Remember, Random, Delete })` | UI จัดการธีมสำเร็จรูป |
 | `section:CreateFontPicker({ Name, Flag, Remember })` | dropdown เลือกฟอนต์ |
 
-**มีในโค้ดแต่ไม่เคยอยู่ในคู่มือ (ยังไม่ทราบพฤติกรรมแน่ชัด):** `Window:FitText` `Glitch` `PlayCascade` `Scramble` `SetAurora` `SetHideOpenButtonOnPC` `SetRainbow` `SetShaded` `SetSpotlight` `Shake` · `Tab:SetScrollEnabled`
+**มีในโค้ดแต่ไม่เคยอยู่ในคู่มือ (ยังไม่ทราบพฤติกรรมแน่ชัด):** `Window:FitText` `Glitch` `PlayCascade` `Scramble` `SetAurora` `SetRainbow` `SetShaded` `SetSpotlight` `Shake` · `Tab:SetScrollEnabled`
 
 ---
 
@@ -432,7 +434,8 @@ Library:CreateWindow({ Title = "X", AutoCheck = false })
 
 สถานะ **beta**: `Library.Version = "3.17"`, `Library.Stage = "beta"` (ตั้ง `Stage = nil` ตอนปล่อยเสถียร)
 
-- **ล่าสุด:** เพิ่ม `CreateRadio`, `CreateRating` · `Library:GetFlag` / `HasFlag` / `CycleFlag`
+- **ล่าสุด:** `HideOpenButtonOnPC` ซ่อนปุ่มเปิดเฉพาะ PC (แก้บั๊กที่เคยซ่อนบนมือถือด้วย) · สเกลอัตโนมัติจำกัดไม่เกิน 1x (`AutoScaleMax = 1`, `AutoScaleRef = 720`) และขนาดหน้าต่างเริ่มต้นสูงสุด 640×420 · ปรับได้ด้วย `Width`/`Height` ใน `CreateWindow`
+- **ก่อนหน้า:** เพิ่ม `CreateRadio`, `CreateRating` · `Library:GetFlag` / `HasFlag` / `CycleFlag`
 - **ก่อนหน้า:** เพิ่ม `CreateStatusCard` · รวมแท็บ THEME เข้า SETTINGS · เพิ่มส่วน Interface ใน SETTINGS
 - **v3.17:** โหลดเป็นขั้น (`Build`, `OnLoaded`, `StagedLoad`)
 - **v3.16:** Splash แบบเรียบ (ค่าเริ่มต้นสั้นลง)
