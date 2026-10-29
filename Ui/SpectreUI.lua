@@ -888,8 +888,7 @@ return math.floor(v * 1e5 + 0.5) / 1e5
 end
 local rippleLive = setmetatable({}, { __mode = "k" })
 local RIPPLE_MAX = 3
-local function ripple(btn, pos)
-if lowPower() then return end
+local function ripple(btn, pos, tint)
 local live = rippleLive[btn]
 if not live then live = {} rippleLive[btn] = live end
 if #live >= RIPPLE_MAX then
@@ -919,16 +918,21 @@ if u and u.Scale > 0.01 then sc *= u.Scale end
 node = node.Parent
 end
 local ap, sz = layer.AbsolutePosition, layer.AbsoluteSize
-local base = math.max(sz.X, sz.Y) / sc
+local diag = math.sqrt(sz.X * sz.X + sz.Y * sz.Y) / sc
+local col = tint or Color3.new(1, 1, 1)
 local r = new("Frame", {
 AnchorPoint = Vector2.new(0.5, 0.5),
 Position = UDim2.fromOffset(math.clamp((pos.X - ap.X) / sc, 0, sz.X / sc), math.clamp((pos.Y - ap.Y) / sc, 0, sz.Y / sc)),
-Size = UDim2.fromOffset(base * 0.5, base * 0.5),
-BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.85,
+Size = UDim2.fromOffset(diag * 0.12, diag * 0.12),
+BackgroundColor3 = col, BackgroundTransparency = 0.78,
 BorderSizePixel = 0, ZIndex = 0, Active = false, Parent = layer,
 }, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+local ring = new("UIStroke", { Color = col, Thickness = 1.5, Transparency = 0.4, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = r })
 table.insert(live, r)
-tween(r, 0.55, { Size = UDim2.fromOffset(base * 2.6, base * 2.6), BackgroundTransparency = 1 }, QUAD, OUT).Completed:Connect(function()
+local dur = 0.7
+local grow = tween(r, dur, { Size = UDim2.fromOffset(diag * 1.9, diag * 1.9), BackgroundTransparency = 1 }, QUINT, OUT)
+tween(ring, dur, { Transparency = 1 }, QUINT, OUT)
+grow.Completed:Connect(function()
 local at = table.find(live, r)
 if at then table.remove(live, at) end
 r:Destroy()
@@ -5399,6 +5403,33 @@ Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), Background
 BorderSizePixel = 0, ZIndex = 4, Parent = b,
 }, { new("UICorner", { CornerRadius = UDim.new(0, R) }) })
 end
+do
+local sheenLayer = new("Frame", {
+Name = "SheenLayer", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0,
+ClipsDescendants = true, Active = false, ZIndex = 2, Parent = b,
+}, { new("UICorner", { CornerRadius = UDim.new(0, R) }) })
+local sheen = new("Frame", {
+AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(-0.25, 0, 0.5, 0), Size = UDim2.new(0.26, 0, 2.2, 0), Rotation = 20,
+BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Active = false, ZIndex = 2, Visible = false, Parent = sheenLayer,
+}, { new("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.86), NumberSequenceKeypoint.new(1, 1) }) }) })
+local sweeping = false
+local function playSheen()
+if sweeping then return end
+sweeping = true
+sheen.Position = UDim2.new(-0.25, 0, 0.5, 0)
+sheen.Visible = true
+tween(sheen, 0.6, { Position = UDim2.new(1.25, 0, 0.5, 0) }, SINE, OUT).Completed:Connect(function()
+sheen.Visible = false
+sweeping = false
+end)
+end
+b.MouseEnter:Connect(function()
+if not usingTouch() then playSheen() end
+end)
+b.InputBegan:Connect(function(i)
+if i.UserInputType == Enum.UserInputType.Touch then playSheen() end
+end)
+end
 if not (grad or accent) then
 local bar = new("Frame", {
 AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 4, 0.5, 0), Size = UDim2.new(0, 3, 0, 0),
@@ -5415,8 +5446,9 @@ tween(bar, 0.16, { Size = UDim2.new(0, 3, 0, 0) }, SINE, OUT)
 if bStroke then tween(bStroke, 0.18, { Color = T.Border }) end
 end)
 end
-dragSafePress(b, function()
+dragSafePress(b, function(i)
 if shade then tween(shade, 0.07, { BackgroundTransparency = 0.8 }, SINE, OUT) end
+if i and i.Position then ripple(b, i.Position) end
 end, function()
 if shade then tween(shade, 0.26, { BackgroundTransparency = 1 }, SINE, OUT) end
 end, 10)
@@ -5447,7 +5479,6 @@ spinScale.Scale = 1
 end
 end)
 end
-clickRipple(b, nil)
 b.MouseButton1Click:Connect(function()
 playSound("Click", cfg.Sound)
 if spinOn then pcall(spin) end
@@ -5822,9 +5853,13 @@ if dd.IsOpen then return end
 tween(btnStroke, 0.18, { Color = T.Border, Transparency = 0.35 })
 end)
 local ddTok = 0
-local popup, popupStroke, popGrad, popScale, scroll, searchHolder, searchBox, emptyLbl
+local popup, popupStroke, popGrad, popScale, scroll, searchHolder, searchBox, emptyLbl, fade, clearBtn
 local rows = {}
 local popW, maxH = 190, 240
+local function updateFade()
+if not fade or not scroll then return end
+fade.Visible = scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y - scroll.CanvasPosition.Y > 4
+end
 local escC, vpC, kC
 local openK = 1
 local curOff, curPad, lastFitW = 0, -38, -1
@@ -6058,9 +6093,13 @@ end
 b.MouseEnter:Connect(function()
 if usingTouch() or isSel(opt) then return end
 tween(b, 0.12, { BackgroundTransparency = 0.62 })
+tween(bar, 0.12, { BackgroundTransparency = 0.5 })
 end)
 b.MouseLeave:Connect(function()
-if not isSel(opt) then tween(b, 0.14, { BackgroundTransparency = 1 }) end
+if not isSel(opt) then
+tween(b, 0.14, { BackgroundTransparency = 1 })
+tween(bar, 0.14, { BackgroundTransparency = 1 })
+end
 end)
 local press = dragSafePress(b, function()
 if not isSel(opt) then tween(b, 0.05, { BackgroundTransparency = 0.35 }) end
@@ -6101,6 +6140,7 @@ searchBox.TextColor3, searchBox.PlaceholderColor3 = T.Text, T.SubText
 local ss = searchBox:FindFirstChildOfClass("UIStroke")
 if ss then ss.Color = T.Accent end
 scroll.ScrollBarImageColor3 = T.Accent
+if fade then fade.BackgroundColor3 = popBG:Lerp(Color3.new(0, 0, 0), 0.14) end
 for _, r in pairs(rows) do
 r.sel = nil
 r.btn.BackgroundColor3 = selBG
@@ -6124,12 +6164,37 @@ searchBox = new("TextBox", {
 Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Control, Text = "", PlaceholderText = "Search…",
 PlaceholderColor3 = T.SubText, TextColor3 = T.Text, Font = T.Font, TextSize = touch and 14 or 13, TextXAlignment = LEFT,
 ClearTextOnFocus = false, Parent = searchHolder,
-}, { rc(12), new("UIStroke", { Color = T.Accent, Thickness = 1, Transparency = 0.6, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }), padding(14, 0, 14, 0) })
+}, { rc(12), new("UIStroke", { Color = T.Accent, Thickness = 1, Transparency = 0.6, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }), padding(36, 0, 32, 0) })
+if Library:IsIconName("lucide:search") then
+local d = Library:ResolveIcon("lucide:search")
+if d then
+local ic = Library:MakeIcon(d, T.SubText)
+ic.AnchorPoint = Vector2.new(0, 0.5)
+ic.Position = UDim2.new(0, 12, 0.5, 0)
+ic.Size = UDim2.fromOffset(16, 16)
+ic.ZIndex = 2
+ic.Parent = searchHolder
+end
+end
+clearBtn = new("TextButton", {
+AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(20, 20), ZIndex = 3,
+BackgroundColor3 = T.Control, BackgroundTransparency = 0.2, AutoButtonColor = false, Text = "✕", Font = T.FontBold, TextSize = 11,
+TextColor3 = T.SubText, Visible = false, Parent = searchHolder,
+}, { rc(10) })
+clearBtn.MouseButton1Click:Connect(function() searchBox.Text = "" end)
+searchBox:GetPropertyChangedSignal("Text"):Connect(function() clearBtn.Visible = searchBox.Text ~= "" end)
 scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
 Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = touch and 5 or 4, ScrollBarImageTransparency = 0.3,
 ScrollBarImageColor3 = T.Accent, CanvasSize = UDim2.new(), AutomaticCanvasSize = AY,
 ScrollingDirection = Enum.ScrollingDirection.Y, Parent = popup,
 }, { list(GAP), padding(10, 8, 10, 10) })
+fade = new("Frame", {
+AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, multi and -footH or 0), Size = UDim2.new(1, 0, 0, 28),
+BackgroundColor3 = popBG:Lerp(Color3.new(0, 0, 0), 0.14), BorderSizePixel = 0, Visible = false, ZIndex = 2, Parent = popup,
+}, { new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) }) }) })
+scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(updateFade)
+scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(updateFade)
+scroll:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(updateFade)
 emptyLbl = new("TextLabel", {
 LayoutOrder = 0, Size = UDim2.new(1, 0, 0, optH), BackgroundTransparency = 1, Text = "No results found", Font = T.Font,
 TextSize = 14, TextColor3 = T.SubText, Visible = false, Parent = scroll,
@@ -12283,69 +12348,75 @@ function obj:Set(img) value = img show(img) end
 function obj:Get() return value end
 return obj
 end
+local STATUS_PALETTE = {
+Color3.fromRGB(88, 166, 255), Color3.fromRGB(255, 176, 64), Color3.fromRGB(74, 222, 128), Color3.fromRGB(167, 139, 250),
+}
 function Section:CreateStatusCard(cfg)
 if type(cfg) == "string" then cfg = { Name = cfg } end
 cfg = cfg or {}
 local T = self.Window.Theme
-local H, PAD = 64, 8
+local H, PAD = 72, 10
 local TILE = H - PAD * 2
 local accent = cfg.Color or T.Accent
 local WHITE = Color3.new(1, 1, 1)
 local RIGHT = Enum.TextXAlignment.Right
 local ATEND = Enum.TextTruncate.AtEnd
 local card = new("Frame", {
-Size = UDim2.new(1, 0, 0, H), BackgroundColor3 = T.Control, BackgroundTransparency = 0.3, BorderSizePixel = 0, Parent = self.Body,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }), stroke(T.Border, 1, 0.45) })
+Size = UDim2.new(1, 0, 0, H), BackgroundColor3 = T.Control, BackgroundTransparency = 0.2, BorderSizePixel = 0, Parent = self.Body,
+}, { new("UICorner", { CornerRadius = UDim.new(0, 10) }), stroke(T.Border, 1, 0.4) })
 local tile = new("Frame", {
-Position = UDim2.fromOffset(PAD, PAD), Size = UDim2.fromOffset(TILE, TILE), BackgroundColor3 = accent, BackgroundTransparency = 0.88,
+Position = UDim2.fromOffset(PAD, PAD), Size = UDim2.fromOffset(TILE, TILE), BackgroundColor3 = accent, BackgroundTransparency = 0.86,
 BorderSizePixel = 0, ClipsDescendants = true, Parent = card,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }), stroke(accent, 1, 0.65) })
+}, { new("UICorner", { CornerRadius = UDim.new(0, 10) }), stroke(accent, 1, 0.6) })
 local bx = PAD * 2 + TILE
 local body = new("Frame", {
 Position = UDim2.fromOffset(bx, 0), Size = UDim2.new(1, -(bx + PAD), 1, 0), BackgroundTransparency = 1, Parent = card,
 })
 local title = new("TextLabel", {
-Position = UDim2.fromOffset(0, PAD), Size = UDim2.new(0.6, 0, 0, 18), BackgroundTransparency = 1, Text = tostring(cfg.Name or "Item"),
-Font = T.FontBold, TextSize = 14, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = ATEND, Parent = body,
+Position = UDim2.fromOffset(0, PAD), Size = UDim2.new(0.62, 0, 0, 20), BackgroundTransparency = 1, Text = tostring(cfg.Name or "Item"),
+Font = T.FontBold, TextSize = 16, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = ATEND, Parent = body,
 })
 local pill = new("TextLabel", {
-AnchorPoint = V2(1, 0), Position = UDim2.new(1, 0, 0, PAD), Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X,
-BackgroundColor3 = T.SubText, BackgroundTransparency = 0.85, BorderSizePixel = 0, Text = "", Font = T.FontBold, TextSize = 13,
+AnchorPoint = V2(1, 0), Position = UDim2.new(1, 0, 0, PAD), Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X,
+BackgroundColor3 = T.SubText, BackgroundTransparency = 0.8, BorderSizePixel = 0, Text = "", Font = T.FontBold, TextSize = 13,
 TextColor3 = T.SubText, Visible = false, Parent = body,
-}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }) })
+}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }) })
 local bars = type(cfg.Bars) == "table" and cfg.Bars or {}
 local n = math.clamp(#bars, 1, 4)
 local cols = new("Frame", {
-Position = UDim2.fromOffset(0, PAD + 18 + 6), Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, Parent = body,
-}, { new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }) })
+Position = UDim2.fromOffset(0, PAD + 20 + 4), Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1, Parent = body,
+}, { new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }) })
 local cells = {}
 for i = 1, n do
 local b = bars[i] or {}
-local col = b.Color or accent
+local col = b.Color or cfg.Color or (n == 1 and accent or STATUS_PALETTE[i])
 local cell = new("Frame", {
-LayoutOrder = i, Size = UDim2.new(1 / n, -math.floor(8 * (n - 1) / n), 1, 0), BackgroundTransparency = 1, Parent = cols,
+LayoutOrder = i, Size = UDim2.new(1 / n, -math.floor(10 * (n - 1) / n), 1, 0), BackgroundTransparency = 1, Parent = cols,
 })
 new("TextLabel", {
-Size = UDim2.new(0.5, 0, 0, 14), BackgroundTransparency = 1, Text = tostring(b.Label or ""), Font = T.Font, TextSize = 13,
+Size = UDim2.new(0.5, 0, 0, 16), BackgroundTransparency = 1, Text = tostring(b.Label or ""), Font = T.Font, TextSize = 13,
 TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = ATEND, Parent = cell,
 })
 local val = new("TextLabel", {
-AnchorPoint = V2(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0.5, 0, 0, 14), BackgroundTransparency = 1, Text = "--",
-Font = T.FontBold, TextSize = 14, TextColor3 = col, TextXAlignment = RIGHT, TextTruncate = ATEND, Parent = cell,
+AnchorPoint = V2(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0.5, 0, 0, 16), BackgroundTransparency = 1, Text = "--",
+Font = T.FontBold, TextSize = n == 1 and 15 or 14, TextColor3 = col, TextXAlignment = RIGHT, TextTruncate = ATEND, Parent = cell,
 })
 local track = new("Frame", {
-Position = UDim2.fromOffset(0, 18), Size = UDim2.new(1, 0, 0, 5), BackgroundColor3 = T.Background, BackgroundTransparency = 0.2,
+Position = UDim2.fromOffset(0, 21), Size = UDim2.new(1, 0, 0, 6), BackgroundColor3 = T.Background, BackgroundTransparency = 0.1,
 BorderSizePixel = 0, Parent = cell,
 }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }) })
 local fill = new("Frame", {
 Size = UDim2.fromScale(0, 1), BackgroundColor3 = WHITE, BorderSizePixel = 0, Parent = track,
 }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), gradient(col, col:Lerp(WHITE, 0.25), 0) })
-cells[i] = { val = val, fill = fill, default = col, max = tonumber(b.Max) or 100 }
+cells[i] = {
+val = val, fill = fill, default = col, max = tonumber(b.Max) or 100,
+showMax = b.ShowMax == true, percent = b.Percent == true, suffix = b.Suffix,
+}
 end
 local empty, shown, picValue = false, nil, cfg.Image
 local function applyEmpty()
-card.BackgroundTransparency = empty and 0.6 or 0.3
-tile.BackgroundTransparency = empty and 0.94 or 0.88
+card.BackgroundTransparency = empty and 0.6 or 0.2
+tile.BackgroundTransparency = empty and 0.94 or 0.86
 title.TextColor3 = empty and T.SubText or T.Text
 if shown then pcall(function() shown.ImageTransparency = empty and 0.65 or 0 end) end
 end
@@ -12355,13 +12426,13 @@ if type(img) == "string" and tonumber(img) then img = tonumber(img) end
 if img ~= nil and img ~= "" then
 if type(img) == "number" or (type(img) == "string" and (img:find("^rbxasset") or img:find("^https?://"))) then
 shown = new("ImageLabel", {
-AnchorPoint = V2(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -8, 1, -8), BackgroundTransparency = 1,
+AnchorPoint = V2(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -6, 1, -6), BackgroundTransparency = 1,
 Image = type(img) == "number" and ("rbxassetid://" .. img) or img, ScaleType = Enum.ScaleType.Fit, Parent = tile,
 })
 elseif Library:IsIconName(img) then
 local desc = Library:ResolveIcon(img)
 if desc then
-local sz = tonumber(cfg.IconSize) or 26
+local sz = tonumber(cfg.IconSize) or 28
 shown = Library:MakeIcon(desc, accent)
 shown.AnchorPoint = V2(0.5, 0.5)
 shown.Position = UDim2.fromScale(0.5, 0.5)
@@ -12374,7 +12445,7 @@ applyEmpty()
 end
 local function setBadge(text, color)
 if text == nil or text == "" then pill.Visible = false return end
-color = color or T.SubText
+color = color or cfg.BadgeColor or accent
 pill.Text = tostring(text)
 pill.TextColor3 = color
 pill.BackgroundColor3 = color
@@ -12386,7 +12457,9 @@ if not c then return end
 v = tonumber(v) or 0
 local a = c.max > 0 and math.clamp(v / c.max, 0, 1) or 0
 local col = color or c.default
-c.val.Text = text ~= nil and tostring(text) or tostring(math.floor(v + 0.5))
+local r = math.floor(v + 0.5)
+local auto = c.showMax and (r .. "/" .. math.floor(c.max + 0.5)) or c.percent and (r .. "%") or (tostring(r) .. (c.suffix or ""))
+c.val.Text = text ~= nil and tostring(text) or auto
 c.val.TextColor3 = col
 local g = c.fill:FindFirstChildOfClass("UIGradient")
 if g then g.Color = ColorSequence.new(col, col:Lerp(WHITE, 0.25)) end
@@ -15519,8 +15592,21 @@ function Window:CreateSettingsTab(...)
 		local sec = tab:CreateSection({ Name = "Interface", Column = 1 })
 		parts.InterfaceSection = sec
 		sec:CreateSlider({
-			Name = "UI Scale", Min = 0.6, Max = 1.6, Increment = 0.05, Default = Library.UserScale or 1,
+			Name = "UI Scale (whole window)", Min = 0.6, Max = 1.6, Increment = 0.05, Default = Library.UserScale or 1,
 			Callback = function(v) self:SetUIScale(v) end,
+		})
+		sec:CreateSlider({
+			Name = "Text Size (text only)", Min = 0.7, Max = 1.4, Increment = 0.05, Default = self:GetTextScale(),
+			Callback = function(v) self:SetTextScale(v, true) end,
+		})
+		sec:CreateToggle({
+			Name = "Auto Scale (by screen height)", Default = Library.AutoScale ~= false,
+			Callback = function(v)
+				Library.AutoScale = v
+				for _, w in ipairs(Library.Windows) do
+					if w._Fit and not w._destroyed then pcall(w._Fit, w, true) end
+				end
+			end,
 		})
 		sec:CreateToggle({
 			Name = "Icon-only sidebar", Default = self.Compact == true,
