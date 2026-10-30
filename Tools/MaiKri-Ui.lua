@@ -5,7 +5,7 @@ local gui, capturing = nil, false
 local C = {
 	BG = Color3.fromRGB(10, 10, 12), BG2 = Color3.fromRGB(19, 18, 21), FIELD = Color3.fromRGB(30, 30, 35),
 	LINE = Color3.fromRGB(58, 52, 48), OFF = Color3.fromRGB(74, 72, 78), TXT = Color3.fromRGB(240, 238, 234),
-	DIM = Color3.fromRGB(145, 138, 132), ACC = Color3.fromRGB(255, 142, 32), ACC2 = Color3.fromRGB(255, 190, 90),
+	DIM = Color3.fromRGB(178, 171, 164), ACC = Color3.fromRGB(255, 142, 32), ACC2 = Color3.fromRGB(255, 190, 90),
 	ACCTXT = Color3.fromRGB(20, 12, 4), WHITE = Color3.new(1, 1, 1), RED = Color3.fromRGB(255, 92, 100), GREEN = Color3.fromRGB(46, 220, 130),
 	DARK = Color3.fromRGB(20, 19, 22), BTN = Color3.fromRGB(16, 14, 14),
 }
@@ -15,6 +15,9 @@ local O, CENTER, AUTO = UDim2.fromOffset, Vector2.new(0.5, 0.5), Enum.AutomaticS
 local LEFT, MID, HORIZ = Enum.TextXAlignment.Left, Enum.TextXAlignment.Center, Enum.FillDirection.Horizontal
 local EASE_BACK = Enum.EasingStyle.Back
 local order = 0
+-- Real hit reach is range + Combat.bodyReach in MaiKri.lua; keep this equal to it so the ring and numbers are honest.
+local REACH_PAD = 2
+local function tx(th, en) return CFG.lang == "en" and en or th end
 local function mk(class, p, parent, r, line)
 	local o = Instance.new(class)
 	if o:IsA("GuiObject") then
@@ -87,22 +90,6 @@ local function shine(parent, color, mid, dur, delay, visible)
 	grad(f, 0, ColorSequence.new(color), NumberSequence.new({ kp(0, 1), kp(0.5, mid), kp(1, 1) }))
 	TweenService:Create(f, TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, false, delay),
 		{ Position = UDim2.new(1.15, 0, 0.5, 0) }):Play()
-	return f
-end
-local function sweepFx(parent, color, mid, dur, gap, first)
-	local f = mk("Frame", {
-		Size = UDim2.new(0.22, 0, 1.8, 0), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(-0.3, 0, 0.5, 0),
-		BackgroundColor3 = C.WHITE, Rotation = 18, ZIndex = 3,
-	}, parent)
-	grad(f, 0, ColorSequence.new(color), NumberSequence.new({ kp(0, 1), kp(0.5, mid), kp(1, 1) }))
-	task.spawn(function()
-		task.wait(first or 0)
-		while f:IsDescendantOf(game) do
-			f.Position = UDim2.new(-0.3, 0, 0.5, 0)
-			tw(f, { Position = UDim2.new(1.1, 0, 0.5, 0) }, dur, Enum.EasingStyle.Sine)
-			task.wait(dur + gap)
-		end
-	end)
 	return f
 end
 local function drag(h, start, move, fin)
@@ -285,15 +272,17 @@ local function updateRing()
 	local right, head = fwd:Cross(Vector3.yAxis), c:FindFirstChild("Head")
 	local base = Vector3.new(hrp.Position.X, head and head.Position.Y or hrp.Position.Y + 1.5, hrp.Position.Z)
 	local h = S.half
+	local reach = S.range + REACH_PAD
 	local function pt(deg)
 		local a = math.rad(deg)
-		return base + (fwd * math.cos(a) + right * math.sin(a)) * S.range
+		return base + (fwd * math.cos(a) + right * math.sin(a)) * reach
 	end
 	local tr = 0.12 + 0.1 * math.sin(os.clock() * 5)
 	for k = 1, SEG do setSeg(segs[k], pt(-h + (k - 1) / SEG * 2 * h), pt(-h + k / SEG * 2 * h), tr) end
 end
-local ringConn
+local ringConn, ringPinned = nil, false
 local function showRange(v)
+	v = v or ringPinned
 	if v and not ringConn then
 		ringConn = on(RunService.RenderStepped, updateRing)
 		updateRing()
@@ -307,7 +296,7 @@ M.gui = gui
 if not pcall(function() gui.Parent = (gethui and gethui()) or svc("CoreGui") end) or not gui.Parent then
 	gui.Parent = lp:WaitForChild("PlayerGui")
 end
-local W, ddOpen = 440, false
+local W, ddOpen, advOpen = 440, false, false
 local paint
 local main = mk("Frame", {
 	Size = UDim2.new(0, W, 0, 0), AutomaticSize = AUTO, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, -90), Active = true,
@@ -317,7 +306,9 @@ local uiScale = mk("UIScale", {}, main)
 local function fitScale()
 	local cam = workspace.CurrentCamera
 	local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
-	local base = UIS.TouchEnabled and math.clamp(math.min(vp.X / (W + 24), vp.Y / (ddOpen and 650 or 510), 1), 0.5, 1) or 1
+	-- Estimated panel height grows with the spare list and the advanced section.
+	local H = 640 + (ddOpen and 140 or 0) + (advOpen and 200 or 0)
+	local base = math.clamp(math.min(vp.X / (W + 24), vp.Y / H, 1), 0.5, 1)
 	uiScale.Scale = math.clamp(base * CFG.scale / 100, 0.4, 1.4)
 end
 fitScale()
@@ -337,29 +328,6 @@ local strokeGrad = grad(panelStroke, 0, ColorSequence.new({
 }), NumberSequence.new(0.2, 0.15))
 TweenService:Create(strokeGrad, TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1), { Rotation = 360 }):Play()
 loop(panelStroke, { Transparency = 0.4 }, 2.2)
-do
-	local layer = mk("Frame", { Size = UDim2.fromScale(1, 1), ClipsDescendants = true, ZIndex = 0 }, panel)
-	local rnd, lin = Random.new(), Enum.EasingStyle.Linear
-	for k = 1, 16 do
-		local sz = rnd:NextInteger(2, 4)
-		local sp = mk("Frame", {
-			Size = O(sz, sz), AnchorPoint = CENTER, BackgroundColor3 = k % 3 == 0 and C.ACC2 or C.ACC, BackgroundTransparency = 1,
-		}, layer, sz)
-		task.spawn(function()
-			task.wait(rnd:NextNumber(0, 6))
-			while sp:IsDescendantOf(game) do
-				local x, dur = rnd:NextNumber(0.06, 0.94), rnd:NextNumber(5, 9)
-				sp.Position = UDim2.new(x, 0, 1, 4)
-				TweenService:Create(sp, TweenInfo.new(dur, lin), { Position = UDim2.new(x + rnd:NextNumber(-0.08, 0.08), 0, 0, -4) }):Play()
-				TweenService:Create(sp, TweenInfo.new(dur * 0.3, lin), { BackgroundTransparency = rnd:NextNumber(0.35, 0.7) }):Play()
-				task.delay(dur * 0.65, function()
-					if sp.Parent then TweenService:Create(sp, TweenInfo.new(dur * 0.35, lin), { BackgroundTransparency = 1 }):Play() end
-				end)
-				task.wait(dur + rnd:NextNumber(0, 1.5))
-			end
-		end)
-	end
-end
 local content = mk("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AUTO }, panel)
 stack(content)
 local function logo(parent, x, y, s)
@@ -387,7 +355,6 @@ mk("TextLabel", {
 	Size = UDim2.new(1, -200, 1, 0), Position = O(48, 0), TextSize = 17, Font = FONTB, RichText = true,
 	Text = 'Captain <font color="rgb(255,142,32)">Shop</font>',
 }, header)
-sweepFx(mk("Frame", { Size = UDim2.new(1, -24, 1, 0), Position = O(12, 0), ClipsDescendants = true }, header), C.ACC2, 0.86, 1.5, 4, 2)
 local function hover(b, color, tint)
 	local st = b.UIStroke
 	on(b.MouseEnter, function() tw(st, { Color = color, Transparency = 0 }, 0.12) tint(color) end)
@@ -452,16 +419,6 @@ local arc = mk("Frame", {
 }, radarBox, 56, C.LINE)
 mk("Frame", { Size = O(56, 56), AnchorPoint = CENTER, Position = UDim2.fromScale(0.5, 0.5) }, arc, 28, C.LINE)
 local sonar = {}
-for i = 1, 2 do
-	local rg = mk("Frame", { Size = O(20, 20), AnchorPoint = CENTER, Position = UDim2.fromScale(0.5, 0.5), Visible = S.enabled }, arc, 56, C.ACC)
-	rg.UIStroke.Thickness, rg.UIStroke.Transparency = 1.5, 0.35
-	sonar[i] = rg
-	task.delay((i - 1) * 1.2, function()
-		local ti = TweenInfo.new(2.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, -1)
-		TweenService:Create(rg, ti, { Size = O(108, 108) }):Play()
-		TweenService:Create(rg.UIStroke, ti, { Transparency = 1 }):Play()
-	end)
-end
 local arrow = mk("Frame", { Size = O(6, 6), AnchorPoint = CENTER, Position = UDim2.new(0.5, 0, 0, 11), Rotation = 45, BackgroundColor3 = C.TXT }, arc, 1)
 loop(arrow, { Position = UDim2.new(0.5, 0, 0, 15) }, 0.9)
 mk("TextLabel", {
@@ -508,33 +465,14 @@ for i = 1, 2 do
 		inn = lbl(i == 1 and "L" or "R", C.ACC), out = (function() local o = lbl("", C.TXT) o.TextSize, o.TextStrokeTransparency = 16, 0.15 return o end)(),
 	}
 end
-local xLbl = lbl("", C.ACC)
-xLbl.Size = O(70, 16)
-do
-	local tr, szs = {}, { 6, 5, 4, 3 }
-	for k = 1, 4 do tr[k] = dot(szs[k], k == 1 and C.WHITE or C.ACC2, arc, 4) end
-	local t0 = os.clock()
-	on(RunService.RenderStepped, function()
-		local e = S.enabled and S.half > 3
-		local t = os.clock() - t0
-		for k = 1, 4 do
-			local f = tr[k]
-			f.Visible = e
-			if e then
-				at(f, math.sin((t - (k - 1) * 0.07) * 1.9) * S.half, R)
-				f.BackgroundTransparency = 0.05 + (k - 1) * 0.25
-			end
-		end
-	end)
-end
-local infoRow = mk("Frame", { Size = UDim2.new(1, 0, 0, 50) }, body)
+local infoRow = mk("Frame", { Size = UDim2.new(1, 0, 0, 56) }, body)
 local angleTxt = mk("TextLabel", {
-	Size = UDim2.new(1, 0, 0, 28), TextSize = 24, Font = FONTB, TextColor3 = C.ACC, TextXAlignment = MID,
+	Size = UDim2.new(1, 0, 0, 30), TextSize = 26, Font = FONTB, TextColor3 = C.ACC, TextXAlignment = MID,
 	TextStrokeColor3 = C.ACC, TextStrokeTransparency = 0.82,
 }, infoRow)
 local angScale = mk("UIScale", {}, angleTxt)
 local subTxt = mk("TextLabel", {
-	Size = UDim2.new(1, 0, 0, 16), Position = O(0, 30), TextSize = 13, TextTransparency = 0.25, TextXAlignment = MID,
+	Size = UDim2.new(1, 0, 0, 18), Position = O(0, 34), TextSize = 14, TextTransparency = 0.05, TextXAlignment = MID,
 }, infoRow)
 local shownHalf = S.half
 local function paintArc(h)
@@ -554,15 +492,17 @@ local function paintArc(h)
 end
 local function drawArc()
 	for i = 1, 2 do ends[i].out.Text = S.half .. "°" end
-	xLbl.Position = UDim2.new(1, 44, 0, 120)
-	xLbl.Text = T("rangeX"):format(S.range / 12)
-	local angleStr = ("%d° - %d%%"):format(S.half * 2, math.floor(S.half * 2 / 360 * 100 + 0.5))
+	-- Big number is per side (what the slider handles show); total and real reach go underneath.
+	local angleStr = ("%s ±%d°"):format(tx("ต่อด้าน", "Per side"), S.half)
 	if angleTxt.Text ~= angleStr then
 		angleTxt.Text = angleStr
 		angScale.Scale = 1.1
 		tw(angScale, { Scale = 1 }, 0.2, EASE_BACK)
 	end
-	subTxt.Text = T("total"):format(S.half * 2, S.range)
+	local behind = S.half > 90
+	subTxt.Text = tx("รวม %d°  ·  ระยะ %d studs  (จริง ≈ %d)", "Total %d°  ·  Range %d studs  (real ≈ %d)")
+		:format(S.half * 2, S.range, S.range + REACH_PAD) .. (behind and tx("  ·  ตีด้านหลังได้", "  ·  hits behind") or "")
+	subTxt.TextColor3 = behind and C.RED or C.TXT
 end
 paintArc(shownHalf)
 on(RunService.RenderStepped, function(dt)
@@ -601,22 +541,58 @@ end
 local ctrl = mk("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AUTO, BackgroundColor3 = Color3.fromRGB(17, 16, 19) }, body, 12, C.LINE)
 pad(ctrl, 12, 8)
 stack(ctrl, 8)
+-- Every widget below registers a repaint here; paint() runs them all (state change, language change).
+local refreshers = {}
+local function heading(parent, th, en)
+	local h = mk("TextLabel", { Size = UDim2.new(1, 0, 0, 20), TextSize = 15, Font = FONTB, TextColor3 = C.ACC, Text = tx(th, en) }, parent)
+	refreshers[#refreshers + 1] = function() h.Text = tx(th, en) end
+	return h
+end
+local function note(parent, th, en)
+	local h = mk("TextLabel", { Size = UDim2.new(1, 0, 0, 18), TextSize = 13, TextColor3 = C.DIM, Text = tx(th, en) }, parent)
+	refreshers[#refreshers + 1] = function() h.Text = tx(th, en) end
+	return h
+end
+local function toggle(parent, labelFn, get, set)
+	local row = mk("TextButton", { Size = UDim2.new(1, 0, 0, 32) }, parent)
+	local lab = mk("TextLabel", { Size = UDim2.new(1, -64, 1, 0), TextSize = 14, Font = FONTB }, row)
+	local sw = mk("Frame", { Size = O(46, 24), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), BackgroundColor3 = C.FIELD }, row, 12, C.LINE)
+	local knob = dot(18, C.TXT, sw, 2)
+	local function sync(instant)
+		local v = get()
+		local bg, pos = v and C.ACC or C.FIELD, UDim2.new(0, v and 34 or 12, 0.5, 0)
+		lab.Text = labelFn()
+		if instant then
+			sw.BackgroundColor3, knob.Position = bg, pos
+		else
+			tw(sw, { BackgroundColor3 = bg }, 0.15)
+			tw(knob, { Position = pos }, 0.15)
+		end
+	end
+	sync(true)
+	refreshers[#refreshers + 1] = function() sync(false) end
+	on(row.Activated, function()
+		keyClick(false)
+		set(not get())
+		sync(false)
+	end)
+end
 local function slider(parent, name, min, max, init, unit, cb, quiet, nameW, onEnd)
-	nameW = nameW or 40
-	local row = mk("Frame", { Size = UDim2.new(1, 0, 0, 20) }, parent)
-	local nameL = mk("TextLabel", { Size = O(nameW, 20), Text = name, TextSize = 12, TextColor3 = C.DIM }, row)
+	nameW = nameW or 70
+	local row = mk("Frame", { Size = UDim2.new(1, 0, 0, 28) }, parent)
+	local nameL = mk("TextLabel", { Size = O(nameW, 28), Text = name, TextSize = 14, Font = FONTB }, row)
 	local val = mk("TextLabel", {
-		Size = O(70, 20), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), TextSize = 12, Font = FONTB, TextColor3 = C.ACC2,
+		Size = O(96, 28), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), TextSize = 14, Font = FONTB, TextColor3 = C.ACC2,
 		TextXAlignment = Enum.TextXAlignment.Right,
 	}, row)
-	local bar = mk("Frame", { Size = UDim2.new(1, -(nameW + 84), 0, 5), Position = O(nameW + 6, 8), BackgroundColor3 = C.BG }, row, 3, C.LINE)
-	local fill = mk("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = C.WHITE }, bar, 3)
+	local bar = mk("Frame", { Size = UDim2.new(1, -(nameW + 108), 0, 7), Position = O(nameW + 6, 10), BackgroundColor3 = C.BG }, row, 4, C.LINE)
+	local fill = mk("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = C.WHITE }, bar, 4)
 	grad(fill, 0)
-	local glow = dot(22, C.ACC, bar, 1)
+	local glow = dot(26, C.ACC, bar, 1)
 	glow.BackgroundTransparency = 0.88
-	local knob = dot(14, C.TXT, bar, 2)
+	local knob = dot(18, C.TXT, bar, 2)
 	mk("UIStroke", { Color = C.ACC, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, knob)
-	local hit = mk("TextButton", { Size = UDim2.new(1, -(nameW + 70), 0, 20), Position = O(nameW - 1, 0), ZIndex = 3 }, row)
+	local hit = mk("TextButton", { Size = UDim2.new(1, -(nameW + 90), 0, 28), Position = O(nameW - 1, 0), ZIndex = 3 }, row)
 	local cur, shownT, targetT, stopDrag = nil, 0, 0, nil
 	local function toT(v) return (v - min) / (max - min) end
 	local function render(t)
@@ -628,7 +604,7 @@ local function slider(parent, name, min, max, init, unit, cb, quiet, nameW, onEn
 		local n = math.clamp(math.floor(v + 0.5), min, max)
 		if n == cur then return end
 		cur = n
-		val.Text = n .. unit
+		val.Text = type(unit) == "function" and unit(n) or (n .. unit)
 		cb(n)
 	end
 	local function set(v)
@@ -656,8 +632,8 @@ local function slider(parent, name, min, max, init, unit, cb, quiet, nameW, onEn
 		commit(min + t0 * (max - min))
 		keyClick(false)
 		if not quiet then showRange(true) end
-		tw(knob, { Size = O(18, 18) }, 0.1)
-		tw(glow, { Size = O(34, 34), BackgroundTransparency = 0.7 }, 0.12)
+		tw(knob, { Size = O(22, 22) }, 0.1)
+		tw(glow, { Size = O(40, 40), BackgroundTransparency = 0.7 }, 0.12)
 		local released, rs, ec, ic, mv = false
 		local function disconnectAll()
 			dc(rs, ec, ic, mv) rs, ec, ic, mv = nil, nil, nil, nil
@@ -669,8 +645,8 @@ local function slider(parent, name, min, max, init, unit, cb, quiet, nameW, onEn
 			targetT = toT(cur)
 			keyClick(true)
 			if not quiet then showRange(false) end
-			tw(knob, { Size = O(14, 14) }, 0.18, EASE_BACK)
-			tw(glow, { Size = O(22, 22), BackgroundTransparency = 0.88 }, 0.2)
+			tw(knob, { Size = O(18, 18) }, 0.18, EASE_BACK)
+			tw(glow, { Size = O(26, 26), BackgroundTransparency = 0.88 }, 0.2)
 			if not silent and onEnd then onEnd(cur) end
 		end
 		stopDrag = function(silent)
@@ -711,20 +687,30 @@ local function slider(parent, name, min, max, init, unit, cb, quiet, nameW, onEn
 	set(init)
 	return set, nameL
 end
+heading(ctrl, "ระยะและความเร็ว", "Range & speed")
 local setRange, rangeNameL = slider(ctrl, T("range"), 1, 25, S.range, " studs", function(v) S.range = v CFG.range = v saveCfg() drawArc() end)
-local setDash, dashNameL = slider(ctrl, T("dashStop"), 3, 20, S.dashStop, " studs", function(v) S.dashStop = v CFG.dashStop = v saveCfg() end, true, 58)
-local setCd, cdNameL = slider(ctrl, T("cd"), 25, 100, S.cdPct, "%", function(v) S.cdPct = v CFG.cdPct = v saveCfg() end, true, 58)
-local refreshers = {}
-local row2 = mk("Frame", { Size = UDim2.new(1, 0, 0, 28) }, ctrl)
+local setDash, dashNameL = slider(ctrl, T("dashStop"), 3, 20, S.dashStop,
+	function(n) return n <= 3 and tx("ปิด", "Off") or (n .. " studs") end,
+	function(v) S.dashStop = v CFG.dashStop = v saveCfg() end, true)
+local setCd, cdNameL = slider(ctrl, T("cd"), 25, 100, S.cdPct,
+	function(n) return n .. "%" .. (n == 100 and tx(" (ปกติ)", " (normal)") or "") end,
+	function(v) S.cdPct = v CFG.cdPct = v saveCfg() end, true)
+toggle(ctrl, function() return tx("แสดงวงระยะในเกม", "Show range ring in game") end,
+	function() return ringPinned end, function(v) ringPinned = v showRange(v) end)
+heading(ctrl, "เป้าหมาย", "Targets")
+toggle(ctrl, function() return tx("ตีผู้เล่น", "Hit players") end, function() return S.players end, function(v) S.players = v end)
+toggle(ctrl, function() return tx("ตี NPC", "Hit NPCs") end, function() return S.npcs end, function(v) S.npcs = v end)
+note(ctrl, "ตำแหน่งที่ตี  ·  คนที่ไม่ตี", "Hit part  ·  Spare list")
+local row2 = mk("Frame", { Size = UDim2.new(1, 0, 0, 32) }, ctrl)
 stack(row2, 8, HORIZ)
 local function segment(parent, w, items, onPick, isSel)
-	local seg = mk("Frame", { Size = O(w, 28), BackgroundColor3 = C.BG }, parent, 8, C.LINE)
+	local seg = mk("Frame", { Size = O(w, 32), BackgroundColor3 = C.BG }, parent, 8, C.LINE)
 	pad(seg, 2, 2)
 	stack(seg, 0, HORIZ)
 	local fns, btns = {}, {}
 	for k, v in ipairs(items) do
 		local b = mk("TextButton", {
-			Size = UDim2.new(0.5, 0, 1, 0), Text = v[2], TextSize = 13, Font = FONTB, TextXAlignment = MID, BackgroundColor3 = C.BG,
+			Size = UDim2.new(0.5, 0, 1, 0), Text = v[2], TextSize = 14, Font = FONTB, TextXAlignment = MID, BackgroundColor3 = C.BG,
 		}, seg, 6)
 		pressFx(b)
 		on(b.Activated, function() onPick(v) end)
@@ -736,14 +722,14 @@ local function segment(parent, w, items, onPick, isSel)
 	end
 	return function() for _, f in ipairs(fns) do f() end end, seg, btns
 end
-local partRefresh, _, partBtns = segment(row2, 100, { { "Head", T("head") }, { "HumanoidRootPart", T("body") } },
+local partRefresh, _, partBtns = segment(row2, 110, { { "Head", T("head") }, { "HumanoidRootPart", T("body") } },
 	function(v) S.part = v[1] CFG.part = v[1] saveCfg() paint() end, function(v) return S.part == v[1] end)
-refreshers[1] = partRefresh
-local ddBtn = mk("TextButton", { Size = UDim2.new(1, -108, 1, 0), TextSize = 13, BackgroundColor3 = C.FIELD }, row2, 8, C.LINE)
+refreshers[#refreshers + 1] = partRefresh
+local ddBtn = mk("TextButton", { Size = UDim2.new(1, -118, 1, 0), TextSize = 14, BackgroundColor3 = C.FIELD }, row2, 8, C.LINE)
 pad(ddBtn, 10, 0)
 pressFx(ddBtn)
 local ddArrow = mk("TextLabel", {
-	Size = O(16, 28), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), TextXAlignment = MID, TextColor3 = C.ACC, TextSize = 12, Font = FONTB,
+	Size = O(16, 32), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), TextXAlignment = MID, TextColor3 = C.ACC, TextSize = 12, Font = FONTB,
 }, ddBtn)
 local listBox = mk("Frame", { Size = UDim2.new(1, 0, 0, 124), BackgroundColor3 = C.BG, Visible = false }, ctrl, 8, C.LINE)
 local searchBox = mk("TextBox", {
@@ -878,6 +864,29 @@ end)
 on(Players.PlayerAdded, function() task.delay(0.1, rebuildList) end)
 on(Players.PlayerRemoving, function() task.delay(0.1, rebuildList) end)
 rebuildList()
+-- Advanced: the remaining combat options, collapsed by default.
+local advBtn = mk("TextButton", { Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = C.FIELD, TextSize = 14, Font = FONTB }, ctrl, 8, C.LINE)
+pad(advBtn, 10, 0)
+local advBox = mk("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AUTO, Visible = false }, ctrl)
+stack(advBox, 8)
+local function advPaint()
+	advBtn.Text = (advOpen and "v  " or ">  ") .. tx("ขั้นสูง", "Advanced")
+end
+refreshers[#refreshers + 1] = advPaint
+advPaint()
+on(advBtn.Activated, function()
+	keyClick(false)
+	advOpen = not advOpen
+	advBox.Visible = advOpen
+	advPaint()
+	fitScale()
+end)
+local setDelay, delayNameL = slider(advBox, tx("หน่วงก่อนตี", "Delay"), 0, 50, math.floor(S.delay * 100 + 0.5),
+	function(n) return ("%.2f %s"):format(n / 100, tx("วิ", "s")) end,
+	function(n) S.delay = n / 100 end, true, 84)
+toggle(advBox, function() return tx("ตีเฉพาะคนที่หันหน้ามาหาเรา", "Only targets facing me") end, function() return S.faceMe end, function(v) S.faceMe = v end)
+local setFace, faceNameL = slider(advBox, tx("มุมหันหน้า", "Face angle"), 10, 180, S.faceHalf, "°", function(n) S.faceHalf = n end, true, 84)
+toggle(advBox, function() return tx("ตีทะลุตัวอื่น", "Hit through others") end, function() return S.throughTargets end, function(v) S.throughTargets = v end)
 local blur, toastOn
 onCleanup(function() if blur then pcall(function() blur:Destroy() end) end end)
 local function showToast(title, sub)
@@ -959,10 +968,10 @@ local function showToast(title, sub)
 	okBtn.Activated:Connect(close)
 	task.delay(SHOW, close)
 end
-local btnRow = mk("Frame", { Size = UDim2.new(1, 0, 0, 48) }, body)
+local btnRow = mk("Frame", { Size = UDim2.new(1, 0, 0, 52) }, body)
 stack(btnRow, 10, HORIZ)
 local resetBtn = mk("TextButton", {
-	Size = UDim2.new(0.5, -5, 1, 0), BackgroundColor3 = C.DARK, Text = T("reset"), TextSize = 16, Font = FONTB,
+	Size = UDim2.new(0.5, -5, 1, 0), BackgroundColor3 = C.DARK, Text = T("reset"), TextSize = 17, Font = FONTB,
 	TextColor3 = C.DIM, TextXAlignment = MID, ClipsDescendants = true,
 }, btnRow, 12, C.LINE)
 local resetStroke = resetBtn.UIStroke
@@ -973,7 +982,6 @@ on(resetBtn.MouseEnter, function() tw(resetBtn, { TextColor3 = C.TXT }, 0.12) tw
 on(resetBtn.MouseLeave, function() tw(resetBtn, { TextColor3 = C.DIM }, 0.12) tw(resetStroke, { Color = C.LINE }, 0.12) end)
 pressFx(resetBtn)
 loop(resetStroke, { Transparency = 0.7 }, 1.6)
-shine(resetBtn, C.ACC2, 0.82, 1.1, 2.4)
 local iconLoop = loop(resetIcon, { Rotation = -30 }, 1.4)
 local fxBusy = false
 local function resetFx()
@@ -1017,7 +1025,7 @@ local pw = mk("Frame", { Size = O(14, 14), AnchorPoint = CENTER, Position = UDim
 local pwStroke = pw.UIStroke
 pwStroke.Thickness = 2
 local pwLine = mk("Frame", { Size = O(2, 8), AnchorPoint = CENTER, Position = UDim2.new(0.5, 0, 0, 0), BackgroundColor3 = C.OFF, ZIndex = 3 }, pw)
-local bigTxt = mk("TextLabel", { Size = UDim2.fromScale(1, 1), Position = O(8, 0), TextSize = 17, Font = FONTB, TextXAlignment = MID, ZIndex = 2 }, big)
+local bigTxt = mk("TextLabel", { Size = UDim2.fromScale(1, 1), Position = O(8, 0), TextSize = 18, Font = FONTB, TextXAlignment = MID, ZIndex = 2 }, big)
 pressFx(big)
 on(big.Activated, function()
 	S.enabled = not S.enabled
@@ -1035,7 +1043,7 @@ local function showSettings()
 	setOpen = true
 	local sc = uiScale.Scale * popScale.Scale
 	local ov = mk("Frame", {
-		Size = O(panel.AbsoluteSize.X / sc, math.max(panel.AbsoluteSize.Y / sc, 330)), Position = O(0, 14),
+		Size = O(panel.AbsoluteSize.X / sc, math.max(panel.AbsoluteSize.Y / sc, 360)), Position = O(0, 14),
 		BackgroundColor3 = Color3.fromRGB(14, 13, 16), ZIndex = 40, Active = true,
 	}, panel, 16)
 	tw(ov, { Position = O(0, 0) }, 0.22)
@@ -1232,6 +1240,11 @@ onLang(function()
 	rebuildList()
 	searchBox.PlaceholderText = T("search")
 	resetBtn.Text, rangeNameL.Text, dashNameL.Text, cdNameL.Text = T("reset"), T("range"), T("dashStop"), T("cd")
+	delayNameL.Text, faceNameL.Text = tx("หน่วงก่อนตี", "Delay"), tx("มุมหันหน้า", "Face angle")
+	-- Re-render value text that depends on language.
+	setDash(S.dashStop)
+	setCd(S.cdPct)
+	setDelay(math.floor(S.delay * 100 + 0.5))
 	partBtns[1].Text, partBtns[2].Text = T("head"), T("body")
 	lastE = nil
 	paint()
