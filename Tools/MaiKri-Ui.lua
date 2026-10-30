@@ -10,6 +10,7 @@ local C = {
 	DARK = Color3.fromRGB(20, 19, 22), BTN = Color3.fromRGB(16, 14, 14),
 }
 local GRAD = ColorSequence.new(C.ACC, C.ACC2)
+local LOW = UIS.TouchEnabled and not UIS.KeyboardEnabled
 local FONT, FONTB = Enum.Font.SourceSans, Enum.Font.SourceSansBold
 local O, CENTER, AUTO = UDim2.fromOffset, Vector2.new(0.5, 0.5), Enum.AutomaticSize.Y
 local LEFT, MID, HORIZ = Enum.TextXAlignment.Left, Enum.TextXAlignment.Center, Enum.FillDirection.Horizontal
@@ -56,7 +57,7 @@ local function tw(o, props, t, style)
 end
 local function loop(o, props, t, style)
 	local tn = TweenService:Create(o, TweenInfo.new(t, style or Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), props)
-	tn:Play()
+	if not LOW then tn:Play() end
 	return tn
 end
 local function ripple(parent, size, pos, color, z, to, t)
@@ -80,6 +81,7 @@ local function sepLine(parent)
 		{ Position = UDim2.fromScale(0.7, 0) }):Play()
 end
 local function shine(parent, color, mid, dur, delay, visible)
+	if LOW then return mk("Frame", { Visible = false }) end
 	local f = mk("Frame", {
 		Size = UDim2.new(0.28, 0, 1.6, 0), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(-0.4, 0, 0.5, 0),
 		BackgroundColor3 = C.WHITE, Rotation = 18, ZIndex = 3, Visible = visible,
@@ -90,6 +92,7 @@ local function shine(parent, color, mid, dur, delay, visible)
 	return f
 end
 local function sweepFx(parent, color, mid, dur, gap, first)
+	if LOW then return end
 	local f = mk("Frame", {
 		Size = UDim2.new(0.22, 0, 1.8, 0), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(-0.3, 0, 0.5, 0),
 		BackgroundColor3 = C.WHITE, Rotation = 18, ZIndex = 3,
@@ -260,7 +263,8 @@ local function nudgeIntoView(node)
 		node.Position = UDim2.new(q.X.Scale, q.X.Offset + nx - ap.X, q.Y.Scale, q.Y.Offset + ny - ap.Y)
 	end
 end
-local ring, SEG, segs = Instance.new("Folder"), 64, {}
+local ring, SEG, segs = Instance.new("Folder"), LOW and 28 or 48, {}
+local ringTick = 0
 onCleanup(function() ring:Destroy() end)
 for k = 1, SEG do
 	local p = Instance.new("Part")
@@ -274,6 +278,10 @@ local function setSeg(p, a, b, tr)
 	if len >= 0.01 then p.Size, p.CFrame = Vector3.new(0.25, 0.25, len), CFrame.lookAt((a + b) / 2, b) end
 end
 local function updateRing()
+	if LOW then
+		ringTick += 1
+		if ringTick % 2 == 0 then return end
+	end
 	local c = lp.Character
 	local hrp = c and c:FindFirstChild("HumanoidRootPart")
 	if not hrp then ring.Parent = nil return end
@@ -335,12 +343,14 @@ local strokeGrad = grad(panelStroke, 0, ColorSequence.new({
 	ColorSequenceKeypoint.new(0.5, C.ACC2), ColorSequenceKeypoint.new(0.7, C.ACC),
 	ColorSequenceKeypoint.new(1, Color3.fromRGB(78, 66, 56)),
 }), NumberSequence.new(0.2, 0.15))
-TweenService:Create(strokeGrad, TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1), { Rotation = 360 }):Play()
+if not LOW then
+	TweenService:Create(strokeGrad, TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1), { Rotation = 360 }):Play()
+end
 loop(panelStroke, { Transparency = 0.4 }, 2.2)
 do
 	local layer = mk("Frame", { Size = UDim2.fromScale(1, 1), ClipsDescendants = true, ZIndex = 0 }, panel)
 	local rnd, lin = Random.new(), Enum.EasingStyle.Linear
-	for k = 1, 16 do
+	for k = 1, LOW and 0 or 8 do
 		local sz = rnd:NextInteger(2, 4)
 		local sp = mk("Frame", {
 			Size = O(sz, sz), AnchorPoint = CENTER, BackgroundColor3 = k % 3 == 0 and C.ACC2 or C.ACC, BackgroundTransparency = 1,
@@ -373,7 +383,18 @@ local orb = mk("TextButton", {
 	TextSize = 15, Font = FONTB, TextXAlignment = MID, Visible = false, ZIndex = 5,
 }, gui, 17, C.ACC)
 loop(orb.UIStroke, { Thickness = 2.6, Transparency = 0.45 }, 1.1)
+local toastFn
 local function setCollapsed(v)
+	if not LOW then
+		main.Visible, orb.Visible = not v, false
+		if v then
+			if toastFn then toastFn(T("uiHidden"), T("uiHiddenSub"):format(CFG.hideKey), false) end
+		else
+			popScale.Scale = 0.88
+			tw(popScale, { Scale = 1 }, 0.4, EASE_BACK)
+		end
+		return
+	end
 	main.Visible, orb.Visible = not v, v
 	local s = v and mk("UIScale", { Scale = 0.6 }, orb) or popScale
 	s.Scale = v and 0.6 or 0.88
@@ -514,16 +535,18 @@ do
 	local tr, szs = {}, { 6, 5, 4, 3 }
 	for k = 1, 4 do tr[k] = dot(szs[k], k == 1 and C.WHITE or C.ACC2, arc, 4) end
 	local t0 = os.clock()
+	local wasOn = false
+	for k = 1, 4 do tr[k].BackgroundTransparency = 0.05 + (k - 1) * 0.25 end
 	on(RunService.RenderStepped, function()
-		local e = S.enabled and S.half > 3
+		local e = S.enabled and S.half > 3 and main.Visible
+		if e ~= wasOn then
+			wasOn = e
+			for k = 1, 4 do tr[k].Visible = e end
+		end
+		if not e then return end
 		local t = os.clock() - t0
 		for k = 1, 4 do
-			local f = tr[k]
-			f.Visible = e
-			if e then
-				at(f, math.sin((t - (k - 1) * 0.07) * 1.9) * S.half, R)
-				f.BackgroundTransparency = 0.05 + (k - 1) * 0.25
-			end
+			at(tr[k], math.sin((t - (k - 1) * 0.07) * 1.9) * S.half, R)
 		end
 	end)
 end
@@ -1195,6 +1218,11 @@ do
 	task.spawn(function()
 		while gui and gui.Parent do
 			local now = os.clock()
+			if not main.Visible then
+				frames, t0 = 0, now
+				task.wait(1)
+				continue
+			end
 			fpsL.Text = ("%d fps"):format(frames / math.max(now - t0, 0.01) + 0.5)
 			frames, t0 = 0, now
 			local ok, ms = pcall(function() return svc("Stats").Network.ServerStatsItem["Data Ping"]:GetValue() end)
@@ -1209,7 +1237,7 @@ local toastHost = mk("Frame", {
 }, gui)
 stack(toastHost, 8, nil, Enum.VerticalAlignment.Bottom)
 local toastCur
-local function notify(e)
+local function toast(title, sub, e)
 	if toastCur then toastCur:Destroy() end
 	local col = e and C.ACC or C.OFF
 	local holder = mk("Frame", { Size = O(280, 54) }, toastHost)
@@ -1222,11 +1250,11 @@ local function notify(e)
 	ring.UIStroke.Thickness, ring.UIStroke.Transparency = 2, 0
 	mk("Frame", { Size = O(2, 8), AnchorPoint = CENTER, Position = UDim2.new(0.5, 0, 0, 0), BackgroundColor3 = col, ZIndex = 63 }, ring)
 	mk("TextLabel", {
-		Size = UDim2.new(1, -56, 0, 18), Position = O(46, 9), Text = T("orb") .. "  " .. (e and T("on") or T("off")),
+		Size = UDim2.new(1, -56, 0, 18), Position = O(46, 9), Text = title,
 		TextSize = 15, Font = FONTB, TextColor3 = e and C.ACC2 or C.TXT, ZIndex = 62, TextTruncate = Enum.TextTruncate.AtEnd,
 	}, card)
 	mk("TextLabel", {
-		Size = UDim2.new(1, -56, 0, 14), Position = O(46, 28), Text = e and T("statusOn") or T("statusOff"),
+		Size = UDim2.new(1, -56, 0, 14), Position = O(46, 28), Text = sub,
 		TextSize = 12, TextColor3 = C.DIM, ZIndex = 62, TextTruncate = Enum.TextTruncate.AtEnd,
 	}, card)
 	local barBg = mk("Frame", { Size = UDim2.new(1, -28, 0, 2), Position = O(14, 47), BackgroundColor3 = C.FIELD, ZIndex = 61 }, card, 1)
@@ -1241,6 +1269,10 @@ local function notify(e)
 		if toastCur == holder then toastCur = nil end
 		holder:Destroy()
 	end)
+end
+toastFn = toast
+local function notify(e)
+	toast(T("orb") .. "  " .. (e and T("on") or T("off")), e and T("statusOn") or T("statusOff"), e)
 end
 local lastE
 paint = function()
