@@ -1204,6 +1204,44 @@ do
 		end
 	end)
 end
+local toastHost = mk("Frame", {
+	Size = O(280, 0), AutomaticSize = AUTO, AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -16, 1, -16), ZIndex = 60,
+}, gui)
+stack(toastHost, 8, nil, Enum.VerticalAlignment.Bottom)
+local toastCur
+local function notify(e)
+	if toastCur then toastCur:Destroy() end
+	local col = e and C.ACC or C.OFF
+	local holder = mk("Frame", { Size = O(280, 54) }, toastHost)
+	toastCur = holder
+	local card = mk("Frame", { Size = UDim2.fromScale(1, 1), Position = O(320, 0), BackgroundColor3 = C.BG2, ZIndex = 60 }, holder, 12, e and C.ACC or C.LINE)
+	card.UIStroke.Thickness = 1.5
+	local glow = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = C.WHITE, BackgroundTransparency = e and 0.12 or 1, ZIndex = 60 }, card, 12)
+	grad(glow, 90, ColorSequence.new(Color3.fromRGB(150, 80, 16), Color3.fromRGB(56, 30, 8)))
+	local ring = mk("Frame", { Size = O(16, 16), AnchorPoint = CENTER, Position = O(24, 25), ZIndex = 62 }, card, 8, col)
+	ring.UIStroke.Thickness, ring.UIStroke.Transparency = 2, 0
+	mk("Frame", { Size = O(2, 8), AnchorPoint = CENTER, Position = UDim2.new(0.5, 0, 0, 0), BackgroundColor3 = col, ZIndex = 63 }, ring)
+	mk("TextLabel", {
+		Size = UDim2.new(1, -56, 0, 18), Position = O(46, 9), Text = T("orb") .. "  " .. (e and T("on") or T("off")),
+		TextSize = 15, Font = FONTB, TextColor3 = e and C.ACC2 or C.TXT, ZIndex = 62, TextTruncate = Enum.TextTruncate.AtEnd,
+	}, card)
+	mk("TextLabel", {
+		Size = UDim2.new(1, -56, 0, 14), Position = O(46, 28), Text = e and T("statusOn") or T("statusOff"),
+		TextSize = 12, TextColor3 = C.DIM, ZIndex = 62, TextTruncate = Enum.TextTruncate.AtEnd,
+	}, card)
+	local barBg = mk("Frame", { Size = UDim2.new(1, -28, 0, 2), Position = O(14, 47), BackgroundColor3 = C.FIELD, ZIndex = 61 }, card, 1)
+	local bar = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = col, ZIndex = 62 }, barBg, 1)
+	tw(card, { Position = O(0, 0) }, 0.32, EASE_BACK)
+	tw(bar, { Size = UDim2.fromScale(0, 1) }, 2.4, Enum.EasingStyle.Linear)
+	ripple(card, 16, O(24, 25), col, 61, 52, 0.5)
+	task.delay(2.4, function()
+		if not holder.Parent then return end
+		tw(card, { Position = O(320, 0) }, 0.28)
+		task.wait(0.3)
+		if toastCur == holder then toastCur = nil end
+		holder:Destroy()
+	end)
+end
 local lastE
 paint = function()
 	for _, f in ipairs(refreshers) do f() end
@@ -1219,6 +1257,7 @@ paint = function()
 	bigShine.Visible = e
 	for _, r in ipairs(sonar) do r.Visible = e end
 	if lastE ~= e then
+		if lastE ~= nil then notify(e) end
 		lastE = e
 		setStatus(e and T("statusOn") or T("statusOff"))
 	end
