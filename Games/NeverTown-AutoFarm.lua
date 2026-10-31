@@ -29,6 +29,7 @@ do
         get = function(key) return readAll()[key] end,
         set = function(key, val)
             if not writefile then return end
+            if not pcall(HS.JSONEncode, HS, val) then return end -- ค่าที่ encode ไม่ได้ ห้ามทำไฟล์ทั้งก้อนพัง
             local d = readAll()
             d[key] = val
             if makefolder and isfolder and not isfolder(STORE_DIR) then pcall(makefolder, STORE_DIR) end
@@ -276,6 +277,35 @@ function SW.tween(obj, t, props)
         slot[k] = tw
     end
     tw:Play()
+end
+-- registry ของระบบฟาร์ม: Auto Eat ใช้เช็คว่าตอนนี้ฟาร์มอะไรอยู่ แล้วเปิดคืนให้หลังกินเสร็จ
+SW.FarmProbes = {}
+function SW.regFarm(name, isOn, resume)
+    SW.FarmProbes[name] = { isOn = isOn, resume = resume }
+end
+function SW.snapFarms()
+    local snap = {}
+    for name, p in pairs(SW.FarmProbes) do
+        local ok, on = pcall(p.isOn)
+        if ok and on then snap[name] = true end
+    end
+    return snap
+end
+function SW.resumeFarms(snap)
+    local names = {}
+    for name in pairs(snap) do names[#names + 1] = name end
+    table.sort(names)
+    for _, name in ipairs(names) do
+        local p = SW.FarmProbes[name]
+        if p then
+            local ok, err = pcall(p.resume)
+            if not ok then SW.report("FarmResume_" .. name, err) end
+        end
+    end
+end
+function SW.pauseWait()
+    local t0 = os.clock()
+    while LP:GetAttribute("FarmPaused") and os.clock() - t0 < 30 do task.wait(0.2) end
 end
 SW.DenySoundId = "rbxasset://sounds/button.wav"
 SW.DenyVolume = 0.8
@@ -1149,6 +1179,7 @@ local function LoadFarmTab()
                     if cur >= CustomMax and SelectedItem.value ~= "" then DepositRemote:FireServer(SelectedItem.value, cur) end
                 end
                 while FarmRunning and SW.alive and depositRunId == myDepId do
+                    SW.pauseWait()
                     SW.try("Deposit", depositTick)
                     task.wait(1)
                 end
@@ -1222,6 +1253,7 @@ local function LoadFarmTab()
     SW.buildWaterPickDropdown()
     local WATER_REACH_DIST = 15
     local function walkToTarget(model)
+        SW.pauseWait()
         local part = SW.treePart(model)
         if not part then return false, "หาตำแหน่งต้นไม้ไม่เจอ (BasePart)" end
         local hum2 = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
@@ -1338,6 +1370,7 @@ local function LoadFarmTab()
         local tries = 0
         while autoWaterEnabled and tree.Parent and wv.Parent and m_floor(wv.Value) < 100
             and not (gv and (tonumber(gv.Value) or 0) >= 100) do
+            SW.pauseWait()
             if not waitUntilStill(0, 3) then break end
             giveWaterRemote:FireServer(tree)
             task.wait(0.8)
@@ -1376,6 +1409,7 @@ local function LoadFarmTab()
                 local function isCurrent() return autoWaterEnabled and waterRunId == myRunId end
                 local ok, err = SW.try("AutoWater", function()
                     while isCurrent() do
+                        SW.pauseWait()
                         local orderedFolders, ownFolder = {}, nil
                         for _, folder in ipairs(selectedWaterFolders) do
                             if folder and folder.Parent then
@@ -2764,6 +2798,17 @@ SW.LoadProcess = function()
             task.spawn(function() SW.try("AutoProcess", loop, id) end)
         end,
     })
+    SW.regFarm("Auto Process", function() return P.on end, function()
+        if P.on then return end
+        P.run = P.run + 1
+        P.on = true
+        P.warm = {}
+        local id = P.run
+        pcall(function() toggle:Set(true) end)
+        if P.run == id then
+            task.spawn(function() SW.try("AutoProcess", loop, id) end)
+        end
+    end)
 end
 SW.LoadNever = function()
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -2775,7 +2820,7 @@ SW.LoadNever = function()
     local cfg = {
         farm      = false,
         fish      = false,
-        rejoin    = true,
+        rejoin    = false,
         sameServer = true,
         maxPlayersTarget = 6,
         preferLowPing    = true,
@@ -2784,12 +2829,22 @@ SW.LoadNever = function()
         homeWait         = 180,
     }
     if ENV.SW_NEVER_STOP then pcall(ENV.SW_NEVER_STOP) end
+    SW.NeverCfg = cfg
     local alive = true
     local conns = {}
     local function track(c) conns[#conns + 1] = c; return c end
     if type(ENV.SW_NEVER_CFG) == "table" then
         for k, v in pairs(ENV.SW_NEVER_CFG) do
             if cfg[k] ~= nil and type(v) == type(cfg[k]) then cfg[k] = v end
+        end
+    end
+    -- Auto Rejoin ปิดไว้ตอนรันปกติ: เปิดคืนให้เฉพาะตอนรันซ้ำหลัง hop ที่ผู้ใช้เปิดไว้ (on=true + pending สดใหม่)
+    do
+        local okS, st = pcall(function() return ENV.SpectreNT_State or ENV.SpectreNT_Store.get("rejoin") end)
+        if okS and type(st) == "table" and st.on == true and st.pending == true
+            and os.time() - (tonumber(st.t) or 0) < 600 then
+            cfg.rejoin = true
+            if type(st.same) == "boolean" then cfg.sameServer = st.same end
         end
     end
     local statusP, toggles = nil, {}
@@ -2816,6 +2871,7 @@ SW.LoadNever = function()
     local hopping = false
     local badServers = {}
     local function queueSelf()
+        if not cfg.rejoin then return false end
         local q = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
         if not q then return false end
         if ENV.SpectreNT_Queued == game.JobId then return true end
@@ -2933,6 +2989,8 @@ SW.LoadNever = function()
     end
     local HttpService = game:GetService("HttpService")
     local function saveState(t)
+        t.on = cfg.rejoin
+        t.same = cfg.sameServer
         ENV.SpectreNT_State = t
         ENV.SpectreNT_Store.set("rejoin", t)
     end
@@ -2941,8 +2999,8 @@ SW.LoadNever = function()
         if type(t) ~= "table" then t = ENV.SpectreNT_Store.get("rejoin") end
         return type(t) == "table" and t or nil
     end
-    local function hop(reason, forceLowPop)
-        if hopping then return end
+    local function hop(reason, forceLowPop, manual)
+        if hopping or (not manual and not cfg.rejoin) then return end
         hopping = true
         saveState({ home = homeIndex, pending = true, t = os.time() })
         notify("Rejoin: " .. tostring(reason or "กำลังหาเซิร์ฟคนน้อย..."))
@@ -2966,7 +3024,7 @@ SW.LoadNever = function()
                         end
                     end
                 end
-                if not viaRemote and alive then
+                if not viaRemote and alive and (manual or cfg.rejoin) then
                     notify("กลับเซิร์ฟเดิมด้วย JobId")
                     homeFailed = true
                     lastTp = os.clock()
@@ -2980,7 +3038,7 @@ SW.LoadNever = function()
                 return
             end
             for _ = 1, 6 do
-                if not alive then hopping = false return end
+                if not alive or (not manual and not cfg.rejoin) then hopping = false return end
                 if not joinRF then break end
                 local s = pickServer()
                 if not s then
@@ -3001,7 +3059,7 @@ SW.LoadNever = function()
                     end
                 end
             end
-            if alive then pcall(function() TeleportService:Teleport(game.PlaceId, LP) end) end
+            if alive and (manual or cfg.rejoin) then pcall(function() TeleportService:Teleport(game.PlaceId, LP) end) end
             task.wait(15)
             hopping = false
         end)
@@ -3164,6 +3222,7 @@ SW.LoadNever = function()
                 end
             end
             saveState({ home = homeIndex, pending = false, t = os.time() })
+            if not (alive and cfg.rejoin) then return end
             notify("เลือกเซิร์ฟให้ไม่สำเร็จ ลองกด Hop Low-Pop Server", "alert-triangle")
         end)
     end
@@ -3197,7 +3256,7 @@ SW.LoadNever = function()
         end))
         trackHome()
         autoPickAfterRejoin()
-        if not queueSelf() then
+        if cfg.rejoin and not queueSelf() then
             notify("queue_on_teleport ใช้ไม่ได้ ต้องรันสคริปต์เองหลังย้ายเซิร์ฟ", "alert-triangle")
         end
         task.spawn(function()
@@ -3218,7 +3277,17 @@ SW.LoadNever = function()
         local ls = bt and bt:FindFirstChild("LocalScript")
         return ls and ls:FindFirstChild("RemoteEvent")
     end
+    local function releaseAuto()
+        local c = LP.Character
+        local flag = c and c:FindFirstChild("Auto")
+        local remote = getAutoRemote()
+        if weTurnedOn and flag and flag.Value and remote then
+            weTurnedOn = false
+            remote:FireServer()
+        end
+    end
     local function farmStep()
+        if LP:GetAttribute("FarmPaused") then return end
         local c = LP.Character
         local flag = c and c:FindFirstChild("Auto")
         local remote = getAutoRemote()
@@ -3556,7 +3625,7 @@ SW.LoadNever = function()
         local now = os.clock()
         if fish.state == "idle" then
             local w = 0.9 + 0.8 * math.min(fish.timeouts, 3)
-            if now - fish.finishedAt >= w then castNow() end
+            if now - fish.finishedAt >= w and not LP:GetAttribute("FarmPaused") then castNow() end
         elseif fish.state == "casting" then
             if now - fish.castAt > 40 then
                 pcall(function() FishingEvent:FireServer("CancelFishing") end)
@@ -3581,9 +3650,10 @@ SW.LoadNever = function()
             Tooltip = tip,
             Default = cfg[key],
             Callback = function(s)
-                if cfg[key] == s and not onChange then return end
+                local changed = cfg[key] ~= s
+                if not changed and not onChange then return end
                 cfg[key] = s
-                if onChange then onChange(s) end
+                if onChange then onChange(s, changed) end
                 queueSelf()
             end,
         })
@@ -3608,7 +3678,27 @@ SW.LoadNever = function()
     local Fish = Tab:CreateSection({ Name = "Auto Farm / Fishing", Icon = "lucide:fish" })
     addToggle(Fish, "farm", "Auto Farm", "เปิดระบบ Automated Farm ของเกมค้างไว้ (ปุ่ม X ของเกม)")
     addToggle(Fish, "fish", "Auto Fishing", "ตกปลาอัตโนมัติ: โยน รอปลากิน แล้วจับจังหวะมินิเกมให้", function(on)
-        if on then stopHitter(); fish.state = "idle"; fish.finishedAt = 0 end
+        if on then
+            stopHitter(); fish.state = "idle"; fish.finishedAt = 0
+        elseif fish.state ~= "idle" then
+            stopHitter()
+            if FishingEvent then pcall(function() FishingEvent:FireServer("CancelFishing") end) end
+            fish.state = "idle"
+            fish.finishedAt = os.clock()
+        end
+    end)
+    SW.regFarm("Fishing", function() return alive and cfg.fish end, function()
+        if not (alive and cfg.fish) then
+            pcall(function() toggles.fish:Set(true) end)
+            cfg.fish = true
+        end
+        -- กินเสร็จ: ถ้าค้างอยู่สถานะโยนเบ็ด/มินิเกมเก่า เคลียร์แล้วให้โยนใหม่ทันที
+        if fish.state ~= "idle" and os.clock() - math.max(fish.castAt, fish.startClock) > 20 then
+            stopHitter()
+            if FishingEvent then pcall(function() FishingEvent:FireServer("CancelFishing") end) end
+            fish.state = "idle"
+        end
+        if fish.state == "idle" then fish.finishedAt = 0 end
     end)
     addSlider(Fish, "fishLead", "Timing Offset", "ปรับจังหวะยิงมินิเกม (วินาที) บวก = ยิงเร็วขึ้น ลบ = ช้าลง", -0.3, 0.3, 0.01, "s")
     do
@@ -3795,7 +3885,19 @@ SW.LoadNever = function()
     end
     SW.BuildServer = function()
         local Rej = SW.ServerTab:CreateSection({ Name = "Auto Rejoin", Icon = "lucide:refresh-cw" })
-        addToggle(Rej, "rejoin", "Auto Rejoin", "หลุด/โดนเตะ แล้วเข้าเซิร์ฟใหม่อัตโนมัติ (ต้องรันสคริปต์ใหม่เองหลังย้าย)")
+        addToggle(Rej, "rejoin", "Auto Rejoin", "หลุด/โดนเตะ แล้วเข้าเซิร์ฟใหม่อัตโนมัติ (ปิดไว้ตอนเริ่ม)", function(on, changed)
+            if not changed then return end
+            saveState({ home = homeIndex, pending = false, t = os.time() })
+            if on then
+                if not queueSelf() then
+                    notify("queue_on_teleport ใช้ไม่ได้ ต้องรันสคริปต์เองหลังย้ายเซิร์ฟ", "alert-triangle")
+                else
+                    setStatus("เปิด Auto Rejoin แล้ว")
+                end
+            else
+                setStatus("ปิด Auto Rejoin แล้ว")
+            end
+        end)
         addToggle(Rej, "sameServer", "Rejoin Same Server", "หลุดแล้วกลับเซิร์ฟเดิม (ถ้าเต็ม/ปิด/เข้าไม่ได้ ค่อยย้ายไปเซิร์ฟคนน้อย)")
         addToggle(Rej, "preferLowPing", "Prefer Low Ping", "เลือกเซิร์ฟที่ ping ต่ำก่อน")
         addSlider(Rej, "maxPlayersTarget", "Target Players", "เป้าหมายจำนวนผู้เล่นในเซิร์ฟที่จะย้ายไป", 1, 20, 1, "")
@@ -3803,7 +3905,7 @@ SW.LoadNever = function()
             Name = "Hop Low-Pop Server",
             Icon = "lucide:shuffle",
             Tooltip = "ย้ายไปเซิร์ฟคนน้อยตอนนี้",
-            Callback = function() hop("ย้ายเซิร์ฟตามสั่ง", true) end,
+            Callback = function() hop("ย้ายเซิร์ฟตามสั่ง", true, true) end,
         })
         statusP = Rej:CreateParagraph({ Title = "Status", Content = "พร้อมใช้งาน" })
     end
@@ -3819,6 +3921,8 @@ SW.LoadNever = function()
     ENV.SW_NEVER_STOP = function()
         alive = false
         pcall(stopHitter)
+        pcall(releaseAuto)
+        if FishingEvent and fish.state ~= "idle" then pcall(function() FishingEvent:FireServer("CancelFishing") end) end
         ENV.SW_NEVER_ONCAST = nil
         for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
     end
@@ -3956,64 +4060,164 @@ SW.LoadEat = function()
         task.wait(CFGE.BuyWait)
         return true
     end
+    local function autoFlag()
+        local c = LP.Character
+        return c and c:FindFirstChild("Auto")
+    end
+    local function autoRemote()
+        return walk(PG, { "AutoUi", "Frame", "TextButton", "LocalScript", "RemoteEvent" })
+    end
+    local function setAuto(state, timeout)
+        local f, r = autoFlag(), autoRemote()
+        if f and f.Value == state then return true end
+        if not (f and r) then return false end
+        local t0 = os.clock()
+        while f.Value ~= state and os.clock() - t0 < (timeout or 6) do
+            r:FireServer()
+            local w = os.clock()
+            while f.Value ~= state and os.clock() - w < 2.5 do task.wait(0.1) end
+        end
+        return f.Value == state
+    end
+    local function waitFree(timeout)
+        local t0 = os.clock()
+        while os.clock() - t0 < timeout do
+            local c = LP.Character
+            local hrp = c and c:FindFirstChild("HumanoidRootPart")
+            if not hrp or not hrp.Anchored then return true end
+            task.wait(0.1)
+        end
+        return false
+    end
+    local function eatOnce(st, once)
+        if not (once or st.on) then return end
+        if getCount(st.item) <= 0 then
+            if not st.buy then
+                SW.Notify({ Title = "Auto Eat", Icon = "alert-triangle", Content = st.item .. " หมด (Auto Buy ปิดอยู่)", Duration = 4 })
+                st.cool = os.clock() + 30
+                return
+            end
+            if CFGE.Prices[st.item] == nil then
+                SW.Notify({ Title = "Auto Eat", Icon = "alert-triangle", Content = st.item .. " ซื้อไม่ได้ในร้านค้า (ต้องคราฟ)", Duration = 5 })
+                st.cool = os.clock() + 30
+                return
+            end
+            if not buyItem(st.item, st.amount) or getCount(st.item) <= 0 then
+                SW.Notify({ Title = "Auto Eat", Icon = "alert-triangle", Content = "ซื้อ " .. st.item .. " ไม่ได้ (ไม่มีขาย / ไม่มีเงิน / ยังไม่เจอร้าน)", Duration = 5 })
+                st.cool = os.clock() + 30
+                return
+            end
+        end
+        useItem(st.item)
+    end
     local busy = false
+    local AUTO_KEYS = { "WorkspaceValue", "TouchedValue", "MaxValue", "Number" }
+    -- จำว่าเกมฟาร์มอะไรอยู่: ลูกของแฟลก Auto เซิร์ฟเวอร์ตั้งให้ตอนเปิด (โซน/เป้าหมาย/จำนวน)
+    local function readAutoInfo()
+        local f = autoFlag()
+        if not f then return nil end
+        local info = {}
+        for _, k in ipairs(AUTO_KEYS) do
+            local v = f:FindFirstChild(k)
+            info[k] = v and v.Value
+        end
+        return info
+    end
+    local function lockCFrame()
+        local f = autoFlag()
+        local a = f and f:GetAttribute("ShiroLockCFrame")
+        if typeof(a) == "CFrame" then return a end
+        local c = LP.Character
+        local hrp = c and c:FindFirstChild("HumanoidRootPart")
+        return hrp and hrp.CFrame
+    end
+    local function waitChar(timeout)
+        local t0 = os.clock()
+        while os.clock() - t0 < timeout do
+            local c = LP.Character
+            local hum = c and c:FindFirstChildOfClass("Humanoid")
+            if c and c:FindFirstChild("HumanoidRootPart") and hum and hum.Health > 0 and autoFlag() then
+                return true
+            end
+            task.wait(0.2)
+        end
+        return false
+    end
+    -- เปิด Auto Farm คืน: วาร์ปกลับจุดเดิม แล้วถ้าเซิร์ฟไม่รับ ขยับเข้าออกโซนเพื่อให้เซิร์ฟเห็นว่าอยู่ในจุดฟาร์ม
+    local function reArmAuto(home, info)
+        if not waitChar(12) then return false end
+        local offsets = { Vector3.zero, Vector3.new(0, 2, 0), Vector3.new(3, 0, 0), Vector3.new(-3, 0, 0), Vector3.zero }
+        for i, off in ipairs(offsets) do
+            local c = LP.Character
+            local hrp = c and c:FindFirstChild("HumanoidRootPart")
+            if hrp and home then
+                waitFree(5)
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                c:PivotTo(home + off)
+                task.wait(0.5)
+            end
+            if setAuto(true, 6) then
+                local now = readAutoInfo()
+                if info and now and info.WorkspaceValue and info.WorkspaceValue ~= "" and now.WorkspaceValue ~= info.WorkspaceValue then
+                    SW.report("AutoEat_FarmTarget", tostring(info.WorkspaceValue) .. " -> " .. tostring(now.WorkspaceValue))
+                end
+                return true
+            end
+            task.wait(0.8)
+        end
+        return false
+    end
     local function serve(st, once)
         while busy do
             task.wait(0.2)
         end
         busy = true
         LP:SetAttribute("FarmPaused", true)
-        do
+        -- เช็คก่อนหยุด: ตอนนี้ฟาร์มอะไรเปิดอยู่บ้าง (Auto Farm ของเกม / Fishing / Process / Candy)
+        local snap = SW.snapFarms()
+        local wantAuto, home, info = false, nil, nil
+        local ok, err = pcall(function()
             local w0 = os.clock()
             while LP:GetAttribute("FarmBusy") and os.clock() - w0 < 6 do task.wait(0.1) end
-            task.wait(0.3)
-        end
-        local ok, err = pcall(function()
-            -- กิน/ดื่มแค่ 1 ชิ้นต่อรอบ แล้วรอตรวจใหม่ตาม Check Interval ว่าค่าลดลงถึงเกณฑ์อีกไหม
-            local target = math.huge
-            local uses, stuck = 0, 0
-            while (once or st.on) do
-                local cur = st.val.Value
-                if not once and cur >= target then break end
-                if uses >= 40 then break end -- กันวนไม่รู้จบ
-                if getCount(st.item) <= 0 then
-                    if not st.buy then
-                        SW.Notify({ Title = "Auto Eat", Icon = "alert-triangle", Content = st.item .. " หมด (Auto Buy ปิดอยู่)", Duration = 4 })
-                        st.cool = os.clock() + 30
-                        break
-                    end
-                    if CFGE.Prices[st.item] == nil then
-                        SW.Notify({ Title = "Auto Eat", Icon = "alert-triangle", Content = st.item .. " ซื้อไม่ได้ในร้านค้า (ต้องคราฟ)", Duration = 5 })
-                        st.cool = os.clock() + 30
-                        break
-                    end
-                    if not buyItem(st.item, st.amount) or getCount(st.item) <= 0 then
-                        SW.Notify({ Title = "Auto Eat", Icon = "alert-triangle", Content = "ซื้อ " .. st.item .. " ไม่ได้ (ไม่มีขาย / ไม่มีเงิน / ยังไม่เจอร้าน)", Duration = 5 })
-                        st.cool = os.clock() + 30
-                        break
-                    end
+            local f = autoFlag()
+            local ncfg = SW.NeverCfg
+            -- นับว่าเปิดอยู่ ถ้าแฟลกเกมเปิด หรือผู้ใช้เปิดสวิตช์ Auto Farm ของสคริปต์ไว้
+            wantAuto = (f and f.Value) or (ncfg and ncfg.farm) or false
+            if f and f.Value then
+                home, info = lockCFrame(), readAutoInfo()
+                -- ลองกินทั้งที่ฟาร์มอยู่ก่อน ถ้ากินได้ก็ไม่ต้องหยุดฟาร์มเลย (ไม่มีอะไรต้องเปิดคืน)
+                local before, valBefore = getCount(st.item or ""), st.val.Value
+                eatOnce(st, once)
+                local ate = getCount(st.item or "") < before or st.val.Value > valBefore
+                if ate then
+                    wantAuto = false
+                    return
                 end
-                useItem(st.item)
-                uses = uses + 1
-                if true then break end -- 1 ชิ้นพอ
-                -- รอให้ค่าเพิ่มขึ้นจริง (เซิร์ฟเวอร์อัปเดตช้าได้) แล้วค่อยตัดสินว่าจะกินต่อไหม
-                local w1 = os.clock()
-                while st.val.Value <= cur and os.clock() - w1 < 4 do task.wait(0.2) end
-                if st.val.Value <= cur then
-                    stuck = stuck + 1
-                    -- ค่าไม่ขึ้น 2 รอบติด = เต็มแล้ว/กินไม่เข้า พักไม่วนซ้ำ
-                    if stuck >= 2 then
-                        st.cool = os.clock() + 15
-                        break
-                    end
-                else
-                    stuck = 0
-                    task.wait(0.3)
+                if getCount(st.item or "") <= 0 then
+                    wantAuto = false
+                    return
                 end
+                setAuto(false, 6)
+            elseif wantAuto then
+                home = lockCFrame()
             end
+            waitFree(15)
+            task.wait(0.3)
+            eatOnce(st, once)
         end)
-        busy = false
+        -- กินเสร็จ/พลาด ก็ต้องคืนฟาร์มเสมอ
+        if wantAuto then
+            local back = false
+            local okBack, errBack = pcall(function() back = reArmAuto(home, info) end)
+            if not okBack then SW.report("AutoEat_ReArm", errBack) end
+            if not back then
+                SW.Notify({ Title = "Auto Eat", Icon = "alert-triangle", Content = "เปิด Auto Farm คืนไม่ติด", Duration = 5 })
+            end
+        end
+        -- ฟาร์มตัวอื่นที่เปิดอยู่ก่อนกิน แต่หลุดไประหว่างกิน เปิดคืนให้
+        SW.resumeFarms(snap)
         LP:SetAttribute("FarmPaused", false)
+        busy = false
         if not ok then SW.report("AutoEat_" .. st.kind, err) end
     end
     local function startLoop(st)
@@ -5139,6 +5343,91 @@ SW.LoadCandy = function()
         end
         S.bad = {}
     end
+    -- ความจำถาวรของจุดที่มีต้นอยู่: ไม่หมดอายุตามเวลา ไม่โดน reset
+    -- ลืมก็ต่อเมื่อยืนใกล้ (<18) แล้วตรวจชิ้นส่วนจริงว่าไม่มีต้นต่อเนื่อง 3 ครั้ง/5 วิ และพ้น 25 วิแรกหลังโหลดสคริปต์ (รอต้นสตรีมเข้า)
+    S.memKey = "mem_" .. LP.UserId .. "_" .. game.PlaceId
+    S.memStart = os.clock()
+    S.memAt, S.memOut = 0, {}
+    if not S.mem then
+        S.mem = {}
+        local d = ENV.SpectreNT_Store.get(S.memKey)
+        if type(d) == "table" then
+            for _, e in ipairs(d) do
+                if type(e) == "table" and tonumber(e[1]) and tonumber(e[2]) and tonumber(e[3]) then
+                    t_insert(S.mem, { pos = v3_new(e[1], e[2], e[3]), t = os.clock() - 100, kind = "disk", miss = 0 })
+                end
+            end
+        end
+    end
+    S.memSave = function()
+        local d = {}
+        for _, m in ipairs(S.mem) do
+            d[#d + 1] = { m_floor(m.pos.X * 10) / 10, m_floor(m.pos.Y * 10) / 10, m_floor(m.pos.Z * 10) / 10 }
+        end
+        pcall(ENV.SpectreNT_Store.set, S.memKey, d)
+    end
+    S.memAdd = function(pos, kind)
+        if not pos then return end
+        for _, m in ipairs(S.mem) do
+            if flat(m.pos, pos) < 1.2 then
+                m.t, m.missAt, m.miss = os.clock(), nil, 0
+                return
+            end
+        end
+        t_insert(S.mem, { pos = pos, t = os.clock(), kind = kind, miss = 0 })
+        if #S.mem > 300 then table.remove(S.mem, 1) end
+        S.memAt = 0
+        S.memSave()
+    end
+    -- ตรวจชิ้นส่วนจริง ณ จุด ไม่มีผลข้างเคียง (ไม่นับ physHits/ไม่ log) ไม่แน่ใจ = true (ถือว่ามีต้น ไม่ลบ)
+    S.memProbe = function(pos)
+        local apt = workspace:FindFirstChild("AllPlantedTrees")
+        if not apt then return true end
+        local op = S.memParams
+        if not op then
+            op = OverlapParams.new()
+            op.FilterType = Enum.RaycastFilterType.Include
+            op.MaxParts = 1
+            S.memParams = op
+        end
+        op.FilterDescendantsInstances = { apt }
+        local ok, parts = pcall(workspace.GetPartBoundsInBox, workspace,
+            CFrame.new(pos.X, pos.Y - 0.75, pos.Z), Vector3.new(2, 7.5, 2), op)
+        if not (ok and parts) then return true end
+        return #parts > 0
+    end
+    -- แคช 0.4 วิ: allPts ถูกเรียกถี่มากตอนเลือกจุด ไม่ให้ยิง overlap ซ้ำทุกครั้ง
+    S.memPts = function()
+        local now = os.clock()
+        if now - S.memAt < 0.4 then return S.memOut end
+        S.memAt = now
+        local out, dirty = {}, false
+        local _, hrp = getChar()
+        local me = hrp and hrp.Position
+        local canCheck = me and now - S.memStart > 25
+        for i = #S.mem, 1, -1 do
+            local m = S.mem[i]
+            local drop = false
+            if canCheck and now - m.t > 6 and flat(me, m.pos) < 18 then
+                if S.memProbe(m.pos) then
+                    m.missAt, m.miss = nil, 0
+                else
+                    m.missAt = m.missAt or now
+                    m.miss = (m.miss or 0) + 1
+                    drop = m.miss >= 3 and now - m.missAt > 5
+                end
+            end
+            if drop then
+                table.remove(S.mem, i)
+                dirty = true
+            else
+                t_insert(out, m.pos)
+            end
+        end
+        S.memOut = out
+        if dirty then S.memSave() end
+        return out
+    end
     S.allPts = function()
         local pts = {}
         local all = workspace:FindFirstChild("AllPlantedTrees")
@@ -5169,6 +5458,7 @@ SW.LoadCandy = function()
                 end
             end
         end
+        for _, p in ipairs(S.memPts()) do t_insert(pts, p) end
         return pts
     end
     S.isBadPt = function(pos)
@@ -5773,7 +6063,10 @@ SW.LoadCandy = function()
                 if flat(predicted, o) < minGap then tooClose = true break end
             end
             -- ยืนจริงแล้ว เช็คซ้ำด้วยชิ้นส่วนจริง ณ จุดที่ต้นจะโผล่ (hrp.Y สูงกว่าพื้น ~3 studs)
-            if not tooClose and S.occupied(predicted, 4.5) then tooClose = true end
+            if not tooClose and S.occupied(predicted, 4.5) then
+                tooClose = true
+                S.memAdd(predicted, "seen") -- ชิ้นส่วนจริงอยู่ตรงนี้แต่ไม่อยู่ในรายการพิกัด จำไว้
+            end
             if tooClose then
                 S.bad[key] = true
                 t_insert(S.badPts, { pos = spot, t = os.clock() })
@@ -5870,8 +6163,20 @@ SW.LoadCandy = function()
                 task.wait()
             end
             if real and count0 == 0 then S.latOrigin = real end
+            -- ต้นใหม่ = นับปุ๋ยใหม่ ล้างค่าเก่าที่ค้างในไฟล์ตรงจุดเดียวกัน ไม่งั้นต้นใหม่ถูกมองว่าใส่ครบแล้ว
+            do
+                local kp = real or predicted
+                for k in pairs(S.fertCount) do
+                    if type(k) == "string" then
+                        local kx, kz = k:match("^(-?%d+),(-?%d+)$")
+                        if kx and (tonumber(kx) - kp.X) ^ 2 + (tonumber(kz) - kp.Z) ^ 2 < 9 then S.fertCount[k] = nil end
+                    end
+                end
+                saveFert()
+            end
             local mark = real or at
             t_insert(S.placed, { pos = mark, t = os.clock() })
+            S.memAdd(real or predicted, "own")
             if real then
                 S.learnOffset(hrpNow, at, real)
                 local nearest = math.huge
@@ -6455,6 +6760,10 @@ SW.LoadCandy = function()
             end)
         end,
     })
+    SW.regFarm("Candy Farm", function() return S.on end, function()
+        if S.on then return end
+        pcall(function() runToggle:Set(true) end)
+    end)
 end
 SW.CandyAllowed = {
     [8514985969] = true,
