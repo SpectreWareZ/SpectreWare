@@ -511,8 +511,8 @@ local function saveCfgSoon()
 end
 task.wait()
 local Window = SpectreLib:CreateWindow({
-    Title = "SpectreWare | NEVER TOWN  v1.6.12",
-    Logo = 75093357559651,
+    Title = "SpectreWare | Auto Farm",
+    Logo = 84699118856259,
     Theme = "Mono",
     Width = 640,
     Height = 480,
@@ -2838,13 +2838,24 @@ SW.LoadNever = function()
             if cfg[k] ~= nil and type(v) == type(cfg[k]) then cfg[k] = v end
         end
     end
-    -- Auto Rejoin ปิดไว้ตอนรันปกติ: เปิดคืนให้เฉพาะตอนรันซ้ำหลัง hop ที่ผู้ใช้เปิดไว้ (on=true + pending สดใหม่)
+    -- Auto Rejoin ปิดไว้ตอนรันปกติเสมอ: เปิดคืนให้เฉพาะตอนสคริปต์ถูกรันโดย queue_on_teleport หลัง hop
+    -- (มีธง SpectreNT_Resume) + on=true + pending สดใหม่ เท่านั้น
     do
+        local resume = ENV.SpectreNT_Resume == true
+        ENV.SpectreNT_Resume = nil
+        cfg.rejoin = false
         local okS, st = pcall(function() return ENV.SpectreNT_State or ENV.SpectreNT_Store.get("rejoin") end)
-        if okS and type(st) == "table" and st.on == true and st.pending == true
+        if resume and okS and type(st) == "table" and st.on == true and st.pending == true
             and os.time() - (tonumber(st.t) or 0) < 600 then
             cfg.rejoin = true
             if type(st.same) == "boolean" then cfg.sameServer = st.same end
+        elseif okS and type(st) == "table" and (st.on == true or st.pending == true) then
+            -- รันเอง/รันปกติ: ล้างสถานะค้างจากรอบก่อน กันเปิดเองรอบถัดไป (เก็บเลขเซิร์ฟเดิมไว้)
+            pcall(function()
+                local c = { home = st.home, pending = false, on = false, same = st.same, t = os.time() }
+                ENV.SpectreNT_State = c
+                ENV.SpectreNT_Store.set("rejoin", c)
+            end)
         end
     end
     local statusP, toggles = nil, {}
@@ -2877,7 +2888,7 @@ SW.LoadNever = function()
         if ENV.SpectreNT_Queued == game.JobId then return true end
         local code
         if SCRIPT_URL ~= "" then
-            code = ("loadstring(game:HttpGet(%q))()"):format(SCRIPT_URL)
+            code = ("getgenv().SpectreNT_Resume=true;loadstring(game:HttpGet(%q))()"):format(SCRIPT_URL)
         end
         if not code then return false end
         local okQ = pcall(q, code)
@@ -5478,7 +5489,7 @@ SW.LoadCandy = function()
     -- below = ลึกลงจาก pos.Y กี่ studs (ใช้ค่ามากเมื่อ pos.Y คือความสูงตัวละคร ไม่ใช่พื้น)
     S.occHalf = 1.0
     S.physHits, S.physLogAt = 0, 0
-    S.occupied = function(pos, below)
+    S.occupied = function(pos, below, half)
         local apt = workspace:FindFirstChild("AllPlantedTrees")
         if not apt then return false end
         local op = S.occParams
@@ -5492,7 +5503,7 @@ SW.LoadCandy = function()
         below = below or 0.6
         local h = 3 + below
         local ok, parts = pcall(workspace.GetPartBoundsInBox, workspace,
-            CFrame.new(pos.X, pos.Y + (3 - below) / 2, pos.Z), Vector3.new(S.occHalf * 2, h, S.occHalf * 2), op)
+            CFrame.new(pos.X, pos.Y + (3 - below) / 2, pos.Z), Vector3.new((half or S.occHalf) * 2, h, (half or S.occHalf) * 2), op)
         if not (ok and parts and #parts > 0) then return false end
         S.physHits = S.physHits + 1
         if os.clock() - S.physLogAt > 8 then
@@ -5952,6 +5963,169 @@ SW.LoadCandy = function()
         end
         return false
     end
+    -- ===== AI Guardian: ระบบตรวจ+เรียนรู้เบื้องหลังการปลูก (ทำงานในเครื่อง ไม่เรียกเซิร์ฟเวอร์ภายนอก) =====
+    -- 1) Latency model: เรียนรู้เวลาที่ต้นโผล่หลังยิง (EWMA + ความแปรปรวน) -> timeout ปรับเองตามปิง ไม่ตายตัว
+    -- 2) Spot reputation: Beta posterior ต่อเซลล์ 3 studs -> จุดที่พังซ้ำถูกแบนชั่วคราว
+    -- 3) Post-verify: หลังปลูกสำเร็จ ตรวจซ้ำที่ +1.5 วิ/+4.5 วิ ว่าต้นยังอยู่ (ghost) และไม่มีต้นซ้อนกัน (stack)
+    -- 4) Risk score: รวมเหตุผิดปกติใน 90 วิล่าสุด -> เบรกความเร็วอัตโนมัติ / safe mode พักปลูก + รีเซ็ตจุด
+    S.AI = { lat = { n = 0, mean = 1.0, var = 0.25 }, cells = {}, win = {}, safeAt = 0, dupes = 0, ghosts = 0, jumps = 0, attempts = 0 }
+    local AI = S.AI
+    AI.W = { ok = -0.6, fail = 1, timeout = 1, blocked = 0.4, stack = 2.5, ghost = 2, jump = 0.25 }
+    function AI.cellKey(pos) return m_floor(pos.X / 3) .. "," .. m_floor(pos.Z / 3) end
+    function AI.event(kind)
+        local now = os.clock()
+        t_insert(AI.win, { t = now, k = kind })
+        for i = #AI.win, 1, -1 do
+            if now - AI.win[i].t > 90 then table.remove(AI.win, i) end
+        end
+        if kind == "stack" then AI.dupes = AI.dupes + 1 elseif kind == "ghost" then AI.ghosts = AI.ghosts + 1 elseif kind == "jump" then AI.jumps = AI.jumps + 1 end
+    end
+    function AI.risk()
+        local now, sc = os.clock(), 0
+        for _, e in ipairs(AI.win) do
+            if now - e.t <= 90 then sc = sc + (AI.W[e.k] or 0) end
+        end
+        return math.clamp(sc / 6, 0, 1)
+    end
+    function AI.observe(dt)
+        local L = AI.lat
+        L.n = L.n + 1
+        local a = L.n < 5 and 0.4 or 0.15
+        local d = dt - L.mean
+        L.mean = L.mean + a * d
+        L.var = (1 - a) * (L.var + a * d * d)
+    end
+    -- timeout = mean + 3σ (กันเซิร์ฟเวอร์ช้า) แต่ไม่ต่ำกว่า 1.5 / ไม่เกิน 6 วิ
+    function AI.timeout()
+        local L = AI.lat
+        return math.clamp(L.mean + 3 * math.sqrt(L.var), 1.5, 6)
+    end
+    function AI.result(pos, ok)
+        if not pos then return end
+        local k, now = AI.cellKey(pos), os.clock()
+        local c = AI.cells[k]
+        if not c or now - c.t > 300 then c = { a = 0, b = 0, t = now } AI.cells[k] = c end
+        if ok then c.a = c.a + 1 else c.b = c.b + 1 end
+        c.t = now
+        AI.event(ok and "ok" or "fail")
+    end
+    function AI.banned(pos)
+        local c = AI.cells[AI.cellKey(pos)]
+        if not c or os.clock() - c.t > 300 then return false end
+        local n = c.a + c.b
+        return n >= 3 and (c.a + 1) / (n + 2) < 0.3
+    end
+    function AI.throttle() return AI.risk() * 0.9 end
+    -- true = ความเสี่ยงสูงเกิน: พัก + ล้างจุดที่จำไว้ แล้วให้ระบบเลือกจุดใหม่
+    function AI.safeMode()
+        local now = os.clock()
+        if now < AI.safeAt or AI.risk() < 0.8 then return false end
+        AI.safeAt = now + 20
+        AI.win = {}
+        S.coolUntil = now + 8
+        S.bad, S.badPts, AI.cells = {}, {}, {}
+        S.log("AI Guardian: ความเสี่ยงสูง พักปลูก 8 วิ และรีเซ็ตจุดที่จำไว้")
+        SW.Notify({ Title = "AI Guardian", Icon = "shield-alert", Content = "ตรวจพบความผิดปกติถี่ (ปลูกพลาด/ซ้อน) พักปลูก 8 วิ แล้วเลือกจุดใหม่", Duration = 5 })
+        return true
+    end
+    function AI.verify(pos)
+        for _, wait_s in ipairs({ 1.5, 3 }) do
+            task.wait(wait_s)
+            if not live() then return end
+            local near, ownNear = {}, 0
+            for _, t in ipairs(ownTrees()) do
+                local p = t.Parent and treePos(t)
+                if p and flat(p, pos) < 6 then t_insert(near, p) end
+                if p and flat(p, pos) < 1.2 then ownNear = ownNear + 1 end
+            end
+            if ownNear == 0 then
+                AI.event("ghost")
+                S.log("AI Guardian: ต้นที่เพิ่งปลูกหายไป (ghost) ที่จุดนี้")
+                return
+            end
+            for i = 1, #near do
+                for j = i + 1, #near do
+                    if flat(near[i], near[j]) < 1.3 then
+                        AI.event("stack")
+                        if S.spacing < 10 then S.spacing = S.spacing + 0.5 end
+                        S.bad = {}
+                        S.log(("AI Guardian: พบต้นซ้อนกัน (ห่าง %.1f) ขยายระยะห่างเป็น %.1f"):format(flat(near[i], near[j]), S.spacing))
+                        return
+                    end
+                end
+            end
+        end
+    end
+    function AI.summary()
+        return ("AI เสี่ยง %d%% | latency %.1fs | ซ้อน %d | หาย %d"):format(AI.risk() * 100 + 0.5, AI.lat.mean, AI.dupes, AI.ghosts)
+    end
+    -- เช็คสดๆ ก่อนยิงปลูกทุกครั้ง: ใช้ตำแหน่งตัวละครตอนนี้ + ทุกแหล่งข้อมูล (ต้นจริง/ความจำ/ต้นที่เพิ่งยิงไป/ชิ้นส่วนจริง)
+    -- true = จุดนี้มีต้นอยู่แล้วหรือใกล้เกิน ห้ามยิง
+    S.spotTaken = function()
+        local _, hrp = getChar()
+        if not hrp then return true, "nochar" end
+        local pred = S.predictTree(hrp)
+        local gap = S.minGap() - 0.15
+        for _, o in ipairs(S.allPts()) do
+            if flat(pred, o) < gap then return true, "pt" end
+        end
+        if S.occupied(pred, 4.5, math.max(S.occHalf, S.minGap() * 0.3)) then
+            S.memAdd(pred, "seen")
+            return true, "phys"
+        end
+        return false
+    end
+    S.dropPending = function(p)
+        if not (p and S.placed) then return end
+        for i = #S.placed, 1, -1 do
+            if S.placed[i] == p then table.remove(S.placed, i) break end
+        end
+    end
+    -- ระหว่างปลูก ห้ามตัวละครกระโดดเด็ดขาด (Auto-Jump ตอนเดินชนของ / สคริปต์อื่น / เซิร์ฟเวอร์ เป็นสาเหตุให้เกมยกเลิกการวาง)
+    S.lockJump = function(lock)
+        if S.jumpConn then S.jumpConn:Disconnect() S.jumpConn = nil end
+        if lock then
+            local _, _, hum = getChar()
+            if not hum then return end
+            S.jumpHum = hum
+            if S.autoJumpWas == nil then S.autoJumpWas = hum.AutoJumpEnabled end
+            pcall(function()
+                hum.AutoJumpEnabled = false
+                hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+                hum.Jump = false
+            end)
+            S.jumpConn = hum:GetPropertyChangedSignal("Jump"):Connect(function()
+                if hum.Jump then hum.Jump = false S.AI.event("jump") end
+            end)
+        else
+            local hum = S.jumpHum
+            S.jumpHum = nil
+            if hum and hum.Parent then
+                pcall(function()
+                    hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+                    if S.autoJumpWas ~= nil then hum.AutoJumpEnabled = S.autoJumpWas end
+                end)
+            end
+            S.autoJumpWas = nil
+        end
+    end
+    -- รอให้เท้าติดพื้นและนิ่งก่อนยิงปลูก (ถูกวาร์ป/ลงพื้นอยู่ เกมจะมองว่ากำลังกระโดด/ตกแล้วยกเลิก)
+    S.waitGrounded = function(timeout)
+        local t0 = os.clock()
+        while live() and os.clock() - t0 < (timeout or 1.2) do
+            local _, hrp, hum = getChar()
+            if not (hrp and hum) then return false end
+            local st = hum:GetState()
+            if hum.FloorMaterial ~= Enum.Material.Air
+                and math.abs(hrp.AssemblyLinearVelocity.Y) < 1
+                and st ~= Enum.HumanoidStateType.Freefall
+                and st ~= Enum.HumanoidStateType.Jumping then
+                return true
+            end
+            task.wait(0.05)
+        end
+        return false
+    end
     local function plantOne(trees)
         if not S.notifConn then task.spawn(S.watchNotif) end
         if not S.seed or not hasSeed(S.seed) then
@@ -5963,6 +6137,7 @@ SW.LoadCandy = function()
         end
         local seed = S.seed
         if not seed then return end
+        if AI.safeMode() then return end
         if not hasSeed(seed) then
             if os.clock() > S.coolUntil then
                 SW.Notify({ Title = "Candy Farm", Icon = "alert-triangle", Content = "เมล็ด " .. seed .. " หมด | เจอ: " .. S.dumpSeedy(), Duration = 8 })
@@ -5984,6 +6159,11 @@ SW.LoadCandy = function()
                     autoAnchor()
                 end
             end
+            return
+        end
+        if AI.banned(spot) then
+            S.bad[key] = true
+            S.log("AI Guardian: จุด " .. key .. " พังซ้ำ ข้ามชั่วคราว")
             return
         end
         setStatus("เดินไปจุดปลูก")
@@ -6052,6 +6232,7 @@ SW.LoadCandy = function()
                 return
             end
         end
+        S.waitGrounded(1.2)
         local _, hrpNow = getChar()
         if not hrpNow then return end
         local at = hrpNow.Position
@@ -6098,18 +6279,32 @@ SW.LoadCandy = function()
         end
         local count0 = allTreeCount()
         local function tryPlant(t)
+            -- เช็คซ้ำสดๆ ก่อนยิงทุกครั้ง (ตำแหน่งอาจเปลี่ยนตอนหยิบเมล็ด/รอเซิร์ฟเวอร์ หรือมีต้นเพิ่งโผล่)
+            local taken, why = S.spotTaken()
+            if taken then
+                S.log("ยกเลิกยิงปลูก: จุดนี้มีต้นอยู่แล้ว (" .. tostring(why) .. ")")
+                return false, true
+            end
             local before = allTreeCount()
             setStatus("ปลูก " .. seed)
             LP:SetAttribute("FarmBusy", true)
             S.lastReject = nil
             local sent = os.clock()
+            -- จดจุดที่ยิงไว้เป็นสิ่งกีดขวางชั่วคราว (เซิร์ฟเวอร์อาจตอบช้า ต้นโผล่หลังเรารอหมดเวลา)
+            local _, hrpF = getChar()
+            local pend = hrpF and { pos = S.predictTree(hrpF), t = sent } or nil
+            if pend then
+                S.placed = S.placed or {}
+                t_insert(S.placed, pend)
+            end
             local okFire = pcall(PlantRemote.FireServer, PlantRemote, t)
             if not okFire then
                 LP:SetAttribute("FarmBusy", false)
+                S.dropPending(pend)
                 return false
             end
             local t0 = os.clock()
-            while os.clock() - t0 < 2.5 and not grew(before) and not S.plantReject(sent) do
+            while os.clock() - t0 < AI.timeout() and not grew(before) and not S.plantReject(sent) do
                 task.wait()
             end
             -- เซิร์ฟเวอร์ตอบช้า: รออีกนิดก่อนตัดสินว่าไม่ติด กันยิงซ้ำลงจุดเดิม
@@ -6118,20 +6313,41 @@ SW.LoadCandy = function()
                 task.wait()
             end
             LP:SetAttribute("FarmBusy", false)
-            if grew(before) then return true end
+            if grew(before) then
+                AI.observe(os.clock() - sent)
+                S.dropPending(pend) -- ต้นจริงมาแล้ว ใช้ตำแหน่งจริงแทน
+                return true
+            end
             S.lastReject = S.plantReject(sent)
-            return false
+            if S.lastReject then S.dropPending(pend) else AI.event("timeout") end -- เกมปฏิเสธ = ไม่มีต้นเกิด
+            return false, false, pend
         end
-        local planted = tryPlant(tool)
-        if not planted and not equipped and live() and not S.lastReject then
-            local t2 = equip(seed, 2)
-            if t2 then
-                planted = grew(count0) or tryPlant(t2)
+        local planted, blocked, pend1 = tryPlant(tool)
+        if not planted and not blocked and not equipped and live() and not S.lastReject then
+            -- ยังไม่ยิงซ้ำทันที: รอเผื่อต้นแรกโผล่ช้า แล้วค่อยเช็คอีกที ไม่งั้นวางซ้อนจุดเดิม
+            local w = os.clock()
+            while os.clock() - w < 0.6 and not grew(count0) do task.wait() end
+            local t2 = not grew(count0) and equip(seed, 2)
+            if grew(count0) then
+                planted = true
+                S.dropPending(pend1)
+            elseif t2 then
+                S.dropPending(pend1)
+                local ok2, bl2 = tryPlant(t2)
+                planted, blocked = ok2, bl2
                 if planted then
                     S.needEquip = true
                     SW.Notify({ Title = "Candy Farm", Icon = "info", Content = "เกมต้องถือเมล็ดถึงจะปลูกได้ สลับไปถือให้อัตโนมัติแล้ว", Duration = 5 })
                 end
             end
+        end
+        if blocked and not planted then
+            S.bad[key] = true
+            t_insert(S.badPts, { pos = spot, t = os.clock() })
+            AI.event("blocked")
+            setStatus("จุดนี้มีต้นอยู่แล้ว หาจุดใหม่")
+            task.wait(0.05)
+            return
         end
         local tFired = os.clock()
         if planted then
@@ -6177,6 +6393,8 @@ SW.LoadCandy = function()
             local mark = real or at
             t_insert(S.placed, { pos = mark, t = os.clock() })
             S.memAdd(real or predicted, "own")
+            AI.result(spot, true)
+            task.spawn(AI.verify, real or predicted)
             if real then
                 S.learnOffset(hrpNow, at, real)
                 local nearest = math.huge
@@ -6195,6 +6413,7 @@ SW.LoadCandy = function()
             end
         else
             S.stat.failed = S.stat.failed + 1
+            AI.result(spot, false)
             S.log("ปลูกไม่ติด")
             local rej = S.lastReject
             S.lastReject = nil
@@ -6256,7 +6475,9 @@ SW.LoadCandy = function()
             S.log(("ปลูกช้า %.1fs | เดิน %.1f หยิบ %.1f ยืน+ยิง %.1f รอผล %.1f"):format(
                 tDone - tStart, tWalked - tStart, tEquipped - tWalked, tFired - tEquipped, tDone - tFired))
         end
-        task.wait(planted and 0.05 or 0.4)
+        AI.attempts = AI.attempts + 1
+        if AI.attempts % 15 == 0 then S.log(AI.summary()) end
+        task.wait((planted and 0.05 or 0.4) + AI.throttle())
         return true
     end
     -- เก็บให้หมดก่อน: ต้นที่ Growth >= 100 และยังไม่เกินโควตาลองเก็บ (ต้นที่เก็บไม่ติด 3 ครั้งข้ามไป กันค้าง)
@@ -6366,10 +6587,12 @@ SW.LoadCandy = function()
         end
         if live() and S.plant and S.seed and S.batchOpen and #trees < S.target and os.clock() >= S.coolUntil and not S.collectBusy() then
             S.planting = true
+            S.lockJump(true)
             local okP, did = pcall(plantOne, trees)
             S.planting = false
+            S.lockJump(false)
             if not okP then error(did, 0) end
-            setStatus(("ปลูก %d/%d | %s ×%d"):format(#ownTrees(), S.target, S.seed, getCount(S.seed)))
+            setStatus(("ปลูก %d/%d | %s ×%d | %s"):format(#ownTrees(), S.target, S.seed, getCount(S.seed), S.AI.summary()))
             return did and "fast" or nil
         end
         if live() then S.release("seed") end
