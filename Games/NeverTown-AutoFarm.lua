@@ -1,5 +1,47 @@
--- NEVER TOWN | SpectreWare by #CaptainZ v1.6.12 (Performance Optimized by Bread) | Auto Farm build
+-- NEVER TOWN | SpectreWare by #CaptainZ (Performance Optimized by Bread) | Auto Farm build
 local ENV = (getgenv and getgenv()) or _G
+-- ============================================================
+-- CONFIG : แก้ค่าทั้งหมดของสคริปต์ที่นี่ที่เดียว
+-- ============================================================
+local CONFIG = {
+    Urls = {
+        config    = "https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/SpectreConfig.lua",
+        ui        = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Ui/SpectreUI.lua",
+        changelog = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Tools/changelog.lua",
+        script    = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Games/NeverTown-AutoFarm.lua", -- ใช้ตอน rejoin แล้วรันซ้ำ
+    },
+
+    -- รายงาน error ไป Discord ("" = ปิดทั้งระบบ)
+    Webhook = {
+        url           = "https://discord.com/api/webhooks/1482748907242127522/CAjcHoInWyuy2RVY38z5hlk_dYnr1bgiSh4q9zlaGIMvzrz_eD_RinoGCgNSJgkp0klf",
+        maxPerSession = 15,
+        cooldown      = 3, -- วินาทีระหว่างการส่งแต่ละครั้ง
+        -- ส่งรายงานเฉพาะแมพนี้เท่านั้น: ใส่ PlaceId ของ Never Town ที่นี่ เช่น { [123456789] = true }
+        -- ถ้าเว้นว่าง จะเช็คจากชื่อเกมที่มีคำว่า "Never" แทน
+        placeIds      = {},
+        nameMatch     = "never",
+    },
+
+    -- ไฟล์เซฟ: workspace/<dir>/<file>
+    Store = { dir = "NeverTownAutoFarm", file = "SpectreNT.json" },
+
+    DragFollow = 26,
+
+    Deny = { soundId = "rbxasset://sounds/button.wav", volume = 0.8, pitch = 0.55 },
+
+    Candy = {
+        hardLock = false, -- true = ล็อคทุกคน (รวม whitelist) | false = เปิดเฉพาะ allowed
+        allowed  = { [8514985969] = true }, -- UserId ที่ได้สิทธิ์
+        lockText          = "แท็บนี้ปิดปรับปรุงชั่วคราว (กำลังแก้บัก) ฟีเจอร์อื่นใช้งานได้ตามปกติ",
+        lockTextWhitelist = "แท็บนี้ปิดปรับปรุงชั่วคราว (กำลังแก้บัก) เปิดให้เฉพาะผู้ที่ได้รับสิทธิ์ ส่วนฟีเจอร์อื่นใช้งานได้ตามปกติ",
+    },
+}
+-- Services: เรียก Svc.Players / Svc.RunService ... ได้เลย (cache ให้เอง)
+local Svc = setmetatable({}, { __index = function(t, name)
+    local s = game:GetService(name)
+    rawset(t, name, s)
+    return s
+end })
 do
     local nowT = os.clock()
     if ENV.SpectreNT_BootAt and (nowT - ENV.SpectreNT_BootAt) < 8 and ENV.SpectreNT_BootJob == game.JobId then
@@ -15,9 +57,9 @@ do
 end
 -- Single workspace file for all persisted state: NeverTownAutoFarm/SpectreNT.json
 do
-    local HS = game:GetService("HttpService")
-    local STORE_DIR  = "NeverTownAutoFarm"
-    local STORE_FILE = STORE_DIR .. "/SpectreNT.json"
+    local HS = Svc.HttpService
+    local STORE_DIR  = CONFIG.Store.dir
+    local STORE_FILE = STORE_DIR .. "/" .. CONFIG.Store.file
     local function readAll()
         if readfile and isfile and isfile(STORE_FILE) then
             local ok, d = pcall(function() return HS:JSONDecode(readfile(STORE_FILE)) end)
@@ -38,13 +80,31 @@ do
     }
 end
 do
-    local WEBHOOK_URL = "https://discord.com/api/webhooks/1482748907242127522/CAjcHoInWyuy2RVY38z5hlk_dYnr1bgiSh4q9zlaGIMvzrz_eD_RinoGCgNSJgkp0klf"
-    local VERSION = "v1.6.12"
-    local MAX_PER_SESSION, COOLDOWN = 15, 3
+    local WEBHOOK_URL = CONFIG.Webhook.url
+    local MAX_PER_SESSION, COOLDOWN = CONFIG.Webhook.maxPerSession, CONFIG.Webhook.cooldown
     local sent, lastT, seen = 0, 0, {}
     local reqFn = request or http_request or (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request)
-    local HttpService = game:GetService("HttpService")
-    local Plrs = game:GetService("Players")
+    -- หน้าเลือกเซิร์ฟมี ReplicatedStorage.ServerCache | ในเซิร์ฟเกมมี Workspace.AllPlantedTrees แต่ไม่มี ServerCache
+    local function inGameServer()
+        local ok, res = pcall(function()
+            return Svc.ReplicatedStorage:FindFirstChild("ServerCache") == nil
+                and workspace:FindFirstChild("AllPlantedTrees") ~= nil
+        end)
+        return ok and res == true
+    end
+    local function inHomeMap()
+        local ids = CONFIG.Webhook.placeIds
+        local mapOk
+        if next(ids) ~= nil then
+            mapOk = ids[game.PlaceId] == true or ids[game.GameId] == true
+        else
+            local ok, name = pcall(function() return game.Name end)
+            mapOk = ok and type(name) == "string" and name:lower():find(CONFIG.Webhook.nameMatch, 1, true) ~= nil
+        end
+        return mapOk and inGameServer()
+    end
+    local HttpService = Svc.HttpService
+    local Plrs = Svc.Players
     -- Strip invalid UTF-8, defuse ``` fences, cut to n bytes on a character boundary.
     local function clip(s, n)
         s = tostring(s)
@@ -73,7 +133,7 @@ do
     end
     local function report(tag, err, trace)
         if tag ~= "Runtime" and ENV.SpectreUiNotice then pcall(ENV.SpectreUiNotice) end
-        if WEBHOOK_URL == "" or not reqFn then return end
+        if WEBHOOK_URL == "" or not reqFn or not inHomeMap() then return end
         err = tostring(err)
         local key = tag .. "|" .. err
         if seen[key] or sent >= MAX_PER_SESSION or (os.clock() - lastT) < COOLDOWN then return end
@@ -105,7 +165,6 @@ do
                 local placeName = select(2, pcall(function() return game.Name end))
                 fields[#fields + 1] = { name = "Player", value = who, inline = true }
                 fields[#fields + 1] = { name = "Executor", value = "`" .. clip(exName, 40) .. "`", inline = true }
-                fields[#fields + 1] = { name = "Version", value = "`" .. VERSION .. "`", inline = true }
                 fields[#fields + 1] = { name = "Place", value = clip(placeName, 60) .. "\n`" .. game.PlaceId .. "`", inline = true }
                 fields[#fields + 1] = { name = "Server", value = "`" .. clip(game.JobId ~= "" and game.JobId or "studio", 40) .. "`", inline = true }
 
@@ -121,7 +180,7 @@ do
                             description = desc,
                             color = tag == "Runtime" and 15158332 or 15105570,
                             fields = fields,
-                            footer = { text = "SpectreWare " .. VERSION .. "  |  error " .. n .. "/" .. MAX_PER_SESSION },
+                            footer = { text = "SpectreWare  |  error " .. n .. "/" .. MAX_PER_SESSION },
                             timestamp = DateTime.now():ToIsoDate(),
                         }},
                     }),
@@ -136,15 +195,15 @@ do
         return table.unpack(r, 1, r.n)
     end
     pcall(function()
-        game:GetService("ScriptContext").Error:Connect(function(msg, trace, scr)
+        Svc.ScriptContext.Error:Connect(function(msg, trace, scr)
             if scr == nil then report("Runtime", msg, trace) end
         end)
     end)
 end
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local VirtualUser = game:GetService("VirtualUser")
-local Lighting = game:GetService("Lighting")
+local Players = Svc.Players
+local RunService = Svc.RunService
+local VirtualUser = Svc.VirtualUser
+local Lighting = Svc.Lighting
 local LP = Players.LocalPlayer
 local t_insert, t_sort, ipairs, pairs = table.insert, table.sort, ipairs, pairs
 local m_floor, m_max, m_clamp, m_huge = math.floor, math.max, math.clamp, math.huge
@@ -169,7 +228,7 @@ end
 task.spawn(function()
     for attempt = 1, 3 do
         local okc, mod = pcall(function()
-            local src = cfgLoader.fetch("https://raw.githubusercontent.com/Captaineieiei/Script-/refs/heads/main/SpectreConfig.lua")
+            local src = cfgLoader.fetch(CONFIG.Urls.config)
             task.wait()
             return loadstring(src)()
         end)
@@ -183,7 +242,7 @@ task.spawn(function()
 end)
 local SpectreLib
 do
-    local SPECTREUI_URL = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Ui/SpectreUI.lua"
+    local SPECTREUI_URL = CONFIG.Urls.ui
     local okLib, libOrErr
     for attempt = 1, 3 do
         okLib, libOrErr = pcall(function()
@@ -206,8 +265,8 @@ end
 local SpectreAccent = Color3.fromRGB(75, 135, 255)
 local SW = {
     alive = true,
-    UIS = game:GetService("UserInputService"),
-    Tween = game:GetService("TweenService"),
+    UIS = Svc.UserInputService,
+    Tween = Svc.TweenService,
     Bg = Color3.fromRGB(20, 20, 20),
     BgTop = Color3.fromRGB(30, 30, 30),
     Row = Color3.fromRGB(40, 40, 40),
@@ -307,22 +366,19 @@ function SW.pauseWait()
     local t0 = os.clock()
     while LP:GetAttribute("FarmPaused") and os.clock() - t0 < 30 do task.wait(0.2) end
 end
-SW.DenySoundId = "rbxasset://sounds/button.wav"
-SW.DenyVolume = 0.8
-SW.DenyPitch = 0.55
 function SW.denySound()
     task.spawn(function()
         pcall(function()
-            local SS = game:GetService("SoundService")
+            local SS = Svc.SoundService
             for i = 1, 2 do
                 local snd = Instance.new("Sound")
                 snd.Name = "SW_Deny"
-                snd.SoundId = SW.DenySoundId
-                snd.Volume = SW.DenyVolume
-                snd.PlaybackSpeed = SW.DenyPitch - (i - 1) * 0.1
+                snd.SoundId = CONFIG.Deny.soundId
+                snd.Volume = CONFIG.Deny.volume
+                snd.PlaybackSpeed = CONFIG.Deny.pitch - (i - 1) * 0.1
                 snd.Parent = SS
                 snd:Play()
-                game:GetService("Debris"):AddItem(snd, 2)
+                Svc.Debris:AddItem(snd, 2)
                 task.wait(0.12)
             end
         end)
@@ -351,7 +407,6 @@ function SW.treePart(tree)
     return p
 end
 function SW.getText(o) return o.Text end
-SW.DRAG_FOLLOW = 26
 SW.isDragging = false
 SW.dragCount = 0
 local m_exp, m_abs = math.exp, math.abs
@@ -410,7 +465,7 @@ function SW.attachDrag(target, handles, opts)
             goalX, goalY = dx, dy
         end
         local nx, ny = goalX, goalY
-        local k = SW.DRAG_FOLLOW
+        local k = CONFIG.DragFollow
         if k > 0 then
             local a = 1 - m_exp(-k * dt)
             nx = curX + (goalX - curX) * a
@@ -601,7 +656,7 @@ task.spawn(function()
     allTrees = workspace:WaitForChild("AllPlantedTrees", 30)
     if allTrees then parentFolder = allTrees:WaitForChild(folderName, 15) end
     pcall(
-        function() giveWaterRemote = game:GetService("ReplicatedStorage"):WaitForChild("Grow_vegetables", 15):WaitForChild("GiveWater", 10) end
+        function() giveWaterRemote = Svc.ReplicatedStorage:WaitForChild("Grow_vegetables", 15):WaitForChild("GiveWater", 10) end
     )
     task.wait(0.5)
     local t0 = os.clock()
@@ -711,8 +766,17 @@ local HomeTab = Window:CreateTab({ Name = "Home", Icon = "lucide:house" })
 local FarmTab = Window:CreateTab({ Name = "Menu", Icon = "lucide:archive" })
 SW.FishTab = Window:CreateTab({ Name = "Fishing", Icon = "lucide:fish" })
 SW.EatTab = Window:CreateTab({ Name = "Auto Eat", Icon = "lucide:utensils" })
-SW.CandyHardLock = false -- true = ล็อคทุกคน (รวม whitelist) | false = เปิดเฉพาะ SW.CandyAllowed
-SW.CandyLockText = "แท็บนี้ปิดปรับปรุงชั่วคราว (กำลังแก้บัก) ฟีเจอร์อื่นใช้งานได้ตามปกติ"
+SW.CandyHardLock = CONFIG.Candy.hardLock
+SW.CandyLockText = CONFIG.Candy.lockText
+SW.CandyAllowed = CONFIG.Candy.allowed
+SW.CandyLockNotify = function()
+    SW.Notify({
+        Title = "Candy Farm ถูกล็อคอยู่",
+        Content = SW.CandyHardLock and CONFIG.Candy.lockText or CONFIG.Candy.lockTextWhitelist,
+        Icon = "lock",
+        Duration = 6,
+    })
+end
 SW.CandyTab = Window:CreateTab({
     Name = "Candy Farm", Icon = "lucide:candy",
     Locked = SW.CandyHardLock, LockReason = SW.CandyLockText,   -- SpectreUI tab lock API
@@ -804,11 +868,10 @@ SW.Changelog = {
         },
     },
 }
-SW.ChangelogURL = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Tools/changelog.lua"
 SW.LoadHome = function()
     local list = SW.Changelog
     pcall(function()
-        local src = cfgLoader.fetch(SW.ChangelogURL .. "?v=" .. os.time())
+        local src = cfgLoader.fetch(CONFIG.Urls.changelog .. "?v=" .. os.time())
         local fn = loadstring(src)
         local remote = fn and fn()
         if type(remote) ~= "table" then return end
@@ -1151,7 +1214,7 @@ local function LoadFarmTab()
                     task.wait(0.5)
                     for _ = 1, 3 do
                         DepositRemote =
-                            resolveRemotePath(game:GetService("ReplicatedStorage"), { "Game_Modules", "RemoteEventSafe", "DepositItem" }, 5)
+                            resolveRemotePath(Svc.ReplicatedStorage, { "Game_Modules", "RemoteEventSafe", "DepositItem" }, 5)
                         if DepositRemote then break end
                         task.wait(1.5)
                     end
@@ -1507,7 +1570,7 @@ local function LoadFarmTab()
         CandyGui.IgnoreGuiInset = true
         CandyGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
         CandyGui.DisplayOrder = 50
-        pcall(function() CandyGui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end)
+        pcall(function() CandyGui.Parent = (gethui and gethui()) or Svc.CoreGui end)
         if not CandyGui.Parent then CandyGui.Parent = LP:WaitForChild("PlayerGui") end
         CandyMain = SW.new("Frame", {
             Name = "MainFrame",
@@ -2023,7 +2086,7 @@ local function LoadTeleportTab()
     end
     local function loadLive()
         local ok, icons = pcall(function()
-            local RS = game:GetService("ReplicatedStorage")
+            local RS = Svc.ReplicatedStorage
             local gm = RS:FindFirstChild("Game_Modules")
             local m = (gm and gm:FindFirstChild("MapConfig")) or RS:FindFirstChild("MapConfig", true)
             return require(m).Icons
@@ -2437,7 +2500,7 @@ SW.charParts = function()
     return c, c and c:FindFirstChild("HumanoidRootPart")
 end
 SW.LoadSafe = function()
-    local RS = game:GetService("ReplicatedStorage")
+    local RS = Svc.ReplicatedStorage
     local PG = LP:WaitForChild("PlayerGui")
     local FOLDER = "Safe"
     local function isValueType(v)
@@ -2584,7 +2647,7 @@ SW.LoadSafe = function()
     end)
 end
 SW.LoadProcess = function()
-    local RS = game:GetService("ReplicatedStorage")
+    local RS = Svc.ReplicatedStorage
     local ORES = {
         Gold = { ore = "MineGold", product = "Gold", prompt = "StoneGold" },
         Iron = { ore = "MineIron", product = "Iron", prompt = "StoneIron" },
@@ -2811,12 +2874,12 @@ SW.LoadProcess = function()
     end)
 end
 SW.LoadNever = function()
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local Workspace         = game:GetService("Workspace")
-    local TeleportService   = game:GetService("TeleportService")
-    local GuiService        = game:GetService("GuiService")
-    local CoreGui           = game:GetService("CoreGui")
-    local SCRIPT_URL = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Games/NeverTown-AutoFarm.lua"
+    local ReplicatedStorage = Svc.ReplicatedStorage
+    local Workspace         = Svc.Workspace
+    local TeleportService   = Svc.TeleportService
+    local GuiService        = Svc.GuiService
+    local CoreGui           = Svc.CoreGui
+    local SCRIPT_URL = CONFIG.Urls.script
     local cfg = {
         farm      = false,
         fish      = false,
@@ -2905,7 +2968,7 @@ SW.LoadNever = function()
         return ok and found == true
     end
     local MAX_PLAYERS = 50
-    local RS = game:GetService("ReplicatedStorage")
+    local RS = Svc.ReplicatedStorage
     local function getMM()
         return RS:FindFirstChild("MatchmakingRemotes")
     end
@@ -2998,7 +3061,7 @@ SW.LoadNever = function()
         end)
         return pool[1]
     end
-    local HttpService = game:GetService("HttpService")
+    local HttpService = Svc.HttpService
     local function saveState(t)
         t.on = cfg.rejoin
         t.same = cfg.sameServer
@@ -3713,7 +3776,7 @@ SW.LoadNever = function()
     end)
     addSlider(Fish, "fishLead", "Timing Offset", "ปรับจังหวะยิงมินิเกม (วินาที) บวก = ยิงเร็วขึ้น ลบ = ช้าลง", -0.3, 0.3, 0.01, "s")
     do
-        local RS = game:GetService("ReplicatedStorage")
+        local RS = Svc.ReplicatedStorage
         local PriceSec = Tab:CreateSection({ Name = "Fish Prices (ราคาปลา)", Icon = "lucide:coins" })
         local NOT_FISH = {
             Template = true, MineGold = true, MineIron = true, Gold = true, Iron = true,
@@ -3954,7 +4017,7 @@ SW.addSlider = function(sec, name, tip, min, max, step, suffix, default, onChang
     end
 end
 SW.LoadEat = function()
-    local RS = game:GetService("ReplicatedStorage")
+    local RS = Svc.ReplicatedStorage
     local PG = LP:WaitForChild("PlayerGui")
     local function walk(root, path)
         local cur = root
@@ -4277,7 +4340,7 @@ SW.LoadEat = function()
         end
         if not found then
             pcall(function()
-                for _, root in ipairs({ LP:FindFirstChild("Backpack"), game:GetService("StarterPack"), RS }) do
+                for _, root in ipairs({ LP:FindFirstChild("Backpack"), Svc.StarterPack, RS }) do
                     local tool = root and root:FindFirstChild(itemName, true)
                     if tool and tool:IsA("Tool") and tool.TextureId ~= "" then
                         found = tool.TextureId
@@ -4444,7 +4507,7 @@ SW.LoadEat = function()
     end)
 end
 SW.LoadCandy = function()
-    local RS = game:GetService("ReplicatedStorage")
+    local RS = Svc.ReplicatedStorage
     local function liveRemote(name)
         return { FireServer = function(_, ...)
             local gv = RS:FindFirstChild("Grow_vegetables")
@@ -4626,7 +4689,7 @@ SW.LoadCandy = function()
     local function flat(a, b)
         return Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
     end
-    local PathfindingService = game:GetService("PathfindingService")
+    local PathfindingService = Svc.PathfindingService
     local function pathTo(pos, h, hrp, budget)
         local path = PathfindingService:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true })
         local ok = pcall(path.ComputeAsync, path, hrp.Position, pos)
@@ -4811,7 +4874,7 @@ SW.LoadCandy = function()
         if getCount(name) <= 0 then return false end
         if lastUse[name] and os.clock() - lastUse[name] < 1.5 then return false end
         local okR, Bag = pcall(function()
-            return game:GetService("ReplicatedStorage").RemoteEvent_Solf.RemoteEventA.Bag
+            return Svc.ReplicatedStorage.RemoteEvent_Solf.RemoteEventA.Bag
         end)
         local pg = LP:FindFirstChild("PlayerGui")
         local bn = pg and pg:FindFirstChild("Backpack_Never")
@@ -5836,7 +5899,7 @@ SW.LoadCandy = function()
         if not force and os.clock() - S.slotAt < 30 then return end
         S.slotAt = os.clock()
         local okR, CheckSlot = pcall(function()
-            return game:GetService("ReplicatedStorage").RemoteEvent_Solf.RemoteEventA.CheckSlot
+            return Svc.ReplicatedStorage.RemoteEvent_Solf.RemoteEventA.CheckSlot
         end)
         if not (okR and CheckSlot) then return end
         local okL, data = pcall(function() return CheckSlot:InvokeServer("loadbars") end)
@@ -5874,22 +5937,53 @@ SW.LoadCandy = function()
         if not (hrp and real) then return end
         local d = hrp.CFrame:VectorToObjectSpace(Vector3.new(real.X - at.X, 0, real.Z - at.Z))
         t_insert(S.offSamples, d)
-        if #S.offSamples > 6 then table.remove(S.offSamples, 1) end
-        if #S.offSamples < 2 then
-            S.plantOff = d.Magnitude > 0.8 and d or nil
+        if #S.offSamples > 8 then table.remove(S.offSamples, 1) end
+        -- ต้องมีอย่างน้อย 3 ตัวอย่างที่นิ่งตรงกันก่อนถึงจะเชื่อ offset (ตัวอย่างเดียวอาจเพี้ยนจากแลค)
+        if #S.offSamples < 3 then
+            S.plantOff = nil
             return
         end
-        local sum = Vector3.new()
-        for _, v in ipairs(S.offSamples) do sum = sum + v end
-        local mean = sum / #S.offSamples
+        local xs, zs = {}, {}
+        for _, v in ipairs(S.offSamples) do t_insert(xs, v.X) t_insert(zs, v.Z) end
+        t_sort(xs)
+        t_sort(zs)
+        local mid = math.ceil(#xs / 2)
+        local med = Vector3.new(xs[mid], 0, zs[mid])
+        local good = 0
         for _, v in ipairs(S.offSamples) do
-            if (v - mean).Magnitude > 1.2 then
-                S.offSamples = { d }
-                S.plantOff = d.Magnitude > 0.8 and d or nil
-                return
-            end
+            if (v - med).Magnitude <= 0.9 then good = good + 1 end
         end
-        S.plantOff = mean.Magnitude > 0.8 and mean or nil -- เล็กกว่านี้ถือว่าวางตรงตัวเรา
+        if good < math.max(3, math.ceil(#S.offSamples * 0.6)) then
+            S.offSamples = { d }
+            S.plantOff = nil
+            return
+        end
+        S.plantOff = med.Magnitude > 0.8 and med or nil -- เล็กกว่านี้ถือว่าวางตรงตัวเรา
+    end
+    -- เวลารอให้เซิร์ฟเวอร์เห็นตำแหน่งเราตรงกับฝั่งเครื่องก่อนยิง (ปรับตามปิง + เพิ่มเองถ้าต้นโผล่คลาดจากที่คาด)
+    S.syncBoost = 0
+    S.syncWait = function()
+        local ok, ping = pcall(function() return LP:GetNetworkPing() end)
+        ping = ok and tonumber(ping) or 0.1
+        return math.clamp(ping * 2 + 0.12 + S.syncBoost, 0.18, 1.0)
+    end
+    -- ยืนนิ่งจริง (ตำแหน่งไม่ขยับ + ความเร็วเป็นศูนย์) ติดต่อกันครบ syncWait ก่อนยิง กันเซิร์ฟเวอร์ยังเห็นเราอยู่จุดก่อนหน้า
+    S.holdStill = function(stand)
+        local need, t0 = S.syncWait(), os.clock()
+        local last, since
+        while live() and os.clock() - t0 < 3 do
+            local _, hrp, hum = getChar()
+            if not hrp then return false end
+            local p = hrp.Position
+            if hum and flat(p, stand) > 1.2 then hum:MoveTo(Vector3.new(stand.X, p.Y, stand.Z)) end
+            if not last or (p - last).Magnitude > 0.05 or hrp.AssemblyLinearVelocity.Magnitude > 0.6 then
+                since = os.clock()
+            end
+            last = p
+            if os.clock() - since >= need then return true end
+            task.wait()
+        end
+        return false
     end
     -- ต้นจะไปโผล่ตรงไหน ถ้ายิงตอนนี้ (ใช้ทิศที่หันอยู่จริง)
     S.predictTree = function(hrp)
@@ -6061,13 +6155,27 @@ SW.LoadCandy = function()
     end
     -- เช็คสดๆ ก่อนยิงปลูกทุกครั้ง: ใช้ตำแหน่งตัวละครตอนนี้ + ทุกแหล่งข้อมูล (ต้นจริง/ความจำ/ต้นที่เพิ่งยิงไป/ชิ้นส่วนจริง)
     -- true = จุดนี้มีต้นอยู่แล้วหรือใกล้เกิน ห้ามยิง
-    S.spotTaken = function()
+    S.spotTaken = function(ignorePend)
         local _, hrp = getChar()
         if not hrp then return true, "nochar" end
         local pred = S.predictTree(hrp)
         local gap = S.minGap() - 0.15
+        -- ต้นจริงใน AllPlantedTrees (ทุกคน) ตรวจสดทุกครั้ง ไม่พึ่งแคช
+        local apt = workspace:FindFirstChild("AllPlantedTrees")
+        if apt then
+            for _, t in ipairs(apt:GetDescendants()) do
+                if t:IsA("Model") and (t:FindFirstChild("Stats") or (t.Parent and t.Parent.Parent == apt)) then
+                    local tp = treePos(t)
+                    if tp and flat(pred, tp) < gap then return true, "tree" end
+                end
+            end
+        end
         for _, o in ipairs(S.allPts()) do
-            if flat(pred, o) < gap then return true, "pt" end
+            if flat(pred, o) < gap then
+                local skip = false
+                if ignorePend and flat(ignorePend.pos, o) < 0.05 then skip = true end
+                if not skip then return true, "pt" end
+            end
         end
         if S.occupied(pred, 4.5, math.max(S.occHalf, S.minGap() * 0.3)) then
             S.memAdd(pred, "seen")
@@ -6233,10 +6341,23 @@ SW.LoadCandy = function()
             end
         end
         S.waitGrounded(1.2)
+        setStatus("รอซิงค์ตำแหน่งกับเซิร์ฟเวอร์")
+        if not S.holdStill(stand) then
+            S.log("ยืนไม่นิ่งพอ ยกเลิกรอบนี้ (ไม่ยิง)")
+            task.wait(0.1)
+            return
+        end
         local _, hrpNow = getChar()
         if not hrpNow then return end
         local at = hrpNow.Position
         local predicted = S.predictTree(hrpNow)
+        -- ตัวละครคลาดจากจุดที่ตั้งใจ -> ต้นจะไม่ลงช่องที่เลือก ไม่ยิง
+        if flat(predicted, spot) > 1.2 then
+            S.bad[key] = true
+            S.log(("จุดยืนคลาด %.1f studs จากช่องที่เลือก ข้ามช่อง %s"):format(flat(predicted, spot), key))
+            task.wait(0.05)
+            return
+        end
         do
             local tooClose = false
             local minGap = S.minGap() - 0.15
@@ -6278,9 +6399,9 @@ SW.LoadCandy = function()
             return allTreeCount() > before or newModel() ~= nil
         end
         local count0 = allTreeCount()
-        local function tryPlant(t)
+        local function tryPlant(t, retryOf)
             -- เช็คซ้ำสดๆ ก่อนยิงทุกครั้ง (ตำแหน่งอาจเปลี่ยนตอนหยิบเมล็ด/รอเซิร์ฟเวอร์ หรือมีต้นเพิ่งโผล่)
-            local taken, why = S.spotTaken()
+            local taken, why = S.spotTaken(retryOf)
             if taken then
                 S.log("ยกเลิกยิงปลูก: จุดนี้มีต้นอยู่แล้ว (" .. tostring(why) .. ")")
                 return false, true
@@ -6326,14 +6447,23 @@ SW.LoadCandy = function()
         if not planted and not blocked and not equipped and live() and not S.lastReject then
             -- ยังไม่ยิงซ้ำทันที: รอเผื่อต้นแรกโผล่ช้า แล้วค่อยเช็คอีกที ไม่งั้นวางซ้อนจุดเดิม
             local w = os.clock()
-            while os.clock() - w < 0.6 and not grew(count0) do task.wait() end
+            local lateWait = math.max(0.6, S.syncWait() * 2)
+            while os.clock() - w < lateWait and not grew(count0) do task.wait() end
             local t2 = not grew(count0) and equip(seed, 2)
             if grew(count0) then
                 planted = true
                 S.dropPending(pend1)
             elseif t2 then
+                S.holdStill(stand)
+                if grew(count0) then
+                    planted = true
+                    S.dropPending(pend1)
+                    t2 = nil
+                end
+            end
+            if t2 and not planted then
+                local ok2, bl2 = tryPlant(t2, pend1)
                 S.dropPending(pend1)
-                local ok2, bl2 = tryPlant(t2)
                 planted, blocked = ok2, bl2
                 if planted then
                     S.needEquip = true
@@ -6390,13 +6520,26 @@ SW.LoadCandy = function()
                 end
                 saveFert()
             end
-            local mark = real or at
+            local mark = real or predicted
             t_insert(S.placed, { pos = mark, t = os.clock() })
-            S.memAdd(real or predicted, "own")
+            S.memAdd(mark, "own")
+            if real and flat(real, predicted) > 1.2 then S.memAdd(predicted, "own") end
+            -- วัดว่าต้นโผล่คลาดจากที่คาดเท่าไร: คลาดมาก = เซิร์ฟเวอร์ยังเห็นเราที่เก่า -> เพิ่มเวลารอซิงค์ / นิ่งแล้วค่อยลด
+            if real then
+                local err = flat(real, predicted)
+                if err > 1.2 then
+                    S.syncBoost = math.min(S.syncBoost + 0.12, 0.6)
+                    S.offSamples = {}
+                    S.plantOff = nil
+                    S.log(("ต้นโผล่คลาดจากที่คาด %.1f studs เพิ่มเวลารอซิงค์เป็น %.2fs"):format(err, S.syncWait()))
+                else
+                    S.syncBoost = math.max(S.syncBoost - 0.02, 0)
+                end
+            end
             AI.result(spot, true)
             task.spawn(AI.verify, real or predicted)
             if real then
-                S.learnOffset(hrpNow, at, real)
+                if flat(real, predicted) <= 1.2 then S.learnOffset(hrpNow, at, real) end
                 local nearest = math.huge
                 for _, o in ipairs(S.allPts()) do
                     local d = flat(real, o)
@@ -6404,7 +6547,9 @@ SW.LoadCandy = function()
                 end
                 if nearest < S.minGap() - 0.3 then
                     S.stat.overlap = (S.stat.overlap or 0) + 1
-                    if S.spacing < 10 then
+                    t_insert(S.badPts, { pos = real, t = os.clock() })
+                    t_insert(S.badPts, { pos = predicted, t = os.clock() })
+                    if flat(real, predicted) <= 1.2 and S.spacing < 10 then
                         S.spacing = S.spacing + 0.5
                         S.bad = {}
                     end
@@ -6988,21 +7133,10 @@ SW.LoadCandy = function()
         pcall(function() runToggle:Set(true) end)
     end)
 end
-SW.CandyAllowed = {
-    [8514985969] = true,
-}
 SW.LoadCandyGate = function()
     if SW.CandyAllowed[LP.UserId] and not SW.CandyHardLock then
         SW.safeLoad("SW.LoadCandy", SW.LoadCandy)
         return
-    end
-    SW.CandyLockNotify = function()
-        SW.Notify({
-            Title = "Candy Farm ถูกล็อคอยู่",
-            Content = "แท็บนี้ปิดปรับปรุงชั่วคราว (กำลังแก้บัก) เปิดให้เฉพาะผู้ที่ได้รับสิทธิ์ ส่วนฟีเจอร์อื่นใช้งานได้ตามปกติ",
-            Icon = "lock",
-            Duration = 6,
-        })
     end
     if SW.CandyHardLock then return end -- ล็อคเต็ม: Locked = true ตั้งไว้ตอน CreateTab แล้ว
     SW.CandyTab:Lock(SW.CandyLockText)  -- ไม่อยู่ใน whitelist: ล็อคด้วย API ของ SpectreUI
@@ -7035,14 +7169,6 @@ SW.ServerTab:Load(function()
     SW.safeLoad("SW.BuildServer", SW.BuildServer)
 end)
 SettingsTab:Load(LoadSettingsTab)
-SW.CandyLockNotify = SW.CandyLockNotify or function()
-    SW.Notify({
-        Title = "Candy Farm ถูกล็อคอยู่",
-        Content = "แท็บนี้ปิดปรับปรุงชั่วคราว (กำลังแก้บัก) ฟีเจอร์อื่นใช้งานได้ตามปกติ",
-        Icon = "lock",
-        Duration = 5,
-    })
-end
 Window:OnLoaded(function()
     SW.building = false
     SW.reveal()
