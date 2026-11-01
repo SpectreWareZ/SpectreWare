@@ -356,6 +356,7 @@ Library:CreateWindow({ Title = "X", AutoCheck = false })
 | เมธอด | ทำอะไร |
 |---|---|
 | `tab:CreateSection({ Name, Column = 1\|2, Collapsible, Collapsed, Icon })` | สร้าง section |
+| `tab:AddSection(name, column?)` | ทางลัดของ `CreateSection` แบบ positional args |
 | `tab:SetBadge("NEW")` | ป้ายที่แท็บ |
 | `tab:ResetAll()` / `section:ResetAll()` | รีเซ็ตค่า |
 | `section:SetCollapsed(bool)` | พับ/กาง |
@@ -386,6 +387,20 @@ Library:CreateWindow({ Title = "X", AutoCheck = false })
 | `Library.Anim.Speed` | ความเร็วอนิเมชัน (1.25 = ช้าลง 25%) |
 | `Library.Util` / `Library.Anim` / `Library.Responsive` | helper (`Round` `FormatNumber` `FormatTime` `Debounce` `Throttle` `Lighten` `Darken` `ToHex` ... / `Tween` `Show` `Hide` `Pulse` / `IsTouch` `Breakpoint` `Scale`) |
 | `Library.AuditCodes` | คำอธิบายกฎตรวจ UI ทั้งหมด |
+| `Track(x)` / `OnUnload(fn)` | เก็บ Connection/Instance/ฟังก์ชันไว้เคลียร์อัตโนมัติตอน `Unload()` / ลงทะเบียนฟังก์ชันให้รันตอน `Unload()` |
+| `Connect(signal, fn)` | เหมือน `signal:Connect` แต่ครอบ pcall + track ให้เอง |
+| `Bind(flag, fn(v, prev))` | เหมือน `Watch` แต่ยิงทันที 1 ครั้งถ้า Flag มีค่าอยู่แล้ว |
+| `WaitFlag(flag, want=true, timeout)` | ยีลด์รอจน Flag ได้ค่าที่ต้องการ คืน `false` ถ้าหมดเวลา |
+| `Cooldown(key, seconds)` | `if Library:Cooldown("k", 3) then ... end` ให้โค้ดรันได้สูงสุด 1 ครั้งต่อช่วงเวลา |
+| `Try(fn, ...)` | `pcall` ที่ `warn` error แทนที่จะเงียบ คืน `ok, ...` |
+| `Loop(flag?, interval, fn(handle))` | ลูป task เอง มี `flag` = รันเฉพาะตอน Flag นั้นเปิด · คืน handle มี `:Start` `:Stop` `:IsRunning` `:SetInterval` `:Destroy` |
+| `Http(o)` | ขอ HTTP เอง `{ Url, Method, Headers, Body, Json, Retries }` → `ok, res` (`res.Data` = JSON ที่ decode แล้วถ้า `Json = true`) |
+| `HttpGet(url, json?)` / `HttpPost(url, body, json?)` | ทางลัดของ `Http` → `ok, body\|decoded` |
+| `Webhook(url, text\|{ Content, Username, Avatar, Embeds }, { Retries, Async })` | ส่ง Discord webhook (ไม่ ping ใคร) → `ok, err?` |
+| `Embed(cfg)` | สร้าง embed object เดียว `{ Title, Description, Url, Color, Fields = {{Name,Value,Inline}}, Footer, Image, Thumbnail, Timestamp = true }` ใช้คู่กับ `Webhook` |
+| `SaveData(key, value)` / `LoadData(key, default)` / `DeleteData(key)` | เก็บค่าถาวรแยกจาก Config UI (เลข/string/boolean/table ธรรมดา) ที่ `SpectreUI/data/` |
+| `Character(timeout=10)` | ยีลด์รอ `char, humanoid, rootPart` ครบ คืน `nil` ถ้าหมดเวลา |
+| `OnRespawn(fn(char, humanoid, root))` | รันทันทีถ้ามีตัวละครอยู่แล้ว แล้วรันซ้ำทุกครั้งที่ respawn |
 
 **Window**
 
@@ -400,6 +415,8 @@ Library:CreateWindow({ Title = "X", AutoCheck = false })
 | `GetThemeName()` / `GetFontName()` / `CycleFont(dir)` / `GetTextScale()` / `GetToggleKey()` | อ่านค่าปัจจุบัน / ฟอนต์ถัดไป |
 | `RenameTheme("ใหม่")` / `DeleteTheme(name?)` | จัดการธีมของหน้าต่าง |
 | `OpenPalette(initial)` / `ClosePalette()` | เปิด/ปิด Command Palette จากโค้ด |
+| `AddTab(name, icon?, build?)` | ทางลัดของ `CreateTab` แบบ positional args |
+| `Tooltip(target, text\|fn)` | ผูก tooltip เองกับ GuiObject ใดก็ได้ (`target`) · ซ่อนบนมือถือ |
 
 **Tab / Section**
 

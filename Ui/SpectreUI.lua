@@ -1543,12 +1543,12 @@ end
 end))
 local main = new("Frame", {
 Name = "Main", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-BackgroundColor3 = T.Background, BackgroundTransparency = glass(0.02), BorderSizePixel = 0,
+BackgroundColor3 = T.Background, BackgroundTransparency = glass(0), BorderSizePixel = 0,
 Active = true,
 Parent = gui,
 }, {
 corner(RADIUS),
-stroke(T.Border, 1, 0.25),
+stroke(T.Border, 1.25, 0.15),
 wash(cseq({ 0, T.Top }, { 1, T.Background }), 90),
 })
 win.Main = main
@@ -2320,23 +2320,23 @@ local toggleKey = resolveToggleKey()
 win.OpenBtn = new("TextButton", {
 Name = "OpenButton", AnchorPoint = Vector2.new(0.5, 0.5),
 Position = cfg.OpenPosition or UDim2.fromScale(0.17, 0.235),
-Size = UDim2.fromOffset(BS, BS), BackgroundColor3 = T.Panel, Text = cfg.Logo and "" or brand:sub(1, 2),
+Size = UDim2.fromOffset(BS, BS), BackgroundColor3 = T.Panel:Lerp(Color3.new(0, 0, 0), 0.2), Text = cfg.Logo and "" or brand:sub(1, 2),
 Font = Enum.Font.GothamBlack, TextSize = math.max(17, math.floor(BS * 0.38)), TextColor3 = T.Text,
 AutoButtonColor = false, Visible = false, Active = true, Parent = gui,
-}, { corner(math.floor(BS * 0.3)), stroke(T.Accent, 1.5, 0.2) })
+}, { corner(math.floor(BS * 0.3)), stroke(T.Accent, 2, 0.05) })
 local ob = win.OpenBtn
 local obStroke = ob:FindFirstChildOfClass("UIStroke")
 local obLogo
 if cfg.Logo then
 obLogo = new("ImageLabel", {
-AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(BS * (cfg.OpenLogoScale or 0.58), BS * (cfg.OpenLogoScale or 0.58)),
+AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(BS * (cfg.OpenLogoScale or 0.64), BS * (cfg.OpenLogoScale or 0.64)),
 BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, ImageColor3 = cfg.LogoColor or Color3.new(1, 1, 1),
 Image = (type(cfg.Logo) == "number" or tonumber(cfg.Logo)) and ("rbxassetid://" .. tostring(cfg.Logo)) or cfg.Logo, Parent = ob,
 })
 end
-if not T.Clean then new("UIGradient", { Color = cseq({ 0, T.Panel:Lerp(Color3.new(1, 1, 1), 0.06) }, { 1, T.Panel:Lerp(Color3.new(0, 0, 0), 0.12) }), Rotation = 90, Parent = ob }) end
+if not T.Clean then new("UIGradient", { Color = cseq({ 0, T.Panel:Lerp(Color3.new(1, 1, 1), 0.1) }, { 1, T.Panel:Lerp(Color3.new(0, 0, 0), 0.25) }), Rotation = 90, Parent = ob }) end
 if obStroke then
-obStroke.Thickness = 1.25
+obStroke.Thickness = 1.75
 new("UIGradient", { Color = cseq({ 0, T.Accent }, { 1, T.Accent2 }), Rotation = 45, Parent = obStroke })
 end
 win.OpenScale = feedback(ob, ob, "BackgroundColor3", T.Panel, T.Lift, T.AccentSoft, false)
@@ -2367,11 +2367,11 @@ end
 end
 local idleSeq, hoverOpen = 0, false
 local function wake(on)
-local a = on and 0 or 0.5
+local a = on and 0 or 0.1
 tween(ob, 0.25, { TextTransparency = a })
-if obStroke then tween(obStroke, 0.25, { Transparency = on and 0.3 or 0.7 }) end
+if obStroke then tween(obStroke, 0.25, { Transparency = on and 0.3 or 0.45 }) end
 if obLogo then tween(obLogo, 0.25, { ImageTransparency = a }) end
-if not on then tween(ob, 0.25, { BackgroundTransparency = 0.4 }) else tween(ob, 0.15, { BackgroundTransparency = 0 }) end
+if not on then tween(ob, 0.25, { BackgroundTransparency = 0.1 }) else tween(ob, 0.15, { BackgroundTransparency = 0 }) end
 end
 local function scheduleIdle()
 idleSeq += 1
@@ -3002,7 +3002,7 @@ function Library._AreaGraph(parent, o)
 	local T = o.Theme
 	local GH = o.Height or 70
 	local M = o.Columns or 56
-	local L = o.LineSegs or 28
+	local L = o.LineSegs or 44
 	local N = o.Points or 40
 	local interval = o.Interval or 0.45
 	local minHi, hiStep = o.MinHi or 60, o.HiStep or 30
@@ -3025,8 +3025,8 @@ function Library._AreaGraph(parent, o)
 		ClipsDescendants = true, ZIndex = z, Parent = parent,
 	}, { corner(o.Corner or 10), stroke(T.Border, 1, 0.55) })
 
-	for _, frac in ipairs({ 0.25, 0.5, 0.75 }) do
-		new("Frame", { Position = UDim2.new(0, 0, frac, 0), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.Border, BackgroundTransparency = 0.72, BorderSizePixel = 0, ZIndex = z, Parent = area })
+	for _, frac in ipairs({ 0.33, 0.66 }) do
+		new("Frame", { Position = UDim2.new(0, 0, frac, 0), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.Border, BackgroundTransparency = 0.86, BorderSizePixel = 0, ZIndex = z, Parent = area })
 	end
 
 	local refLine
@@ -3037,9 +3037,9 @@ function Library._AreaGraph(parent, o)
 	local cols = {}
 	for i = 1, M do
 		cols[i] = new("Frame", {
-			AnchorPoint = Vector2.new(0, 1), Position = UDim2.new((i - 1) / M, 0, 1, 0), Size = UDim2.new(1 / M, 1, 0, 0),
+			AnchorPoint = Vector2.new(0, 1), Position = UDim2.new((i - 1) / M, 0, 1, 0), Size = UDim2.new(1 / M, 2, 0, 0),
 			BackgroundColor3 = stops[#stops][2], BorderSizePixel = 0, Visible = false, ZIndex = z + 1, Parent = area,
-		}, { new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.42), NumberSequenceKeypoint.new(1, 0.93) }) }) })
+		}, { new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 0.96) }) }) })
 	end
 
 	local segs = {}
@@ -3144,10 +3144,10 @@ function Library._AreaGraph(parent, o)
 		dot.Position = UDim2.fromOffset(ex, py)
 		halo.Position = UDim2.fromOffset(ex, py)
 		dot.BackgroundColor3, halo.BackgroundColor3 = pcol, pcol
-		local pulse = 0.5 + 0.5 * math.sin(os.clock() * 3.2)
-		local hs = 13 + pulse * 7
+		local pulse = 0.5 + 0.5 * math.sin(os.clock() * 2.2)
+		local hs = 13 + pulse * 4
 		halo.Size = UDim2.fromOffset(hs, hs)
-		halo.BackgroundTransparency = 0.72 + pulse * 0.2
+		halo.BackgroundTransparency = 0.78 + pulse * 0.15
 		dot.Visible, halo.Visible = true, true
 
 		if refLine then
