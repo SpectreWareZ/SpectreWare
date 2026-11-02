@@ -2932,8 +2932,9 @@ local spin = self:_SpinPrep()
 local k = self._k or 1
 local fancy = not lowPower()
 self:_MotionBegin(1.5)
-main.Position = base + UDim2.fromOffset(0, 22)
-if fancy and not spin then self.Scale.Scale = 0.88 * k end
+local slide = Library.Anim.IntroSlide == true
+if slide then main.Position = base + UDim2.fromOffset(0, 22) end
+if slide and fancy and not spin then self.Scale.Scale = 0.88 * k end
 veil.BackgroundTransparency = 0
 veil.Visible = true
 local hc, side = self.HeaderCard, self.Sidebar
@@ -2942,8 +2943,8 @@ local hair = hc and hc:FindFirstChild("Hairline")
 local hcPos, sidePos = hc and hc.Position, side and side.Position
 local lineSize, hairSize = line and line.Size, hair and hair.Size
 if fancy then
-if hc then hc.Position = hcPos + UDim2.fromOffset(0, -14) end
-if side then side.Position = sidePos + UDim2.fromOffset(-28, 0) end
+if slide and hc then hc.Position = hcPos + UDim2.fromOffset(0, -14) end
+if slide and side then side.Position = sidePos + UDim2.fromOffset(-28, 0) end
 if line then line.Size = UDim2.fromOffset(0, lineSize.Y.Offset) end
 if hair then hair.Size = UDim2.new(0, 0, 0, hairSize.Y.Offset) end
 end
@@ -3708,14 +3709,14 @@ if self._pseq == seq and pv.Parent then pv.Visible = false pv.BackgroundTranspar
 end)
 end
 self:_MotionBegin(0.34, true)
-tab.Page.Position = UDim2.fromOffset(0, 14 * dir)
+tab.Page.Position = Library.Anim.TabSlide == true and UDim2.fromOffset(0, 14 * dir) or UDim2.new()
 nextFrame(function()
 if self._pseq ~= seq or self._destroyed then
 if self.Active ~= tab and tab.Page.Parent then tab.Page.Position = UDim2.new() end
 if not useVeil then pv.Visible = false end
 return
 end
-tween(tab.Page, 0.34, { Position = UDim2.new() }, QUINT, OUT)
+if Library.Anim.TabSlide == true then tween(tab.Page, 0.34, { Position = UDim2.new() }, QUINT, OUT) end
 if useVeil then
 self._veilTw = tween(pv, 0.26, { BackgroundTransparency = 1 }, SINE, OUT)
 self._veilTw.Completed:Connect(function()
@@ -7598,9 +7599,18 @@ self.BadgeLabel = Library._oa(new("TextLabel", {
 Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AX, BackgroundTransparency = 1, Text = "", Font = T.FontBold, TextSize = 13,
 TextColor3 = Library.OnAccent(T), Parent = self.Badge,
 }))
-self.Button:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-if not self.Window._spinning then self:_FitLabel() end
+local function queueFit()
+if self._fitQ then return end
+self._fitQ = true
+task.delay(0.15, function()
+self._fitQ = false
+if not self.Button.Parent then return end
+local w = self.Window
+if w._spinning or w._moving then queueFit() return end
+self:_FitLabel()
 end)
+end
+self.Button:GetPropertyChangedSignal("AbsoluteSize"):Connect(queueFit)
 end
 self.BadgeLabel.Text = tostring(v)
 self.Badge.Visible = true
