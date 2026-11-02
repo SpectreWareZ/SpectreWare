@@ -4250,6 +4250,7 @@ SW.LoadEat = function()
         -- เช็คก่อนหยุด: ตอนนี้ฟาร์มอะไรเปิดอยู่บ้าง (Auto Farm ของเกม / Fishing / Process / Candy)
         local snap = SW.snapFarms()
         local wantAuto, home, info = false, nil, nil
+        local hadAuto = false
         local ok, err = pcall(function()
             local w0 = os.clock()
             while LP:GetAttribute("FarmBusy") and os.clock() - w0 < 6 do task.wait(0.1) end
@@ -4258,6 +4259,7 @@ SW.LoadEat = function()
             -- นับว่าเปิดอยู่ ถ้าแฟลกเกมเปิด หรือผู้ใช้เปิดสวิตช์ Auto Farm ของสคริปต์ไว้
             wantAuto = (f and f.Value) or (ncfg and ncfg.farm) or false
             if f and f.Value then
+                hadAuto = true
                 home, info = lockCFrame(), readAutoInfo()
                 -- ลองกินทั้งที่ฟาร์มอยู่ก่อน ถ้ากินได้ก็ไม่ต้องหยุดฟาร์มเลย (ไม่มีอะไรต้องเปิดคืน)
                 local before, valBefore = getCount(st.item or ""), st.val.Value
@@ -4279,6 +4281,20 @@ SW.LoadEat = function()
             task.wait(0.3)
             eatOnce(st, once)
         end)
+        -- แก้บั๊ก "กินเสร็จแล้วไม่ฟาร์มต่อ": เคสกินสำเร็จขณะฟาร์มอยู่ ด้านบนตั้ง wantAuto=false ไว้
+        -- แต่เซิร์ฟมักปิดแฟลก Auto ให้ตอนกิน (หรือหลังกินจบ) เลยไม่มีใครเปิดคืน
+        -- ตอนนี้: ถ้าก่อนกินฟาร์มเปิดอยู่ ให้เฝ้าแฟลก 3 วิหลังกิน ถ้าหลุดค่อยเปิดคืน
+        if hadAuto and not wantAuto then
+            local w1 = os.clock()
+            while os.clock() - w1 < 3 do
+                local fl = autoFlag()
+                if not (fl and fl.Value) then
+                    wantAuto = true
+                    break
+                end
+                task.wait(0.25)
+            end
+        end
         -- กินเสร็จ/พลาด ก็ต้องคืนฟาร์มเสมอ
         if wantAuto then
             local back = false
@@ -5502,7 +5518,23 @@ SW.LoadCandy = function()
         if dirty then S.memSave() end
         return out
     end
-    S.allPts = function()
+    -- จุดที่ปลูกไม่ได้/มีต้นอยู่แล้ว: จำถาวรในรอบนี้ ไม่ถูกล้างตอน S.bad/S.badPts รีเซ็ต (ตัวการที่ทำให้วนกลับมาจุดเดิม)
+    -- ซ้ำจุดเดิม = อายุยืดเป็น 2 เท่า (สูงสุด 600 วิ) | ล้างเมื่อเก็บเกี่ยวครบ (ต้นหายไปแล้ว) หรือกดเปิด/ปิดใหม่
+    S.taken = {}
+    S.markTaken = function(pos, ttl)
+        if not pos then return end
+        local now = os.clock()
+        for _, e in ipairs(S.taken) do
+            if flat(e.pos, pos) < 1.2 then
+                e.t, e.hits = now, e.hits + 1
+                e.ttl = math.min(600, math.max(e.ttl, ttl) * 2)
+                return
+            end
+        end
+        t_insert(S.taken, { pos = pos, t = now, ttl = ttl, hits = 1 })
+        if #S.taken > 120 then table.remove(S.taken, 1) end
+    end
+    S.allPts = function(noTaken)
         local pts = {}
         local all = workspace:FindFirstChild("AllPlantedTrees")
         if all then
@@ -5533,6 +5565,12 @@ SW.LoadCandy = function()
             end
         end
         for _, p in ipairs(S.memPts()) do t_insert(pts, p) end
+        if not noTaken then
+            for i = #S.taken, 1, -1 do
+                local e = S.taken[i]
+                if now - e.t > e.ttl then table.remove(S.taken, i) else t_insert(pts, e.pos) end
+            end
+        end
         return pts
     end
     S.isBadPt = function(pos)
@@ -6254,30 +6292,50 @@ SW.LoadCandy = function()
             return
         end
         local tStart = os.clock()
-        local spot, key = pickSpot(trees)
+        -- เลือกจุดที่ผ่านด่านตรวจทั้งหมดในรอบเดียว: จุดที่ AI แบนถูกข้ามทันที ไม่เสียรอบ/ไม่หนีไปทำอย่างอื่น
+        local function pickFree()
+            local skipped, last = 0, nil
+            for _ = 1, 24 do
+                local sp2, k2 = pickSpot(trees)
+                if not sp2 then return nil end
+                if last and flat(last, sp2) < 0.05 then return nil end -- ได้จุดเดิมซ้ำ = ไม่มีทางเลือกอื่นแล้ว
+                last = sp2
+                if not AI.banned(sp2) then return sp2, k2 end
+                S.bad[k2] = true
+                skipped = skipped + 1
+                if skipped == 1 then S.log("AI Guardian: จุด " .. k2 .. " พังซ้ำ ข้ามชั่วคราว") end
+            end
+            return nil
+        end
+        local spot, key = pickFree()
+        if not spot and os.clock() - (S.noSpotResetAt or 0) > 3 then
+            -- หาที่ว่างไม่เจอ: ล้างจุดที่จำว่าไม่ดี + ตั้งจุดใหม่ แล้วสแกนซ้ำทันทีในรอบนี้ (ไม่ต้องพักก่อน)
+            S.noSpotResetAt = os.clock()
+            S.log("หาที่ว่างไม่เจอ รีเซ็ตจุดแล้วสแกนซ้ำทันที")
+            S.bad = {}
+            S.badPts = {}
+            for i = #S.taken, 1, -1 do
+                local e = S.taken[i]
+                if e.hits < 2 and e.ttl <= 120 then table.remove(S.taken, i) end
+            end
+            if not S.anchorManual then
+                S.anchor = nil
+                autoAnchor()
+            end
+            spot, key = pickFree()
+        end
         if not spot then
             if os.clock() > S.coolUntil then
                 SW.Notify({ Title = "Candy Farm", Icon = "alert-triangle", Content = "หาที่ว่างปลูกไม่เจอรอบจุดปลูก (ลองลดระยะห่าง หรือกด Set Plant Point ใหม่)", Duration = 5 })
                 S.coolUntil = os.clock() + 5
-                S.log("หาที่ว่างไม่เจอ รีเซ็ตจุดแล้วลองใหม่")
-                S.bad = {}
-                S.badPts = {}
-                if not S.anchorManual then
-                    S.anchor = nil
-                    autoAnchor()
-                end
             end
-            return
-        end
-        if AI.banned(spot) then
-            S.bad[key] = true
-            S.log("AI Guardian: จุด " .. key .. " พังซ้ำ ข้ามชั่วคราว")
             return
         end
         setStatus("เดินไปจุดปลูก")
         local stand = S.standFor(spot)
         if not walkNear(stand, 1.5, 8) then
             S.bad[key] = true
+            S.markTaken(spot, 90)
             S.log("เดินไปจุดปลูกไม่ถึง ข้ามจุด " .. key)
             return
         end
@@ -6371,6 +6429,7 @@ SW.LoadCandy = function()
             end
             if tooClose then
                 S.bad[key] = true
+                S.markTaken(predicted, 600)
                 t_insert(S.badPts, { pos = spot, t = os.clock() })
                 setStatus("ใกล้ต้นเดิมเกินไป หาจุดใหม่")
                 task.wait(0.05)
@@ -6473,6 +6532,7 @@ SW.LoadCandy = function()
         end
         if blocked and not planted then
             S.bad[key] = true
+            S.markTaken(predicted, 600)
             t_insert(S.badPts, { pos = spot, t = os.clock() })
             AI.event("blocked")
             setStatus("จุดนี้มีต้นอยู่แล้ว หาจุดใหม่")
@@ -6541,7 +6601,7 @@ SW.LoadCandy = function()
             if real then
                 if flat(real, predicted) <= 1.2 then S.learnOffset(hrpNow, at, real) end
                 local nearest = math.huge
-                for _, o in ipairs(S.allPts()) do
+                for _, o in ipairs(S.allPts(true)) do
                     local d = flat(real, o)
                     if d > 0.4 and d < nearest then nearest = d end
                 end
@@ -6559,6 +6619,7 @@ SW.LoadCandy = function()
         else
             S.stat.failed = S.stat.failed + 1
             AI.result(spot, false)
+            S.markTaken(predicted, 120) -- ยิงแล้วไม่มีต้นเกิด: จำจุดนี้ไว้ ไม่วนกลับมายิงซ้ำแม้ S.bad ถูกรีเซ็ต
             S.log("ปลูกไม่ติด")
             local rej = S.lastReject
             S.lastReject = nil
@@ -6569,11 +6630,13 @@ SW.LoadCandy = function()
                     SW.Notify({ Title = "Candy Farm", Icon = "alert-triangle", Content = "เกมแจ้ง: " .. rej.text, Duration = 6 })
                 end
                 if S.hasWord(rej.text, { "ใกล้", "ชิด", "ซ้อน", "ทับ", "ระยะ", "close", "near", "space", "overlap", "distance" }) then
+                    S.markTaken(predicted, 600) -- เกมบอกชิด/ทับ = มีต้นอยู่ตรงนี้จริง
                     t_insert(S.badPts, { pos = spot, t = os.clock() })
                     if S.spacing < 10 then S.spacing = S.spacing + 0.5 end
                     S.bad = {}
                 elseif S.hasWord(rej.text, { "เต็ม", "โควตา", "ครบ", "สูงสุด", "limit", "max", "full", "quota" }) then
                     S.coolUntil = os.clock() + 30
+                    S.quotaUntil = S.coolUntil -- ปลูกเพิ่มไม่ได้จริง: ปล่อยให้รดน้ำ/ปุ๋ย/เก็บทำงานได้ ไม่ต้องรอ
                 end
             end
             S.bad[key] = true
@@ -6704,6 +6767,7 @@ SW.LoadCandy = function()
             end
             S.harvesting = false
             S.replant = true
+            S.taken = {} -- เก็บครบแล้ว ต้นหายหมด ที่เดิมว่างอีกครั้ง
             S.log("เก็บครบแล้ว เริ่มปลูกรอบใหม่")
         end
         if S.replant and #trees >= S.target then S.replant = false end
@@ -6728,6 +6792,26 @@ SW.LoadCandy = function()
                 S.log("เก็บครบทุกต้นแล้ว เริ่มปลูกชุดใหม่")
             else
                 setStatus(("รอแคนดี้โตและเก็บให้หมด (เหลือ %d ต้น) ก่อนปลูกใหม่"):format(pending))
+            end
+        end
+        -- ปลูกให้ครบก่อน: ปลูกพลาดแล้วติดพัก (coolUntil) ห้ามหนีไปรดน้ำ/ใส่ปุ๋ย/เก็บ ให้รอแล้วปลูกต่อจนครบชุด
+        -- ยกเว้น: เมล็ดหมด / โควตาเต็ม (ปลูกเพิ่มไม่ได้จริง) หรือปลูกไม่คืบเกิน 30 วิ (กันต้นเดิมแห้งตาย)
+        do
+            local now = os.clock()
+            local wantPlant = live() and S.plant and S.seed and S.batchOpen and #trees < S.target
+                and not S.collectBusy() and (hasSeed(S.seed) or findSeed() ~= nil)
+            if wantPlant and now < S.coolUntil and now >= (S.quotaUntil or 0) then
+                if not S.holdPlantSince or S.holdPlanted ~= S.stat.planted then
+                    S.holdPlantSince, S.holdPlanted = now, S.stat.planted
+                end
+                if now - S.holdPlantSince < 30 then
+                    setStatus(("รอปลูกให้ครบก่อน %d/%d | พักอีก %d วิ แล้วปลูกต่อ"):format(#trees, S.target, math.ceil(S.coolUntil - now)))
+                    return
+                end
+                S.holdPlantSince = now
+                S.log("ปลูกไม่คืบ 30 วิ ปล่อยงานรดน้ำ/ปุ๋ยทำรอบนึงแล้วกลับมาปลูกต่อ")
+            else
+                S.holdPlantSince = nil
             end
         end
         if live() and S.plant and S.seed and S.batchOpen and #trees < S.target and os.clock() >= S.coolUntil and not S.collectBusy() then
@@ -7103,6 +7187,7 @@ SW.LoadCandy = function()
             autoAnchor()
             if S.seed then task.spawn(S.ensureSlot, S.seed, true) end
             S.coolUntil, S.fails, S.bad, S.recovered = 0, 0, {}, false
+            S.quotaUntil, S.holdPlantSince, S.noSpotResetAt, S.taken = 0, nil, 0, {}
             S.harvesting, S.replant, S.batchOpen = false, false, nil
             S.collecting, S.noPlantUntil, S.pausedFrom, S.wdSig = false, 0, nil, nil
             S.collectTries, S.badPts, S.known, S.latOrigin = {}, {}, {}, nil
