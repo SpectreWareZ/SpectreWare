@@ -16,7 +16,7 @@
 ## 2. เริ่มต้นเร็ว
 
 ```lua
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Tools/Ui/SpectreUI.lua"))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Ui/SpectreUI.lua"))()
 
 local Window = Library:CreateWindow({
     Title     = "SpectreWare | ชื่อเกม",

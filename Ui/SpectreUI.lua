@@ -14454,7 +14454,7 @@ task.delay(0.7, self._uxPaint)
 end
 end)
 end)()
-Library.TextGuard = { Enabled = true, MinSize = 10, Wrap = true }
+Library.TextGuard = { Enabled = false, MinSize = 10, Wrap = true }
 do
 local TextService = game:GetService("TextService")
 local base = setmetatable({}, { __mode = "k" })
