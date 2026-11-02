@@ -1783,12 +1783,13 @@ win._sheen = sw
 end
 function win:_BrandIntro()
 if self._destroyed then return end
+self._brandSeq = (self._brandSeq or 0) + 1
+local bseq = self._brandSeq
+bscale.Scale = 1
 lbl.TextTransparency = 1
-bscale.Scale = 0.88
 nextFrame(function()
-if win._destroyed then return end
+if win._destroyed or win._brandSeq ~= bseq then return end
 tween(lbl, 0.5, { TextTransparency = 0 })
-tween(bscale, 0.6, { Scale = 1 }, Enum.EasingStyle.Back)
 end)
 end
 task.delay(0.25, function() if not win._destroyed then win:_BrandIntro() end end)
@@ -2708,6 +2709,7 @@ if touch and not sized and not self.Cfg.Height then
 h = math.max(vp.Y - topPad - 10, fh)
 end
 end
+w, h = math.floor(w / 2 + 0.5) * 2, math.floor(h / 2 + 0.5) * 2
 if self._shaded then h = HEADER_H end
 local anim = animate and not lowPower()
 if anim then
@@ -2988,12 +2990,12 @@ end)
 if order == 1 then
 local page, pv = tab.Page, self.PageVeil
 local pseq = self._pseq or 0
-page.Position = UDim2.fromOffset(0, 8)
+page.Position = UDim2.new()
 pv.BackgroundTransparency = 0
 pv.Visible = true
 task.delay(0.2, function()
 if self._destroyed or (self._pseq or 0) ~= pseq then return end
-tween(page, 0.4, { Position = UDim2.new() }, QUINT, OUT)
+page.Position = UDim2.new()
 tween(pv, 0.35, { BackgroundTransparency = 1 }, SINE, OUT).Completed:Connect(function()
 if (self._pseq or 0) == pseq then pv.Visible = false end
 end)
@@ -11623,344 +11625,6 @@ Section.Rating = function(self, name, max, default, cb, flag)
 	if type(name) == "table" then return self:CreateRating(name) end
 	if type(default) == "function" then default, cb, flag = nil, default, cb end
 	return self:CreateRating({ Name = name, Max = max, Default = default, Callback = cb, Flag = flag })
-end
-
--- Tube slider + angle dial (orange tube look, head avatar)
-do
-	local DEF_C1, DEF_C2 = Color3.fromRGB(255, 150, 35), Color3.fromRGB(255, 196, 96)
-	local CENTER = Vector2.new(0.5, 0.5)
-	local function round() return new("UICorner", { CornerRadius = UDim.new(1, 0) }) end
-	local function disc(size, color, parent, z)
-		return new("Frame", {
-			Size = UDim2.fromOffset(size, size), AnchorPoint = CENTER, BackgroundColor3 = color, BorderSizePixel = 0,
-			ZIndex = z or 1, Parent = parent,
-		}, { round() })
-	end
-	local function text(props)
-		props.BackgroundTransparency = 1
-		return new("TextLabel", props)
-	end
-
-	function Section:CreateTubeSlider(cfg)
-		cfg = cfg or {}
-		local T = self.Window.Theme
-		local tab = self.Tab
-		local min, max, inc = cfg.Min or 0, cfg.Max or 100, cfg.Increment or 1
-		local value = snap(cfg.Default or min, min, max, inc)
-		local suffix = cfg.Suffix or ""
-		local c1, c2 = cfg.Color or DEF_C1, cfg.Color2 or DEF_C2
-		local touch = Library.SizeTouch
-		local h = touch and 32 or 28
-		local nameW, valW = cfg.NameWidth or 58, cfg.ValueWidth or 76
-		local knobS, knobBig = touch and 20 or 16, touch and 25 or 20
-		local frame = new("Frame", { Size = UDim2.new(1, 0, 0, h), BackgroundTransparency = 1, Parent = self.Body })
-		text({
-			Size = UDim2.new(0, nameW, 1, 0), Text = cfg.Name or "Slider", Font = T.Font, TextSize = 13, TextColor3 = T.SubText,
-			TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
-		})
-		local valLabel = text({
-			AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0, valW, 1, 0),
-			Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = c2, TextXAlignment = Enum.TextXAlignment.Right, Parent = frame,
-		})
-		local hit = new("TextButton", {
-			Position = UDim2.fromOffset(nameW, 0), Size = UDim2.new(1, -(nameW + valW), 1, 0), BackgroundTransparency = 1,
-			Text = "", AutoButtonColor = false, Parent = frame,
-		})
-		local track = new("Frame", {
-			AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, knobS / 2, 0.5, 0), Size = UDim2.new(1, -knobS, 0, 7),
-			BackgroundColor3 = T.Background, BorderSizePixel = 0, Parent = hit,
-		}, { round(), stroke(T.Border, 1, 0) })
-		local fill = new("Frame", {
-			Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = track,
-		}, { round(), gradient(c1, c2, 0) })
-		local glow = disc(26, c1, track, 1)
-		glow.BackgroundTransparency = 0.88
-		local knob = disc(knobS, Color3.fromRGB(246, 246, 250), track, 2)
-		stroke(c1, 2, 0).Parent = knob
-
-		local obj = {}
-		local shown, target, pumpC, dragging
-		local function aOf(v) return (max == min) and 0 or (v - min) / (max - min) end
-		local function paint(a)
-			fill.Size = UDim2.fromScale(a, 1)
-			knob.Position = UDim2.fromScale(a, 0.5)
-			glow.Position = knob.Position
-		end
-		local function stopPump()
-			if pumpC then pumpC:Disconnect() pumpC = nil end
-		end
-		local function pump(dt)
-			local d = target - shown
-			if math.abs(d) < 0.0008 then
-				shown = target
-				paint(shown)
-				if not dragging then stopPump() end
-				return
-			end
-			shown += d * (1 - math.exp(-math.min(dt, 0.1) * 30))
-			paint(shown)
-		end
-		local function goto(a)
-			target = a
-			if lowPower() then
-				shown = a
-				paint(a)
-			elseif not pumpC then
-				pumpC = RunService.RenderStepped:Connect(pump)
-			end
-		end
-		local function fromX(x)
-			local a = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
-			local v = snap(min + (max - min) * a, min, max, inc)
-			if v == value then return end
-			value = v
-			valLabel.Text = tostring(v) .. suffix
-			goto(aOf(v))
-			setFlag(cfg, v)
-			safe(cfg.Callback, v)
-		end
-		function obj:Set(v, silent)
-			v = snap(v, min, max, inc)
-			local changed = v ~= value
-			value = v
-			valLabel.Text = tostring(v) .. suffix
-			goto(aOf(v))
-			setFlag(cfg, v)
-			if changed and not silent then safe(cfg.Callback, v) end
-		end
-		function obj:Get() return value end
-		shown, target = aOf(value), aOf(value)
-		paint(shown)
-		valLabel.Text = tostring(value) .. suffix
-		setFlag(cfg, value)
-		hit.InputBegan:Connect(function(i)
-			if not isPress(i) then return end
-			Library._drag(i, function(m) fromX(m.Position.X) end, function()
-				dragging = false
-				tab:SetScrollEnabled(true)
-				tween(knob, 0.16, { Size = UDim2.fromOffset(knobS, knobS) })
-				tween(glow, 0.2, { Size = UDim2.fromOffset(26, 26), BackgroundTransparency = 0.88 })
-			end)
-			dragging = true
-			tab:SetScrollEnabled(false)
-			tween(knob, 0.12, { Size = UDim2.fromOffset(knobBig, knobBig) })
-			tween(glow, 0.12, { Size = UDim2.fromOffset(34, 34), BackgroundTransparency = 0.7 })
-			fromX(i.Position.X)
-		end)
-		frame.Destroying:Connect(stopPump)
-		self:_Register(frame, cfg.Name, h)
-		obj.Frame = frame
-		return regObj(cfg, obj)
-	end
-
-	function Section:CreateArcDial(cfg)
-		cfg = cfg or {}
-		local T = self.Window.Theme
-		local tab = self.Tab
-		local min, max = cfg.Min or 0, cfg.Max or 180
-		local value = math.clamp(math.floor((cfg.Default or 90) + 0.5), min, max)
-		local c1, c2 = cfg.Color or DEF_C1, cfg.Color2 or DEF_C2
-		local R = 56
-		local showInfo = cfg.ShowInfo ~= false
-		local dialH = 164
-		local total = dialH + (showInfo and 52 or 0)
-		local frame = new("Frame", { Size = UDim2.new(1, 0, 0, total), BackgroundTransparency = 1, Parent = self.Body })
-		if cfg.ShowName == true and cfg.Name then
-			text({
-				Size = UDim2.fromOffset(120, 16), Text = cfg.Name, Font = T.Font, TextSize = 12, TextColor3 = T.SubText,
-				TextXAlignment = LEFT, Parent = frame,
-			})
-		end
-		for _, t in ipairs({ { cfg.Top or "0°", 2 }, { cfg.Bottom or "180°", 146 } }) do
-			text({
-				Size = UDim2.new(1, 0, 0, 14), Position = UDim2.fromOffset(0, t[2]), Text = t[1], Font = Enum.Font.GothamBold, TextSize = 14,
-				TextColor3 = T.Text, TextXAlignment = Enum.TextXAlignment.Center, TextStrokeTransparency = 0.6, Parent = frame,
-			})
-		end
-		local arc = new("Frame", {
-			Size = UDim2.fromOffset(112, 112), AnchorPoint = CENTER, Position = UDim2.new(0.5, 0, 0, 82),
-			BackgroundColor3 = T.Background, BackgroundTransparency = 0.15, BorderSizePixel = 0, Parent = frame,
-		}, { round(), stroke(T.Border, 1.5, 0) })
-		new("Frame", {
-			Size = UDim2.fromOffset(56, 56), AnchorPoint = CENTER, Position = UDim2.fromScale(0.5, 0.5),
-			BackgroundTransparency = 1, BorderSizePixel = 0, Parent = arc,
-		}, { round(), stroke(T.Border, 1, 0.4) })
-
-		local arrow = new("Frame", {
-			Size = UDim2.fromOffset(6, 6), AnchorPoint = CENTER, Position = UDim2.new(0.5, 0, 0, 11), Rotation = 45,
-			BackgroundColor3 = T.Text, BorderSizePixel = 0, ZIndex = 2, Parent = arc,
-		})
-		text({
-			Size = UDim2.fromOffset(60, 14), AnchorPoint = CENTER, Position = UDim2.new(0.5, 0, 0, 27), Text = cfg.Front or "FRONT",
-			Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = T.Text, TextStrokeTransparency = 0.5, ZIndex = 2, Parent = arc,
-		})
-		local avatar = new("Frame", {
-			Size = UDim2.fromOffset(80, 60), AnchorPoint = CENTER, Position = UDim2.fromScale(0.5, 0.5), BackgroundTransparency = 1, Parent = arc,
-		}, { new("UIScale", { Scale = 0.8 }) })
-		new("Frame", {
-			Size = UDim2.fromOffset(76, 30), AnchorPoint = CENTER, Position = UDim2.fromOffset(40, 42), BackgroundColor3 = Color3.fromRGB(20, 24, 36),
-			BorderSizePixel = 0, ZIndex = 1, Parent = avatar,
-		}, { new("UICorner", { CornerRadius = UDim.new(0, 15) }), stroke(Color3.fromRGB(50, 58, 82), 1, 0) })
-		new("Frame", {
-			Size = UDim2.fromOffset(58, 24), AnchorPoint = CENTER, Position = UDim2.fromOffset(40, 38), BackgroundColor3 = Color3.new(1, 1, 1),
-			BorderSizePixel = 0, ZIndex = 2, Parent = avatar,
-		}, { new("UICorner", { CornerRadius = UDim.new(0, 12) }), gradient(Color3.fromRGB(88, 100, 128), Color3.fromRGB(40, 46, 68), 90) })
-		local head = disc(32, Color3.new(1, 1, 1), avatar, 3)
-		head.Position = UDim2.fromOffset(40, 22)
-		gradient(Color3.fromRGB(170, 180, 204), Color3.fromRGB(62, 70, 96), 45).Parent = head
-		if not lowPower() then
-			local ti = TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
-			TweenService:Create(avatar, ti, { Position = UDim2.new(0.5, 0, 0.5, -3) }):Play()
-			TweenService:Create(arrow, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-				{ Position = UDim2.new(0.5, 0, 0, 15) }):Play()
-		end
-
-		local function at(f, deg, rad)
-			local a = math.rad(deg)
-			f.Position = UDim2.new(0.5, math.sin(a) * rad, 0.5, -math.cos(a) * rad)
-		end
-		local dots = {}
-		local step = lowPower() and 6 or 3
-		for a = -180 + step, 180, step do
-			local f = disc(5, T.Control, arc, 2)
-			at(f, a, R)
-			dots[#dots + 1] = { f = f, a = math.abs(a), col = c1:Lerp(c2, math.abs(a) / 180), on = false }
-		end
-		local function label(txt, color, size)
-			return text({
-				Size = UDim2.fromOffset(40, 16), AnchorPoint = CENTER, Text = txt, Font = Enum.Font.GothamBold, TextSize = size or 12,
-				TextColor3 = color, TextStrokeTransparency = 0.45, ZIndex = 6, Parent = arc,
-			})
-		end
-		local ends = {}
-		for i = 1, 2 do
-			local vis = disc(18, Color3.fromRGB(246, 246, 250), arc, 5)
-			stroke(c1, 3, 0).Parent = vis
-			ends[i] = {
-				vis = vis,
-				hit = new("TextButton", {
-					Size = UDim2.fromOffset(40, 40), AnchorPoint = CENTER, BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
-					ZIndex = 7, Parent = arc,
-				}),
-				inn = label(i == 1 and "L" or "R", c1),
-				out = label("", T.Text, 16),
-			}
-		end
-		local angleTxt, subTxt
-		if showInfo then
-			angleTxt = text({
-				Size = UDim2.new(1, 0, 0, 28), Position = UDim2.fromOffset(0, dialH), Font = Enum.Font.GothamBold, TextSize = 23,
-				TextColor3 = c1, TextXAlignment = Enum.TextXAlignment.Center, Parent = frame,
-			})
-			subTxt = text({
-				Size = UDim2.new(1, 0, 0, 16), Position = UDim2.fromOffset(0, dialH + 30), Font = T.Font, TextSize = 13,
-				TextColor3 = T.SubText, TextXAlignment = Enum.TextXAlignment.Center, Parent = frame,
-			})
-		end
-
-		local obj = {}
-		local shown, pumpC = value, nil
-		local function paint(hv)
-			for _, d in ipairs(dots) do
-				local inside = d.a <= hv
-				if d.on ~= inside then
-					d.on = inside
-					d.f.BackgroundColor3 = inside and d.col or T.Control
-				end
-			end
-			for i = 1, 2 do
-				local e, deg = ends[i], (i == 1 and -1 or 1) * hv
-				at(e.vis, deg, R) at(e.hit, deg, R) at(e.inn, deg, R - 14) at(e.out, deg, R + 26)
-				local push = math.max(0, (40 - 2 * R * math.sin(math.rad(hv))) / 2 + 2)
-				if push > 0 then e.hit.Position += UDim2.fromOffset((i == 1 and -1 or 1) * push, 0) end
-			end
-		end
-		local function info()
-			for i = 1, 2 do ends[i].out.Text = value .. "°" end
-			if not showInfo then return end
-			local main, sub
-			if cfg.Format then
-				local ok, a, b = pcall(cfg.Format, value)
-				if ok then main, sub = a, b end
-			end
-			main = main or ("%d° - %d%%"):format(value * 2, math.floor(value * 2 / 360 * 100 + 0.5))
-			angleTxt.Text = tostring(main)
-			subTxt.Text = tostring(sub or "")
-		end
-		local function stopPump()
-			if pumpC then pumpC:Disconnect() pumpC = nil end
-		end
-		local function goto()
-			if lowPower() then
-				shown = value
-				paint(shown)
-			elseif not pumpC then
-				pumpC = RunService.RenderStepped:Connect(function(dt)
-					local d = value - shown
-					if math.abs(d) < 0.02 then
-						shown = value
-						paint(shown)
-						return stopPump()
-					end
-					shown += d * (1 - math.exp(-30 * math.min(dt, 0.1)))
-					paint(shown)
-				end)
-			end
-		end
-		function obj:Set(v, silent)
-			v = math.clamp(math.floor((tonumber(v) or value) + 0.5), min, max)
-			local changed = v ~= value
-			value = v
-			info()
-			goto()
-			setFlag(cfg, v)
-			if changed and not silent then safe(cfg.Callback, v) end
-		end
-		function obj:Get() return value end
-		paint(shown)
-		info()
-		setFlag(cfg, value)
-		for i = 1, 2 do
-			local sgn, hp, p0 = i == 1 and -1 or 1, nil, nil
-			local vis = ends[i].vis
-			ends[i].hit.InputBegan:Connect(function(inp)
-				if not isPress(inp) then return end
-				hp = vis.AbsolutePosition + vis.AbsoluteSize / 2
-				p0 = Vector2.new(inp.Position.X, inp.Position.Y)
-				Library._drag(inp, function(m)
-					local v = hp + (Vector2.new(m.Position.X, m.Position.Y) - p0) - (arc.AbsolutePosition + arc.AbsoluteSize / 2)
-					if v.Magnitude < 6 then return end
-					local deg = math.deg(math.atan2(v.X, -v.Y)) * sgn
-					if deg < -90 then deg = 180 elseif deg < 0 then deg = 0 end
-					obj:Set(deg)
-				end, function()
-					tab:SetScrollEnabled(true)
-					tween(vis, 0.18, { Size = UDim2.fromOffset(18, 18) })
-				end)
-				tab:SetScrollEnabled(false)
-				tween(vis, 0.1, { Size = UDim2.fromOffset(23, 23) })
-			end)
-		end
-		frame.Destroying:Connect(stopPump)
-		self:_Register(frame, cfg.Name or "Dial", total)
-		obj.Frame = frame
-		return regObj(cfg, obj)
-	end
-
-	local decorate = Library._decorate
-	if decorate then
-		for fname, kind in pairs({ CreateTubeSlider = "TubeSlider", CreateArcDial = "ArcDial" }) do
-			local orig = Section[fname]
-			Section[fname] = function(self, cfg, ...)
-				local obj = orig(self, cfg, ...)
-				if type(obj) == "table" then
-					local ok, err = pcall(decorate, self, kind, type(cfg) == "table" and cfg or {}, obj)
-					if not ok then warn("[SpectreUI] decorate(" .. kind .. ") failed: " .. tostring(err)) end
-				end
-				return obj
-			end
-		end
-	end
 end
 
 -- flag helpers (Library.Flags was read-only by convention; these make it a real API)
