@@ -140,6 +140,8 @@ Library:CreateWindow({ Splash = { Duration = 2.5, Skippable = true, Async = fals
 | | `CreateChips` | ชิปเลือกหลายตัว (`Options` `Default` `Multi` `Max` `AllowNone`) · `:Set` `:Get` `:Refresh(options)` |
 | | `CreatePlayerPicker` | เลือกผู้เล่นในเซิร์ฟ (`Display = "DisplayName"` `IncludeSelf` `Placeholder`) · `:Get` `:GetName` `:Set(player)` `:Refresh` |
 | | `CreatePerformance` | โชว์ FPS / Ping / Memory สด (`Interval` ต่ำสุด 0.2) · `:Get()` → `{ Fps, Ping, Memory }` |
+| ตัวเลข (ทรงหลอดส้ม) | `CreateTubeSlider` | หลอดบาง ปุ่มกลมขอบส้ม ชื่ออยู่ซ้าย ค่าอยู่ขวา · `Min` `Max` `Increment` `Suffix` `NameWidth` `Color` `Color2` · Callback(v)
+| มุม (วงหัวคน) | `CreateArcDial` | วงจุด + หัวคน + จุดจับ L/R ลากได้ · ค่า = ครึ่งมุม `Min` `Max` (0–180) `Default` `Color` `Color2` `ShowInfo` `Format = fn(half) -> main, sub` `Top` `Bottom` `Front` · Callback(half) |
 
 ตัวอย่างที่ใช้บ่อย:
 
