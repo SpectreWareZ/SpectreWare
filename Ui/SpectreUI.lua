@@ -5,8 +5,11 @@ local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
-local Library = { Flags = {}, Objects = {}, Windows = {}, ConfigFolder = "SpectreUI/configs", Version = "3.17", _flagCbs = {} }
+local Library = { Flags = {}, Objects = {}, Windows = {}, ConfigFolder = "SpectreUI/configs", Version = "3.27", _flagCbs = {} }
 Library.DiskWrites = false
+-- shared design tokens: one status palette + one mono font for the whole library
+Library.Status = { Success = Color3.fromRGB(52, 211, 153), Warn = Color3.fromRGB(251, 191, 36), Danger = Color3.fromRGB(248, 113, 113) }
+Library.FontMono = Enum.Font.Code
 Library.__index = Library
 do
 local jobs, hb = {}, nil
@@ -41,11 +44,974 @@ end
 end
 function Library._mount(gui)
 local ok = pcall(function() gui.Parent = (gethui and gethui()) or CoreGui end)
-if ok and gui.Parent then return true end
+if ok and gui.Parent then
+if Library._i18nWatch then Library._i18nWatch(gui) end
+return true
+end
 local lp = Players.LocalPlayer
 local pg = lp and (lp:FindFirstChildOfClass("PlayerGui") or lp:WaitForChild("PlayerGui", 10))
 ok = pcall(function() gui.Parent = pg or CoreGui end)
+if ok and gui.Parent and Library._i18nWatch then Library._i18nWatch(gui) end
 return ok and gui.Parent ~= nil
+end
+-- ===== Language API =====
+-- Library:AddLanguage(code, strings, meta)   register / extend a language ({ ["English text"] = "translated" })
+-- Library:SetLanguage(code [, save])         switch language; every label, button and placeholder re-translates live
+-- Library:GetLanguage()                      current code
+-- Library:ListLanguages()                    { { Code, Name, Native }, ... }
+-- Library:Translate(key, ...)  /  Library.T  translate one string (string.format applied when extra args are given)
+-- Library:OnLanguageChange(fn)               fn(newCode, oldCode); returns { Disconnect }
+-- Library:LoadLanguage(code, urlOrJson, meta) load a JSON dictionary from a URL (or a raw JSON string)
+-- Window:SetLanguage(code)                   shortcut for Library:SetLanguage
+-- Opt a single object out of translation: obj:SetAttribute("NoTranslate", true)
+do
+	local BASE = "en"
+	local langs = {
+		[BASE] = { Name = "English", Native = "English", strings = {}, lower = {} },
+	}
+	local order = { BASE }
+	local current = BASE
+	local subs = {}
+	local tracked = setmetatable({}, { __mode = "k" })
+	local watched = setmetatable({}, { __mode = "k" })
+	local TEXT_CLASS = { TextLabel = "Text", TextButton = "Text", TextBox = "PlaceholderText" }
+	local SAVE_FILE = Library.ConfigFolder .. "/language.txt"
+
+	local function lookup(lang, s)
+		local hit = lang.strings[s]
+		if hit ~= nil then return hit end
+		return lang.lower[s:lower()]
+	end
+
+	local autoLookup
+	local function translate(src)
+		if current == BASE or type(src) ~= "string" or src == "" then return src end
+		local lang = langs[current]
+		if not lang then return src end
+		local hit = lookup(lang, src)
+		if hit then return hit end
+		-- surrounding whitespace is ignored for the lookup but kept in the output ("Open " -> "เปิด ")
+		local lead, core, trail = src:match("^(%s*)(.-)(%s*)$")
+		if core ~= src and core ~= "" then
+			hit = lookup(lang, core)
+			if hit then return lead .. hit .. trail end
+		end
+		-- RichText: translate only the text between tags
+		if src:find("<", 1, true) then
+			local out, i, n = {}, 1, #src
+			while i <= n do
+				local ts, te = src:find("<[^>]*>", i)
+				local seg = src:sub(i, (ts or n + 1) - 1)
+				if seg ~= "" then
+					local l, c, r = seg:match("^(%s*)(.-)(%s*)$")
+					local h = c ~= "" and (lookup(lang, c) or (autoLookup and autoLookup(lang, c))) or nil
+					out[#out + 1] = h and (l .. h .. r) or seg
+				end
+				if not ts then break end
+				out[#out + 1] = src:sub(ts, te)
+				i = te + 1
+			end
+			return table.concat(out)
+		end
+		-- no dictionary entry: online translator (only when the "Auto translate (online)" option is on)
+		if core ~= "" and autoLookup then
+			hit = autoLookup(lang, core)
+			if hit then return lead .. hit .. trail end
+		end
+		return src
+	end
+
+	local function apply(o)
+		local rec = tracked[o]
+		if not rec or o:GetAttribute("NoTranslate") then return end
+		local prop = rec.prop
+		-- already translated for this language + this source text: nothing to recompute
+		if rec.fin and rec.lang == current and rec.fsrc == rec.src then return end
+		local want = translate(rec.src)
+		rec.lang, rec.fsrc, rec.fin = current, rec.src, (want ~= rec.src)
+		if o[prop] ~= want then
+			rec.busy = true
+			o[prop] = want
+			rec.busy = false
+		end
+	end
+
+	local function track(o)
+		local prop = TEXT_CLASS[o.ClassName]
+		if not prop or tracked[o] then return end
+		local rec = { prop = prop, src = o[prop], busy = false }
+		tracked[o] = rec
+		o:GetPropertyChangedSignal(prop):Connect(function()
+			if rec.busy then return end
+			-- the owning script wrote new text: that text is the new source string
+			rec.src = o[prop]
+			apply(o)
+		end)
+		if current ~= BASE then apply(o) end
+	end
+
+	-- spread over frames (4ms per slice) so switching language / finishing a batch never hitches
+	local sweepGen, sweeping = 0, false
+	local function refresh()
+		sweepGen += 1
+		if sweeping then return end
+		sweeping = true
+		task.spawn(function()
+			while true do
+				local gen = sweepGen
+				local list = {}
+				for o in pairs(tracked) do list[#list + 1] = o end
+				local t = os.clock()
+				for i = 1, #list do
+					local o = list[i]
+					if o.Parent then pcall(apply, o) end
+					if os.clock() - t > 0.004 then
+						task.wait()
+						t = os.clock()
+						if gen ~= sweepGen then break end
+					end
+				end
+				if gen == sweepGen then break end
+			end
+			sweeping = false
+		end)
+	end
+
+	-- ===== Auto translate (online, optional) =====
+	-- Library.AutoTranslate = true (default)   strings without a dictionary entry are translated online (Google, no key), cached
+	-- Library.AutoTranslateMax       max new strings per session (default 1500)   |   obj:SetAttribute("NoTranslate", true) skips an object
+	-- Numbers inside a text ("Ping: 42") are kept out of the request, so changing values reuse one cached translation.
+	Library.AutoTranslate = true
+	Library.AutoTranslateMax = 6000
+	Library.AutoTranslateNotice = true -- show a "Translating..." progress toast while texts are being translated
+	do
+		local WORKERS = 2
+		local pending, workers, used, fails, dirty, lastRef, backoff, blockedUntil = {}, 0, 0, 0, false, 0, 0, 0
+		local lastLang, lastCode
+		local total, inflight, handle, creating, failedFlag = 0, 0, nil, false, false
+		local function progress()
+			if not handle or total <= 0 then return end
+			local done = math.clamp(total - (#pending + math.max(inflight, 0)), 0, total)
+			pcall(function() handle:Set(done / total, done .. "/" .. total) end)
+		end
+		local function finishNotice()
+			local h, n, bad = handle, total, failedFlag
+			handle, total, inflight, failedFlag = nil, 0, 0, false
+			if not h then return end
+			pcall(function()
+				if bad then h:Fail("Connection problem - will retry", 4) else h:Complete(n .. "/" .. n, 1.5) end
+			end)
+		end
+		local function gcode(c) if c == "zh" then return "zh-CN" end return c end
+		local function eligible(t)
+			if #t < 2 or #t > 300 then return false end
+			if t:sub(1, 1) == "@" or t:find("<", 1, true) then return false end
+			local _, letters = t:gsub("%a", "")
+			return letters >= 2
+		end
+		local function cacheFile(code) return Library.ConfigFolder .. "/autotr_" .. code .. ".json" end
+		local function load(lang, code)
+			if lang.auto then return end
+			lang.auto, lang.queued = {}, {}
+			if type(isfile) == "function" and type(readfile) == "function" then
+				pcall(function()
+					if isfile(cacheFile(code)) then
+						for k, v in pairs(HttpService:JSONDecode(readfile(cacheFile(code)))) do
+							if type(k) == "string" and type(v) == "string" then lang.auto[k] = v end
+						end
+					end
+				end)
+			end
+		end
+		local function save(lang, code)
+			if not (Library.DiskWrites and type(writefile) == "function") then return end
+			pcall(function()
+				if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder(Library.ConfigFolder) then
+					makefolder(Library.ConfigFolder)
+				end
+				local out = {}
+				for k, v in pairs(lang.auto) do if type(v) == "string" then out[k] = v end end
+				writefile(cacheFile(code), HttpService:JSONEncode(out))
+			end)
+		end
+		local TRANSLATE_HOSTS = { "https://translate.googleapis.com", "https://translate.google.com", "https://translate.google.com.hk" }
+		local askWarned = false
+		-- read a JSON string literal starting at the opening quote q; returns text, endIndex
+		local function readString(body, q)
+			local e = q + 1
+			while true do
+				local c = body:sub(e, e)
+				if c == "" then return nil end
+				if c == "\\" then e += 2
+				elseif c == '"' then break
+				else e += 1 end
+			end
+			local ok, d = pcall(HttpService.JSONDecode, HttpService, '{"v":' .. body:sub(q, e) .. "}")
+			if not ok then return nil end
+			return d.v, e
+		end
+		-- the gtx reply holds nulls, so pull the translated segments out by hand instead of JSONDecode
+		local function parseTranslation(body)
+			local first = body:find("[[[", 1, true)
+			if not first then return nil end
+			local parts, pos = {}, first + 2
+			while true do
+				local c = body:sub(pos, pos)
+				if c == "," or c:match("%s") then
+					pos += 1
+				elseif c == "[" and body:sub(pos + 1, pos + 1) == '"' then
+					local text, e = readString(body, pos + 1)
+					if not text then return nil end
+					parts[#parts + 1] = text
+					local depth, p = 1, e + 1
+					while depth > 0 do
+						local ch = body:sub(p, p)
+						if ch == "" then return nil end
+						if ch == '"' then
+							local _, ne = readString(body, p)
+							if not ne then return nil end
+							p = ne
+						elseif ch == "[" then depth += 1
+						elseif ch == "]" then depth -= 1 end
+						p += 1
+					end
+					pos = p
+				else
+					break
+				end
+			end
+			if #parts == 0 then return nil end
+			local out = table.concat(parts):gsub("%s+$", "")
+			if out == "" then return nil end
+			return out
+		end
+		local function jget(url)
+			local ok, res = Library:Http({ Url = url, Retries = 0, Headers = { ["User-Agent"] = "Mozilla/5.0" } })
+			if not ok then return nil, tostring(res) end
+			local okd, d = pcall(HttpService.JSONDecode, HttpService, tostring(res.Body or ""))
+			if not okd or type(d) ~= "table" then return nil, "bad json" end
+			return d
+		end
+		-- providers are tried in order; the first one that answers wins (Google 429s some networks)
+		local providers = {
+			function(code, text, enc) -- Google gtx (POST, big batches)
+				local path = "/translate_a/single?client=gtx&sl=en&tl=" .. gcode(code) .. "&dt=t"
+				local lastErr = "no reply"
+				for _, host in ipairs(TRANSLATE_HOSTS) do
+					local ok, res = Library:Http({
+						Url = host .. path, Method = "POST", Body = "q=" .. enc, Retries = 0,
+						Headers = { ["User-Agent"] = "Mozilla/5.0", ["Content-Type"] = "application/x-www-form-urlencoded" },
+					})
+					if ok then
+						local out = parseTranslation(tostring(res.Body or ""))
+						if out then return out end
+						lastErr = "unreadable reply"
+					else
+						lastErr = tostring(res)
+						if lastErr:find("429", 1, true) then break end
+					end
+				end
+				return nil, lastErr
+			end,
+			function(code, text, enc) -- Google dict-chrome-ex (different endpoint / limit)
+				if #enc > 1500 then return nil, "too long" end
+				local d, err = jget("https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=en&tl=" .. gcode(code) .. "&dt=t&q=" .. enc)
+				if not d then return nil, err end
+				local parts = {}
+				for _, seg in ipairs(d.sentences or {}) do
+					if type(seg) == "table" and type(seg.trans) == "string" then parts[#parts + 1] = seg.trans end
+				end
+				local out = table.concat(parts):gsub("%s+$", "")
+				if out == "" then return nil, "empty" end
+				return out
+			end,
+			function(code, text, enc) -- MyMemory (500 char limit)
+				if #text > 450 then return nil, "too long" end
+				local d, err = jget("https://api.mymemory.translated.net/get?q=" .. enc .. "&langpair=en|" .. gcode(code))
+				if not d then return nil, err end
+				local t = type(d.responseData) == "table" and d.responseData.translatedText
+				if type(t) ~= "string" or t == "" or t:find("MYMEMORY WARNING", 1, true) then return nil, "mymemory limit" end
+				return (t:gsub("%s+$", ""))
+			end,
+			function(code, text, enc) -- Lingva
+				if #enc > 900 then return nil, "too long" end
+				local lastErr = "no reply"
+				for _, host in ipairs({ "https://lingva.ml", "https://lingva.thedaviddelta.com" }) do
+					local d, err = jget(host .. "/api/v1/en/" .. gcode(code) .. "/" .. enc)
+					if d and type(d.translation) == "string" and d.translation ~= "" then return (d.translation:gsub("%s+$", "")) end
+					lastErr = tostring(err or "empty")
+				end
+				return nil, lastErr
+			end,
+		}
+		local gBlockedUntil, edgeBlockedUntil = 0, 0
+		local edgeTok, edgeExp = nil, 0
+		-- Microsoft Edge translator: free, no key, real JSON batches (best option when Google 429s)
+		local function edgeBatch(code, lines)
+			if os.clock() < edgeBlockedUntil then return nil, "edge paused" end
+			if not edgeTok or os.clock() > edgeExp then
+				local ok, res = Library:Http({ Url = "https://edge.microsoft.com/translate/auth", Retries = 1, Headers = { ["User-Agent"] = "Mozilla/5.0" } })
+				if not ok then edgeBlockedUntil = os.clock() + 30 return nil, "edge auth: " .. tostring(res) end
+				local t = tostring(res.Body or ""):gsub("%s+", "")
+				if #t < 50 then edgeBlockedUntil = os.clock() + 30 return nil, "edge auth bad reply" end
+				edgeTok, edgeExp = t, os.clock() + 480
+			end
+			local body, idx = {}, {}
+			for i, l in ipairs(lines) do
+				if l:match("%S") then body[#body + 1] = { Text = l } idx[#idx + 1] = i end
+			end
+			if #body == 0 then return nil, "edge: nothing to translate" end
+			local tl = code == "zh" and "zh-Hans" or code
+			local ok, res = Library:Http({
+				Url = "https://api-edge.cognitive.microsofttranslator.com/translate?from=en&to=" .. tl .. "&api-version=3.0",
+				Method = "POST", Body = body, Json = true, Retries = 1,
+				Headers = { Authorization = "Bearer " .. edgeTok, ["User-Agent"] = "Mozilla/5.0" },
+			})
+			if not ok then
+				edgeTok = nil
+				edgeBlockedUntil = os.clock() + 20
+				return nil, "edge: " .. tostring(res)
+			end
+			local d = res.Data
+			if type(d) ~= "table" or #d ~= #body then return nil, "edge: bad reply" end
+			local outs = {}
+			for i = 1, #lines do outs[i] = "" end
+			for k, i in ipairs(idx) do
+				local tr = type(d[k]) == "table" and type(d[k].translations) == "table" and d[k].translations[1]
+				if type(tr) ~= "table" or type(tr.text) ~= "string" then return nil, "edge: bad item" end
+				outs[i] = (tr.text:gsub("[\r\n]+", " "):gsub("%s+$", ""))
+			end
+			return outs
+		end
+		-- last-resort providers (2..n) take one short line at a time
+		local function askLine(code, line, errs)
+			local enc = HttpService:UrlEncode(line)
+			for i = 2, #providers do
+				local ok, out, err = pcall(providers[i], code, line, enc)
+				if ok and out then return out end
+				errs[#errs + 1] = tostring(ok and err or out)
+			end
+			return nil
+		end
+		local function ask(code, text)
+			local errs, limited = {}, false
+			local lines, n = {}, 0
+			for line in (text .. "\n"):gmatch("(.-)\n") do n += 1 lines[n] = line end
+			-- 1) Edge batch
+			local okE, outs, errE = pcall(edgeBatch, code, lines)
+			if okE and outs then return table.concat(outs, "\n") end
+			errs[#errs + 1] = tostring(okE and errE or outs)
+			-- 2) Google batch
+			if os.clock() >= gBlockedUntil then
+				local ok, out, err = pcall(providers[1], code, text, HttpService:UrlEncode(text))
+				if ok and out then return out end
+				local e = tostring(ok and err or out)
+				errs[#errs + 1] = e
+				if e:find("429", 1, true) then limited = true gBlockedUntil = os.clock() + 120 end
+			end
+			-- 3) one line at a time
+			local res = {}
+			for i, line in ipairs(lines) do
+				if line:match("%S") then
+					local o = askLine(code, line, errs)
+					if not o then res = nil; break end
+					res[i] = (o:gsub("[\r\n]+", " "))
+					if n > 1 then task.wait(0.15) end
+				else
+					res[i] = ""
+				end
+			end
+			if res then return table.concat(res, "\n") end
+			local msg = table.concat(errs, " | ")
+			if not askWarned then
+				askWarned = true
+				warn("[SpectreUI] translate failed: " .. msg)
+			end
+			return nil, limited and ("HTTP 429 | " .. msg) or msg
+		end
+		local function take()
+			local batch, len, lang, code = {}, 0, nil, nil
+			while #pending > 0 and #batch < 40 do
+				local it = pending[1]
+				if it.code ~= current or Library.AutoTranslate ~= true then
+					table.remove(pending, 1)
+					it.lang.queued[it.s] = nil
+				else
+					if lang and (it.lang ~= lang or it.code ~= code or it.single) then break end
+					if #batch > 0 and len + #it.s + 3 > 3500 then break end
+					table.remove(pending, 1)
+					lang, code = it.lang, it.code
+					batch[#batch + 1] = it
+					len += #it.s + 3
+					if it.single then break end
+				end
+			end
+			return batch, lang, code
+		end
+		local function store(lang, code, it, o)
+			if it.s:find("{%d+}") and not o:find("{%s*%d+%s*}") then
+				lang.auto[it.s] = false -- translator dropped the number slot: keep the original text
+			else
+				lang.auto[it.s] = o
+				used += 1
+				dirty, lastLang, lastCode = true, lang, code
+			end
+		end
+		local function work()
+			while #pending > 0 do
+				local batch, lang, code = take()
+				if #batch > 0 then
+					inflight += #batch
+					local texts = {}
+					for i, it in ipairs(batch) do texts[i] = it.s end
+					local out, err = ask(code, table.concat(texts, "\n"))
+					local results
+					if out then
+						if #batch == 1 then
+							results = { out }
+						else
+							local lines = {}
+							for line in (out .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = line end
+							if #lines == #batch then results = lines end
+						end
+					end
+					if results then
+						fails, backoff = 0, 0
+						for i, it in ipairs(batch) do store(lang, code, it, results[i]) end
+						if os.clock() - lastRef > 1.5 then lastRef = os.clock() pcall(refresh) end
+					elseif out then
+						-- line count did not match: redo one by one
+						for _, it in ipairs(batch) do it.single = true pending[#pending + 1] = it end
+					elseif tostring(err):find("429", 1, true) then
+						-- rate limited: put the batch back and wait it out (no strikes)
+						for _, it in ipairs(batch) do
+							it.rl = (it.rl or 0) + 1
+							if it.rl < 5 then pending[#pending + 1] = it else lang.queued[it.s] = nil end
+						end
+						backoff = math.min(60, math.max(20, backoff * 2))
+						task.wait(backoff)
+					else
+						-- network error: retry a few times with a growing pause, never give up for good
+						fails += 1
+						for _, it in ipairs(batch) do
+							it.tries = (it.tries or 0) + 1
+							if it.tries < 4 then pending[#pending + 1] = it else lang.queued[it.s] = nil end
+						end
+						backoff = math.min(20, math.max(2, backoff * 2))
+						if fails >= 8 then
+							blockedUntil = os.clock() + 60 -- looks offline / blocked: pause 60s, then try again
+							failedFlag = true
+							for _, it in ipairs(pending) do it.lang.queued[it.s] = nil end
+							pending = {}
+							fails = 0
+							break
+						end
+						task.wait(backoff)
+					end
+					inflight -= #batch
+					progress()
+					task.wait(1.2)
+				end
+			end
+			workers -= 1
+			if workers == 0 then
+				if dirty then
+					dirty = false
+					pcall(refresh)
+					if lastLang then save(lastLang, lastCode) end
+				end
+				finishNotice()
+			end
+		end
+		autoLookup = function(lang, t)
+			if Library.AutoTranslate ~= true or os.clock() < blockedUntil then return nil end
+			local nums = {}
+			local tpl = (t:gsub("%d[%d%.,]*", function(n) nums[#nums + 1] = n return "{" .. #nums .. "}" end))
+			if not eligible(tpl) then return nil end
+			load(lang, current)
+			local c = lang.auto[tpl]
+			if c then
+				if #nums == 0 then return c end
+				return (c:gsub("{%s*(%d+)%s*}", function(i) return nums[tonumber(i)] end))
+			end
+			if c == false or lang.queued[tpl] or used + #pending >= (Library.AutoTranslateMax or 1500) then return nil end
+			lang.queued[tpl] = true
+			total += 1
+			if not handle and not creating and Library.AutoTranslateNotice ~= false then
+				creating = true
+				pcall(function() handle = Library:Loading({ Title = "Translating...", Text = "0/" .. total, Progress = 0 }) end)
+				creating = false
+			end
+			pending[#pending + 1] = { lang = lang, code = current, s = tpl, single = tpl:find("\n", 1, true) ~= nil }
+			while workers < math.min(WORKERS, #pending) do
+				workers += 1
+				task.spawn(work)
+			end
+			return nil
+		end
+	end
+
+	-- every ScreenGui goes through Library._mount, which calls this
+	function Library._i18nWatch(gui)
+		if watched[gui] then return end
+		watched[gui] = true
+		gui.DescendantAdded:Connect(function(d) pcall(track, d) end)
+		task.spawn(function()
+			local list = gui:GetDescendants()
+			local t = os.clock()
+			for i = 1, #list do
+				pcall(track, list[i])
+				if os.clock() - t > 0.003 then task.wait() t = os.clock() end
+			end
+		end)
+	end
+
+	local function buildLower(lang)
+		table.clear(lang.lower)
+		for k, v in pairs(lang.strings) do
+			if type(k) == "string" then lang.lower[k:lower()] = v end
+		end
+	end
+
+	function Library:AddLanguage(code, strings, meta)
+		if type(code) ~= "string" or code == "" or type(strings) ~= "table" then
+			return false, "usage: AddLanguage(code, { [\"English\"] = \"Translated\" }, { Name, Native })"
+		end
+		code = code:lower()
+		local lang = langs[code]
+		if not lang then
+			lang = { Name = code, Native = code, strings = {}, lower = {} }
+			langs[code] = lang
+			table.insert(order, code)
+		end
+		for k, v in pairs(strings) do
+			if type(k) == "string" and type(v) == "string" then lang.strings[k] = v end
+		end
+		if type(meta) == "table" then
+			lang.Name = meta.Name or lang.Name
+			lang.Native = meta.Native or lang.Native
+		end
+		buildLower(lang)
+		if code == current then refresh() end
+		return true
+	end
+
+	function Library:GetLanguage() return current end
+
+	function Library:ListLanguages()
+		local out = {}
+		for i, code in ipairs(order) do
+			local l = langs[code]
+			out[i] = { Code = code, Name = l.Name, Native = l.Native }
+		end
+		return out
+	end
+
+	function Library:SetLanguage(code, save)
+		if type(code) ~= "string" then return false, "usage: SetLanguage(code)" end
+		code = code:lower()
+		if not langs[code] then return false, "unknown language: " .. code end
+		local old = current
+		current = code
+		self.Language = code
+		refresh()
+		if save and self.DiskWrites and type(writefile) == "function" then
+			pcall(function()
+				if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder(self.ConfigFolder) then
+					makefolder(self.ConfigFolder)
+				end
+				writefile(SAVE_FILE, code)
+			end)
+		end
+		if old ~= code then
+			for i = #subs, 1, -1 do
+				local s = subs[i]
+				pcall(s, code, old)
+			end
+		end
+		return true, code
+	end
+
+	function Library:Translate(key, ...)
+		local out = translate(tostring(key))
+		if select("#", ...) > 0 then
+			local ok, f = pcall(string.format, out, ...)
+			if ok then return f end
+		end
+		return out
+	end
+	Library.T = function(a, ...)
+		if a == Library then return Library:Translate(...) end
+		return Library:Translate(a, ...)
+	end
+
+	function Library:OnLanguageChange(fn)
+		if type(fn) ~= "function" then return { Disconnect = function() end } end
+		table.insert(subs, fn)
+		return { Disconnect = function() local i = table.find(subs, fn) if i then table.remove(subs, i) end end }
+	end
+
+	function Library:LoadLanguage(code, source, meta)
+		if type(source) ~= "string" then return false, "usage: LoadLanguage(code, url | json, meta?)" end
+		local raw = source
+		if source:match("^https?://") then
+			local ok, body = pcall(function() return game:HttpGet(source) end)
+			if not ok then return false, "download failed: " .. tostring(body) end
+			raw = body
+		end
+		local ok, data = pcall(HttpService.JSONDecode, HttpService, raw)
+		if not ok or type(data) ~= "table" then return false, "invalid JSON" end
+		return self:AddLanguage(code, data.strings or data, meta or { Name = data.Name, Native = data.Native })
+	end
+
+	function Library:_loadSavedLanguage()
+		if type(isfile) ~= "function" or type(readfile) ~= "function" then return false end
+		local ok, code = pcall(function() return isfile(SAVE_FILE) and readfile(SAVE_FILE) or nil end)
+		if ok and type(code) == "string" then
+			code = code:gsub("%s+", "")
+			if langs[code] then return self:SetLanguage(code) end
+		end
+		return false
+	end
+
+	Library.Language = BASE
+
+	-- built-in Thai pack for the strings the library draws itself; add your own with AddLanguage("th", {...})
+	Library:AddLanguage("th", {
+		["Search…"] = "ค้นหา…",
+		["Search all tabs..."] = "ค้นหาทุกแท็บ...",
+		["Search settings or run a command   (try: speed = 50)"] = "ค้นหาการตั้งค่า หรือสั่งคำสั่ง   (ลอง: speed = 50)",
+		["No results found"] = "ไม่พบผลลัพธ์",
+		["Loading"] = "กำลังโหลด",
+		["Loading..."] = "กำลังโหลด...",
+		["Loading tabs"] = "กำลังโหลดแท็บ",
+		["Loading features"] = "กำลังโหลดฟีเจอร์",
+		["Preparing interface"] = "กำลังเตรียมหน้าจอ",
+		["Almost ready"] = "เกือบเสร็จแล้ว",
+		["Starting..."] = "กำลังเริ่มต้น...",
+		["Done"] = "เสร็จสิ้น",
+		["Clear"] = "ล้าง",
+		["Copy"] = "คัดลอก",
+		["Theme"] = "ธีม",
+		["Profile"] = "โปรไฟล์",
+		["LOCKED"] = "ล็อก",
+		["OK"] = "ตกลง",
+		["Open"] = "เปิด",
+		["by"] = "โดย",
+		["User ID"] = "ไอดีผู้ใช้",
+		["Yes"] = "ใช่",
+		["No"] = "ไม่",
+		["Cancel"] = "ยกเลิก",
+		["Unload"] = "ปิดสคริปต์",
+	}, { Name = "Thai", Native = "ไทย" })
+
+	Library:AddLanguage("zh", {
+		["Search…"] = "搜索…",
+		["Search all tabs..."] = "搜索所有标签...",
+		["Search settings or run a command   (try: speed = 50)"] = "搜索设置或运行命令   (例如: speed = 50)",
+		["No results found"] = "未找到结果",
+		["Loading"] = "加载中",
+		["Loading..."] = "加载中...",
+		["Loading tabs"] = "正在加载标签",
+		["Loading features"] = "正在加载功能",
+		["Preparing interface"] = "正在准备界面",
+		["Almost ready"] = "即将完成",
+		["Starting..."] = "正在启动...",
+		["Done"] = "完成",
+		["Clear"] = "清除",
+		["Copy"] = "复制",
+		["Theme"] = "主题",
+		["Profile"] = "个人资料",
+		["LOCKED"] = "已锁定",
+		["OK"] = "确定",
+		["Open"] = "打开",
+		["by"] = "作者",
+		["User ID"] = "用户ID",
+		["Yes"] = "是",
+		["No"] = "否",
+		["Cancel"] = "取消",
+		["Unload"] = "卸载",
+	}, { Name = "Chinese", Native = "中文" })
+
+	Library:AddLanguage("ja", {
+		["Search…"] = "検索…",
+		["Search all tabs..."] = "すべてのタブを検索...",
+		["Search settings or run a command   (try: speed = 50)"] = "設定を検索またはコマンドを実行   (例: speed = 50)",
+		["No results found"] = "結果が見つかりません",
+		["Loading"] = "読み込み中",
+		["Loading..."] = "読み込み中...",
+		["Loading tabs"] = "タブを読み込み中",
+		["Loading features"] = "機能を読み込み中",
+		["Preparing interface"] = "インターフェースを準備中",
+		["Almost ready"] = "もうすぐ完了",
+		["Starting..."] = "開始しています...",
+		["Done"] = "完了",
+		["Clear"] = "クリア",
+		["Copy"] = "コピー",
+		["Theme"] = "テーマ",
+		["Profile"] = "プロフィール",
+		["LOCKED"] = "ロック中",
+		["OK"] = "OK",
+		["Open"] = "開く",
+		["by"] = "作成者",
+		["User ID"] = "ユーザーID",
+		["Yes"] = "はい",
+		["No"] = "いいえ",
+		["Cancel"] = "キャンセル",
+		["Unload"] = "アンロード",
+	}, { Name = "Japanese", Native = "日本語" })
+
+	Library:AddLanguage("ko", {
+		["Search…"] = "검색…",
+		["Search all tabs..."] = "모든 탭 검색...",
+		["Search settings or run a command   (try: speed = 50)"] = "설정 검색 또는 명령 실행   (예: speed = 50)",
+		["No results found"] = "결과를 찾을 수 없습니다",
+		["Loading"] = "로딩 중",
+		["Loading..."] = "로딩 중...",
+		["Loading tabs"] = "탭 로딩 중",
+		["Loading features"] = "기능 로딩 중",
+		["Preparing interface"] = "인터페이스 준비 중",
+		["Almost ready"] = "거의 완료됨",
+		["Starting..."] = "시작 중...",
+		["Done"] = "완료",
+		["Clear"] = "지우기",
+		["Copy"] = "복사",
+		["Theme"] = "테마",
+		["Profile"] = "프로필",
+		["LOCKED"] = "잠김",
+		["OK"] = "확인",
+		["Open"] = "열기",
+		["by"] = "제작",
+		["User ID"] = "사용자 ID",
+		["Yes"] = "예",
+		["No"] = "아니오",
+		["Cancel"] = "취소",
+		["Unload"] = "언로드",
+	}, { Name = "Korean", Native = "한국어" })
+
+	Library:AddLanguage("vi", {
+		["Search…"] = "Tìm kiếm…",
+		["Search all tabs..."] = "Tìm trong tất cả các tab...",
+		["Search settings or run a command   (try: speed = 50)"] = "Tìm cài đặt hoặc chạy lệnh   (vd: speed = 50)",
+		["No results found"] = "Không tìm thấy kết quả",
+		["Loading"] = "Đang tải",
+		["Loading..."] = "Đang tải...",
+		["Loading tabs"] = "Đang tải các tab",
+		["Loading features"] = "Đang tải tính năng",
+		["Preparing interface"] = "Đang chuẩn bị giao diện",
+		["Almost ready"] = "Sắp xong",
+		["Starting..."] = "Đang khởi động...",
+		["Done"] = "Xong",
+		["Clear"] = "Xóa",
+		["Copy"] = "Sao chép",
+		["Theme"] = "Chủ đề",
+		["Profile"] = "Hồ sơ",
+		["LOCKED"] = "ĐÃ KHÓA",
+		["OK"] = "Đồng ý",
+		["Open"] = "Mở",
+		["by"] = "bởi",
+		["User ID"] = "ID người dùng",
+		["Yes"] = "Có",
+		["No"] = "Không",
+		["Cancel"] = "Hủy",
+		["Unload"] = "Gỡ bỏ",
+	}, { Name = "Vietnamese", Native = "Tiếng Việt" })
+
+	Library:AddLanguage("id", {
+		["Search…"] = "Cari…",
+		["Search all tabs..."] = "Cari semua tab...",
+		["Search settings or run a command   (try: speed = 50)"] = "Cari pengaturan atau jalankan perintah   (coba: speed = 50)",
+		["No results found"] = "Tidak ada hasil",
+		["Loading"] = "Memuat",
+		["Loading..."] = "Memuat...",
+		["Loading tabs"] = "Memuat tab",
+		["Loading features"] = "Memuat fitur",
+		["Preparing interface"] = "Menyiapkan antarmuka",
+		["Almost ready"] = "Hampir selesai",
+		["Starting..."] = "Memulai...",
+		["Done"] = "Selesai",
+		["Clear"] = "Bersihkan",
+		["Copy"] = "Salin",
+		["Theme"] = "Tema",
+		["Profile"] = "Profil",
+		["LOCKED"] = "TERKUNCI",
+		["OK"] = "OK",
+		["Open"] = "Buka",
+		["by"] = "oleh",
+		["User ID"] = "ID Pengguna",
+		["Yes"] = "Ya",
+		["No"] = "Tidak",
+		["Cancel"] = "Batal",
+		["Unload"] = "Hapus Muat",
+	}, { Name = "Indonesian", Native = "Bahasa Indonesia" })
+
+	Library:AddLanguage("es", {
+		["Search…"] = "Buscar…",
+		["Search all tabs..."] = "Buscar en todas las pestañas...",
+		["Search settings or run a command   (try: speed = 50)"] = "Buscar ajustes o ejecutar un comando   (ej: speed = 50)",
+		["No results found"] = "No se encontraron resultados",
+		["Loading"] = "Cargando",
+		["Loading..."] = "Cargando...",
+		["Loading tabs"] = "Cargando pestañas",
+		["Loading features"] = "Cargando funciones",
+		["Preparing interface"] = "Preparando interfaz",
+		["Almost ready"] = "Casi listo",
+		["Starting..."] = "Iniciando...",
+		["Done"] = "Hecho",
+		["Clear"] = "Limpiar",
+		["Copy"] = "Copiar",
+		["Theme"] = "Tema",
+		["Profile"] = "Perfil",
+		["LOCKED"] = "BLOQUEADO",
+		["OK"] = "Aceptar",
+		["Open"] = "Abrir",
+		["by"] = "por",
+		["User ID"] = "ID de usuario",
+		["Yes"] = "Sí",
+		["No"] = "No",
+		["Cancel"] = "Cancelar",
+		["Unload"] = "Descargar",
+	}, { Name = "Spanish", Native = "Español" })
+
+	Library:AddLanguage("pt", {
+		["Search…"] = "Pesquisar…",
+		["Search all tabs..."] = "Pesquisar em todas as abas...",
+		["Search settings or run a command   (try: speed = 50)"] = "Pesquisar configurações ou executar comando   (ex: speed = 50)",
+		["No results found"] = "Nenhum resultado encontrado",
+		["Loading"] = "Carregando",
+		["Loading..."] = "Carregando...",
+		["Loading tabs"] = "Carregando abas",
+		["Loading features"] = "Carregando recursos",
+		["Preparing interface"] = "Preparando interface",
+		["Almost ready"] = "Quase pronto",
+		["Starting..."] = "Iniciando...",
+		["Done"] = "Concluído",
+		["Clear"] = "Limpar",
+		["Copy"] = "Copiar",
+		["Theme"] = "Tema",
+		["Profile"] = "Perfil",
+		["LOCKED"] = "BLOQUEADO",
+		["OK"] = "OK",
+		["Open"] = "Abrir",
+		["by"] = "por",
+		["User ID"] = "ID do usuário",
+		["Yes"] = "Sim",
+		["No"] = "Não",
+		["Cancel"] = "Cancelar",
+		["Unload"] = "Descarregar",
+	}, { Name = "Portuguese", Native = "Português" })
+
+	Library:AddLanguage("ru", {
+		["Search…"] = "Поиск…",
+		["Search all tabs..."] = "Поиск по всем вкладкам...",
+		["Search settings or run a command   (try: speed = 50)"] = "Поиск настроек или команда   (напр.: speed = 50)",
+		["No results found"] = "Ничего не найдено",
+		["Loading"] = "Загрузка",
+		["Loading..."] = "Загрузка...",
+		["Loading tabs"] = "Загрузка вкладок",
+		["Loading features"] = "Загрузка функций",
+		["Preparing interface"] = "Подготовка интерфейса",
+		["Almost ready"] = "Почти готово",
+		["Starting..."] = "Запуск...",
+		["Done"] = "Готово",
+		["Clear"] = "Очистить",
+		["Copy"] = "Копировать",
+		["Theme"] = "Тема",
+		["Profile"] = "Профиль",
+		["LOCKED"] = "ЗАБЛОКИРОВАНО",
+		["OK"] = "ОК",
+		["Open"] = "Открыть",
+		["by"] = "от",
+		["User ID"] = "ID пользователя",
+		["Yes"] = "Да",
+		["No"] = "Нет",
+		["Cancel"] = "Отмена",
+		["Unload"] = "Выгрузить",
+	}, { Name = "Russian", Native = "Русский" })
+
+	Library:AddLanguage("fr", {
+		["Search…"] = "Rechercher…",
+		["Search all tabs..."] = "Rechercher dans tous les onglets...",
+		["Search settings or run a command   (try: speed = 50)"] = "Rechercher un réglage ou exécuter une commande   (ex: speed = 50)",
+		["No results found"] = "Aucun résultat trouvé",
+		["Loading"] = "Chargement",
+		["Loading..."] = "Chargement...",
+		["Loading tabs"] = "Chargement des onglets",
+		["Loading features"] = "Chargement des fonctionnalités",
+		["Preparing interface"] = "Préparation de l'interface",
+		["Almost ready"] = "Presque prêt",
+		["Starting..."] = "Démarrage...",
+		["Done"] = "Terminé",
+		["Clear"] = "Effacer",
+		["Copy"] = "Copier",
+		["Theme"] = "Thème",
+		["Profile"] = "Profil",
+		["LOCKED"] = "VERROUILLÉ",
+		["OK"] = "OK",
+		["Open"] = "Ouvrir",
+		["by"] = "par",
+		["User ID"] = "ID utilisateur",
+		["Yes"] = "Oui",
+		["No"] = "Non",
+		["Cancel"] = "Annuler",
+		["Unload"] = "Décharger",
+	}, { Name = "French", Native = "Français" })
+
+	Library:AddLanguage("de", {
+		["Search…"] = "Suchen…",
+		["Search all tabs..."] = "Alle Tabs durchsuchen...",
+		["Search settings or run a command   (try: speed = 50)"] = "Einstellungen suchen oder Befehl ausführen   (z.B.: speed = 50)",
+		["No results found"] = "Keine Ergebnisse gefunden",
+		["Loading"] = "Lädt",
+		["Loading..."] = "Lädt...",
+		["Loading tabs"] = "Tabs werden geladen",
+		["Loading features"] = "Funktionen werden geladen",
+		["Preparing interface"] = "Oberfläche wird vorbereitet",
+		["Almost ready"] = "Fast fertig",
+		["Starting..."] = "Wird gestartet...",
+		["Done"] = "Fertig",
+		["Clear"] = "Leeren",
+		["Copy"] = "Kopieren",
+		["Theme"] = "Thema",
+		["Profile"] = "Profil",
+		["LOCKED"] = "GESPERRT",
+		["OK"] = "OK",
+		["Open"] = "Öffnen",
+		["by"] = "von",
+		["User ID"] = "Benutzer-ID",
+		["Yes"] = "Ja",
+		["No"] = "Nein",
+		["Cancel"] = "Abbrechen",
+		["Unload"] = "Entladen",
+	}, { Name = "German", Native = "Deutsch" })
+
+	Library:AddLanguage("ar", {
+		["Search…"] = "بحث…",
+		["Search all tabs..."] = "البحث في كل التبويبات...",
+		["Search settings or run a command   (try: speed = 50)"] = "ابحث في الإعدادات أو نفّذ أمرًا   (مثال: speed = 50)",
+		["No results found"] = "لا توجد نتائج",
+		["Loading"] = "جارٍ التحميل",
+		["Loading..."] = "جارٍ التحميل...",
+		["Loading tabs"] = "جارٍ تحميل التبويبات",
+		["Loading features"] = "جارٍ تحميل الميزات",
+		["Preparing interface"] = "جارٍ تجهيز الواجهة",
+		["Almost ready"] = "اقترب الانتهاء",
+		["Starting..."] = "جارٍ البدء...",
+		["Done"] = "تم",
+		["Clear"] = "مسح",
+		["Copy"] = "نسخ",
+		["Theme"] = "السمة",
+		["Profile"] = "الملف الشخصي",
+		["LOCKED"] = "مقفل",
+		["OK"] = "موافق",
+		["Open"] = "فتح",
+		["by"] = "بواسطة",
+		["User ID"] = "معرّف المستخدم",
+		["Yes"] = "نعم",
+		["No"] = "لا",
+		["Cancel"] = "إلغاء",
+		["Unload"] = "إزالة",
+	}, { Name = "Arabic", Native = "العربية" })
 end
 do
 local genv = (getgenv and getgenv()) or _G
@@ -72,8 +1038,8 @@ end
 local function rgb(r, g, b) return Color3.fromRGB(r, g, b) end
 Library.Themes = {
 Clean = {
-Background = rgb(17, 17, 20),  Panel = rgb(22, 22, 26),   Card = rgb(27, 27, 31),   Control = rgb(36, 36, 42),
-Border = rgb(46, 46, 54),      Accent = rgb(94, 140, 240), Accent2 = rgb(94, 140, 240), AccentSoft = rgb(31, 40, 62),
+Background = rgb(13, 13, 16),  Panel = rgb(18, 18, 22),   Card = rgb(23, 23, 27),   Control = rgb(32, 32, 38),
+Border = rgb(38, 38, 46),      Accent = rgb(94, 140, 240), Accent2 = rgb(94, 140, 240), AccentSoft = rgb(27, 36, 58),
 Sheen = rgb(214, 226, 250),    Text = rgb(236, 237, 242), SubText = rgb(142, 144, 156),
 FX = false, Glow = false, Clean = true,
 },
@@ -238,7 +1204,7 @@ local function luminance(c)
 local function f(v) return v <= 0.03928 and v / 12.92 or ((v + 0.055) / 1.055) ^ 2.4 end
 return 0.2126 * f(c.R) + 0.7152 * f(c.G) + 0.0722 * f(c.B)
 end
-local THEME_COMMON = { Font = Enum.Font.GothamMedium, FontBold = Enum.Font.GothamBold, Glow = true, Animate = true }
+local THEME_COMMON = { Font = Enum.Font.GothamMedium, FontBold = Enum.Font.GothamBold, Glow = true, Animate = true, Success = Library.Status.Success, Warn = Library.Status.Warn, Danger = Library.Status.Danger, FontMono = Library.FontMono }
 local function buildTheme(src)
 local T = table.clone(THEME_COMMON)
 for k, v in pairs(Library.Themes.Rose) do T[k] = v end
@@ -560,9 +1526,9 @@ local OUT, IN = Enum.EasingDirection.Out, Enum.EasingDirection.In
 Library.Anim = { Speed = 1, Intro = true, Spin = false }
 Library.Perf = {
 LowPower = nil,
-Adaptive = true, SlowFrame = 1 / 35, SlowShare = 0.15, Warmup = 1.5, Recover = true, RecoverWindows = 4,
-Aurora = false, Particles = 2, Twinkle = false,
-Slice = true, SliceBudget = IS_MOBILE and 0.003 or 0.005, SliceBudgetBusy = 0.0015,
+Adaptive = true, SlowFrame = 1 / 40, SlowShare = 0.12, Warmup = 1.0, Recover = true, RecoverWindows = 4,
+Aurora = false, Particles = 0, Twinkle = false,
+Slice = true, SliceBudget = IS_MOBILE and 0.003 or 0.004, SliceBudgetBusy = 0.0015,
 CollapseAnimMax = 12,
 }
 local function lowPower()
@@ -647,7 +1613,7 @@ for k in pairs(props) do
 if GEOM[k] then style = QUINT break end
 end
 end
-t = math.max(t * (Library.Anim.Speed or 1), 0.08)
+t = math.max(t * (Library.Anim.Speed or 1), 0.06)
 local tw = TweenService:Create(o, tinfo(t, style, dir or OUT), props)
 lastTw[o] = tw
 tw:Play()
@@ -659,7 +1625,19 @@ RunService.RenderStepped:Wait()
 fn()
 end)
 end
-local function corner(r) return new("UICorner", { CornerRadius = UDim.new(0, r <= 3 and 5 or math.min(math.floor(r * 0.7 + 0.5), 16)) }) end
+-- radius scale: corner(r) snaps to Library.RadiusSteps (monotonic: a bigger r never gives a smaller radius)
+Library.RadiusSteps = { 5, 6, 8, 10, 12, 16 }
+local function corner(r)
+	local px = 5
+	if r > 4 then
+		local v, bd = math.floor(r * 0.7 + 0.5), math.huge
+		for _, st in ipairs(Library.RadiusSteps) do
+			local d = math.abs(st - v)
+			if d < bd then px, bd = st, d end
+		end
+	end
+	return new("UICorner", { CornerRadius = UDim.new(0, px) })
+end
 Library.IconLib = {
 Url = "https://raw.githubusercontent.com/Footagesus/Icons/main/Main-v2.lua", Default = "lucide", Timeout = 10,
 Mirrors = { "https://cdn.jsdelivr.net/gh/Footagesus/Icons@main/Main-v2.lua" },
@@ -948,8 +1926,8 @@ end
 local sc = (noScale == false) and new("UIScale", { Parent = btn }) or nil
 local hovering, pressed = false, false
 local function refresh()
-tween(target, pressed and 0.06 or 0.16, { [prop] = pressed and press or (hovering and hover or base) })
-if sc then tween(sc, pressed and 0.07 or 0.2, { Scale = pressed and 0.97 or 1 }) end
+tween(target, pressed and 0.06 or 0.12, { [prop] = pressed and press or (hovering and hover or base) })
+if sc then tween(sc, pressed and 0.07 or 0.16, { Scale = pressed and 0.97 or 1 }) end
 end
 btn.MouseEnter:Connect(function()
 if usingTouch() then return end
@@ -1129,7 +2107,7 @@ if not target.Parent or not state.Center or (lastPos and target.Position ~= last
 stopFollow()
 return
 end
-shown = shown:Lerp(state.Center, 1 - math.exp(-dt * (state.FollowRate or 24)))
+shown = shown:Lerp(state.Center, 1 - math.exp(-dt * (state.FollowRate or 32)))
 if (shown - state.Center).Magnitude < 0.25 then
 shown = state.Center
 if not state.Dragging then stopFollow() end
@@ -1320,7 +2298,7 @@ local function dot(layer, size, color, transp, round)
 return new("Frame", {
 AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(size, round and size or math.max(2, size * 0.62)),
 BackgroundColor3 = color, BackgroundTransparency = transp, BorderSizePixel = 0, Parent = layer,
-}, { new("UICorner", { CornerRadius = UDim.new(round and 0.5 or 0.45, 0) }) })
+}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 end
 local FX_KINDS = {}
 local function cnt(fx, n) return fx.Lite and 0 or math.min(Library.Perf.Particles or 5, math.max(3, n // 2)) end
@@ -1401,55 +2379,27 @@ end
 local function scene(layer, radius, T, minimal)
 local bg = T.Background
 local white = Color3.new(1, 1, 1)
-local function full(color, grads)
-local kids = { new("UICorner", { CornerRadius = UDim.new(0, radius) }) }
-for _, g in ipairs(grads) do kids[#kids + 1] = g end
-return new("Frame", {
-Size = UDim2.fromScale(1, 1), BackgroundColor3 = color, BorderSizePixel = 0,
-Active = false, Parent = layer,
-}, kids)
-end
-full(white, { new("UIGradient", {
-Rotation = 135,
-Color = ColorSequence.new({
-ColorSequenceKeypoint.new(0, bg:Lerp(T.Accent, 0.14)),
-ColorSequenceKeypoint.new(0.42, bg:Lerp(T.Accent, 0.03)),
-ColorSequenceKeypoint.new(0.72, bg),
-ColorSequenceKeypoint.new(1, bg:Lerp(T.Accent2, 0.12)),
-}),
-}) })
-if minimal then return end
-local function band(color, rot, at, peak)
-full(color, { new("UIGradient", {
-Rotation = rot,
-Transparency = NumberSequence.new({
-nsk(0, 1), nsk(math.max(at - 0.45, 0.01), 1), nsk(at, peak), nsk(math.min(at + 0.45, 0.99), 1), nsk(1, 1),
-}),
-}) })
-end
-band(T.Accent, 25, 0.2, 0.9)
-band(T.Accent2, 115, 0.85, 0.92)
-full(Color3.new(0, 0, 0), { new("UIGradient", {
+local black = Color3.new(0, 0, 0)
+-- flat, quiet surface: solid color with a barely-there vertical shade, plain 1px border
+new("Frame", {
+Size = UDim2.fromScale(1, 1), BackgroundColor3 = white, BorderSizePixel = 0, Active = false, Parent = layer,
+}, {
+new("UICorner", { CornerRadius = UDim.new(0, radius) }),
+new("UIGradient", {
 Rotation = 90,
-Transparency = NumberSequence.new({ nsk(0, 1), nsk(0.55, 1), nsk(1, 0.35) }),
-}) })
+Color = ColorSequence.new({
+ColorSequenceKeypoint.new(0, bg:Lerp(white, 0.025)),
+ColorSequenceKeypoint.new(1, bg:Lerp(black, 0.12)),
+}),
+}),
+})
 new("Frame", {
 Name = "Rim", Position = UDim2.fromOffset(1, 1), Size = UDim2.new(1, -2, 1, -2),
 BackgroundTransparency = 1, BorderSizePixel = 0, Active = false, Parent = layer,
 }, {
 new("UICorner", { CornerRadius = UDim.new(0, math.max(radius - 1, 0)) }),
 new("UIStroke", {
-Color = white, Thickness = 1, Transparency = 0.45, ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-}, {
-new("UIGradient", {
-Rotation = 135,
-Color = ColorSequence.new({
-ColorSequenceKeypoint.new(0, T.Sheen),
-ColorSequenceKeypoint.new(0.5, T.Accent),
-ColorSequenceKeypoint.new(1, T.Accent2),
-}),
-Transparency = NumberSequence.new({ nsk(0, 0.1), nsk(0.5, 0.8), nsk(1, 0.2) }),
-}),
+Color = T.Border, Thickness = 1, Transparency = 0.35, ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 }),
 })
 end
@@ -1474,7 +2424,7 @@ fx.Layer = layer
 self.FXOn = true
 local r = self.Radius or 12
 scene(layer, r, T, (self._qual or 0) >= 2 or lowPower())
-if fx.Lite then return end
+if fx.Lite or (Library.Perf.Particles or 0) <= 0 then return end
 if Library.Perf.Aurora == true then aurora(fx, layer, r, T.Accent, T.Accent2, 28, 0.9, rnd(18, 24), -0.55, 0.55) end
 local build = FX_KINDS[kind] or FX_KINDS.orbs
 build(fx, layer, T)
@@ -1650,7 +2600,7 @@ Active = true,
 Parent = gui,
 }, {
 corner(RADIUS),
-stroke(T.Border, 1.25, 0.15),
+stroke(T.Border, 1, 0.3),
 wash(cseq({ 0, T.Top }, { 1, T.Background }), 90),
 })
 win.Main = main
@@ -1727,7 +2677,7 @@ new("Frame", {
 Name = "ControlDock", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -4, 0.5, 0),
 Size = UDim2.fromOffset(btnArea + 8, closeW + 6), BackgroundColor3 = T.Control, BackgroundTransparency = 0.6,
 BorderSizePixel = 0, Active = false, Parent = hcard,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 12) }), stroke(T.Border, 1, 0.5) })
+}, { corner(12), stroke(T.Border, 1, 0.5) })
 local left = new("Frame", {
 Size = UDim2.new(1, -(btnArea + 16), 1, 0), BackgroundTransparency = 1, ClipsDescendants = true, Parent = hcard,
 }, {
@@ -1747,7 +2697,7 @@ ImageColor3 = cfg.LogoColor or Color3.new(1, 1, 1),
 Image = (type(cfg.Logo) == "number" or tonumber(cfg.Logo)) and ("rbxassetid://" .. tostring(cfg.Logo)) or cfg.Logo, Parent = left,
 })
 new("UICorner", { CornerRadius = UDim.new(0, (cfg.LogoCorner and cfg.LogoCorner > 0) and cfg.LogoCorner or 10), Parent = hlogo })
-new("UIStroke", { Color = T.Accent, Thickness = 1.2, Transparency = 0.55, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = hlogo })
+new("UIStroke", { Color = T.Accent, Thickness = 1, Transparency = 0.55, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = hlogo })
 win.LogoImage = hlogo
 else
 new("Frame", {
@@ -1757,7 +2707,7 @@ BorderSizePixel = 0, Parent = left,
 corner(10), gradient(T.Accent, T.Accent2, 45), stroke(T.Border, 1, 0.3),
 Library._oa(new("TextLabel", {
 Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = brand:sub(1, 2),
-Font = Enum.Font.GothamBlack, TextSize = 15, TextColor3 = Library.OnAccent(T),
+Font = T.FontBold, TextSize = 14, TextColor3 = Library.OnAccent(T),
 })),
 })
 end
@@ -1807,7 +2757,7 @@ end
 local close = new("TextButton", {
 AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(closeW, closeW),
 BackgroundColor3 = T.Control, BackgroundTransparency = win._rest, Text = "", AutoButtonColor = false, Parent = hcard,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 10) }) })
+}, { corner(10) })
 win._xs = {}
 for _, rot in ipairs({ 45, -45 }) do
 table.insert(win._xs, new("Frame", {
@@ -1821,7 +2771,7 @@ end
 close.MouseEnter:Connect(function()
 if not usingTouch() then
 win._xTint(Color3.fromRGB(255, 125, 125))
-tween(close, 0.14, { BackgroundColor3 = Color3.fromRGB(140, 42, 48), BackgroundTransparency = 0.3 })
+tween(close, 0.14, { BackgroundColor3 = Library.Status.Danger:Lerp(Color3.new(0, 0, 0), 0.45), BackgroundTransparency = 0.3 })
 end
 end)
 close.MouseLeave:Connect(function()
@@ -1863,7 +2813,7 @@ Name = "Hide", AnchorPoint = Vector2.new(1, 0.5),
 Position = UDim2.new(1, -(8 + (closeW + 4) * (canResize and 2 or 1)), 0.5, 0),
 Size = UDim2.fromOffset(closeW, closeW), BackgroundColor3 = T.Control, BackgroundTransparency = win._rest,
 Text = "", AutoButtonColor = false, Parent = hcard,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 10) }) })
+}, { corner(10) })
 local bar = new("Frame", {
 AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(15, 2),
 BackgroundColor3 = T.SubText, BorderSizePixel = 0, Parent = hideB,
@@ -1890,7 +2840,7 @@ local mxb = new("TextButton", {
 Name = "Maximize", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -(8 + closeW + 4), 0.5, 0),
 Size = UDim2.fromOffset(closeW, closeW), BackgroundColor3 = T.Control, BackgroundTransparency = win._rest,
 Text = "", AutoButtonColor = false, Parent = hcard,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 10) }) })
+}, { corner(10) })
 local IT, IARM = 2, 5
 local bars = {}
 for _, cn in ipairs({ { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } }) do
@@ -1949,15 +2899,24 @@ Name = "DragZone", Size = UDim2.new(1, -(btnArea + 28), 1, 0), BackgroundTranspa
 Active = true, ZIndex = 5, Parent = header,
 })
 if canResize then
-local lastTap = 0
+-- double-tap maximize: only two clean taps (press + release without dragging) count,
+-- so grabbing the title bar again to drag can no longer toggle maximize by accident
+local lastTap, pendingMax = 0, false
 dragZone.InputBegan:Connect(function(i)
 if not isPress(i) then return end
-local now = os.clock()
-if now - lastTap < 0.35 then
-lastTap = 0
+pendingMax = (os.clock() - lastTap) < 0.3
+end)
+dragZone.InputEnded:Connect(function(i)
+if not isPress(i) then return end
+if win._drag.Moved then
+lastTap, pendingMax = 0, false
+return
+end
+if pendingMax then
+lastTap, pendingMax = 0, false
 win:SetMaximized(not win.Maximized)
 else
-lastTap = now
+lastTap = os.clock()
 end
 end)
 end
@@ -2039,7 +2998,7 @@ local searchBar = new("Frame", {
 Name = "SearchBar", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -(8 + btnArea + 10), 0.5, 0),
 Size = UDim2.fromOffset(SEARCH_BAR_H, SEARCH_BAR_H), BackgroundColor3 = T.Control,
 BackgroundTransparency = win._rest, BorderSizePixel = 0, ClipsDescendants = true, Parent = hcard,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 10) }), stroke(T.Border, 1, 1) })
+}, { corner(10), stroke(T.Border, 1, 1) })
 win.SearchBar = searchBar
 local searchStroke = searchBar:FindFirstChildOfClass("UIStroke")
 searchStroke.Transparency = 1
@@ -2296,7 +3255,7 @@ subX = 73
 end
 new("TextLabel", {
 Position = UDim2.fromOffset(54, 5), Size = UDim2.new(1, -152, 0, 20), BackgroundTransparency = 1, RichText = true,
-Text = nm, Font = T2.FontBold, TextSize = 15, TextColor3 = T2.Text, TextXAlignment = LEFT,
+Text = nm, Font = T2.FontBold, TextSize = 14, TextColor3 = T2.Text, TextXAlignment = LEFT,
 TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 42, Parent = row,
 })
 local where
@@ -2430,7 +3389,7 @@ win.OpenBtn = new("TextButton", {
 Name = "OpenButton", AnchorPoint = Vector2.new(0.5, 0.5),
 Position = cfg.OpenPosition or UDim2.fromScale(0.17, 0.235),
 Size = UDim2.fromOffset(BS, BS), BackgroundColor3 = T.Panel:Lerp(Color3.new(0, 0, 0), 0.2), Text = cfg.Logo and "" or brand:sub(1, 2),
-Font = Enum.Font.GothamBlack, TextSize = math.max(13, math.floor(BS * 0.36)), TextColor3 = T.Text,
+Font = T.FontBold, TextSize = math.max(13, math.floor(BS * 0.36)), TextColor3 = T.Text,
 AutoButtonColor = false, Visible = false, Active = true, Parent = gui,
 }, { corner(math.floor(BS * 0.22)), stroke(T.Border:Lerp(Color3.new(1, 1, 1), 0.25), 1, 0.1) })
 local ob = win.OpenBtn
@@ -2724,7 +3683,9 @@ local sw = compact and 66 or (192)
 self.Sidebar.Size = UDim2.new(0, sw, 1, 0)
 self.Content.Position = UDim2.fromOffset(sw, 0)
 self.Content.Size = UDim2.new(1, -sw, 1, 0)
-local twoCol = ((w - sw) >= (self.TwoCol and 500 or 540) or Library.Mobile == true) and self.Cfg.TwoColumn ~= false
+-- mobile: fully automatic, follows the window width like on PC (wide = two columns, narrow = one column)
+local mobileTwo = Library.Mobile == true and (w - sw) >= (self.TwoCol and 380 or 420)
+local twoCol = (((w - sw) >= (self.TwoCol and 500 or 540)) or mobileTwo) and self.Cfg.TwoColumn ~= false
 if compact ~= self.Compact then
 self.Compact = compact
 self.Footer.Visible = true
@@ -3185,11 +4146,11 @@ function Library._AreaGraph(parent, o)
 	local dot = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(7, 7), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Visible = false, ZIndex = z + 3, Parent = area }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(Color3.new(1, 1, 1), 1, 0.4) })
 
 	local topLbl = new("TextLabel", {
-		Position = UDim2.fromOffset(6, 2), Size = UDim2.fromOffset(60, 12), BackgroundTransparency = 1, Text = "", Font = T.Font, TextSize = 10,
+		Position = UDim2.fromOffset(6, 2), Size = UDim2.fromOffset(60, 12), BackgroundTransparency = 1, Text = "", Font = T.Font, TextSize = 11,
 		TextColor3 = T.SubText, TextTransparency = 0.35, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = z + 4, Parent = area,
 	})
 	new("TextLabel", {
-		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 6, 1, -2), Size = UDim2.fromOffset(30, 12), BackgroundTransparency = 1, Text = "0", Font = T.Font, TextSize = 10,
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 6, 1, -2), Size = UDim2.fromOffset(30, 12), BackgroundTransparency = 1, Text = "0", Font = T.Font, TextSize = 11,
 		TextColor3 = T.SubText, TextTransparency = 0.5, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = z + 4, Parent = area,
 	})
 
@@ -3303,7 +4264,7 @@ function Window:_BuildProfile()
 	local main = self.Main
 	local RIGHT = Enum.TextXAlignment.Right
 	local TRUNC = Enum.TextTruncate.AtEnd
-	local good, mid, bad = Color3.fromRGB(74, 222, 128), Color3.fromRGB(250, 204, 21), Color3.fromRGB(248, 113, 113)
+	local good, mid, bad = Library.Status.Success, Library.Status.Warn, Library.Status.Danger
 
 	-- Full-panel overlay: fills the content area below the header, not a small card.
 	local blocker = new("TextButton", {
@@ -3364,8 +4325,8 @@ function Window:_BuildProfile()
 		Size = UDim2.fromOffset(92, 92), BackgroundColor3 = T.Control, BorderSizePixel = 0, Image = "", ScaleType = Enum.ScaleType.Crop, ZIndex = 57, Parent = head,
 	}, { corner(46), stroke(T.Accent, 2.5, 0.15) })
 	label({ Position = UDim2.fromOffset(106, 16), Size = UDim2.new(1, -106, 0, 28), Text = lpl.DisplayName, Font = T.FontBold, TextSize = 24, Parent = head })
-	label({ Position = UDim2.fromOffset(106, 46), Size = UDim2.new(1, -106, 0, 20), Text = "@" .. lpl.Name, TextSize = 15, TextColor3 = T.SubText, Parent = head })
-	label({ Position = UDim2.fromOffset(106, 68), Size = UDim2.new(1, -106, 0, 18), Text = "User ID " .. lpl.UserId, TextSize = 12, TextColor3 = T.SubText, Parent = head })
+	label({ Position = UDim2.fromOffset(106, 46), Size = UDim2.new(1, -106, 0, 20), Text = "@" .. lpl.Name, TextSize = 14, TextColor3 = T.SubText, Parent = head })
+	label({ Position = UDim2.fromOffset(106, 68), Size = UDim2.new(1, -106, 0, 18), Text = "User ID " .. lpl.UserId, TextSize = 13, TextColor3 = T.SubText, Parent = head })
 	task.spawn(function()
 		local ok, img = pcall(function() return Players:GetUserThumbnailAsync(lpl.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420) end)
 		if ok and img and av.Parent then av.Image = img end
@@ -3384,7 +4345,7 @@ function Window:_BuildProfile()
 		ScaleType = Enum.ScaleType.Crop, ZIndex = 57, Parent = gcard,
 	}, { corner(12) })
 	local gname = label({
-		Position = UDim2.fromOffset(70, 10), Size = UDim2.new(1, -80, 0, 32), Text = game.Name, Font = T.FontBold, TextSize = 15,
+		Position = UDim2.fromOffset(70, 10), Size = UDim2.new(1, -80, 0, 32), Text = game.Name, Font = T.FontBold, TextSize = 14,
 		TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, Parent = gcard,
 	})
 	local gsub = label({ Position = UDim2.fromOffset(70, 44), Size = UDim2.new(1, -80, 0, 16), Text = "", TextSize = 13, TextColor3 = T.SubText, Parent = gcard })
@@ -3424,7 +4385,7 @@ function Window:_BuildProfile()
 	local pingStops = { { 70, good }, { 130, mid }, { 220, bad } }
 	local function makeGraph(title, stops, minHi, hiStep, fmt, ref)
 		local box = new("Frame", { Size = UDim2.new(1, 0, 0, 24 + GH), BackgroundTransparency = 1, ZIndex = 57, LayoutOrder = nextOrder(), Parent = scroll })
-		label({ Size = UDim2.new(0.4, 0, 0, 16), Text = title, Font = T.FontBold, TextSize = 12, TextColor3 = T.SubText, Parent = box })
+		label({ Size = UDim2.new(0.4, 0, 0, 16), Text = title, Font = T.FontBold, TextSize = 13, TextColor3 = T.SubText, Parent = box })
 		local stat = label({ Position = UDim2.fromScale(0.4, 0), Size = UDim2.new(0.6, 0, 0, 16), Text = "", TextSize = 11, TextColor3 = T.SubText, TextXAlignment = RIGHT, Parent = box })
 		local g = Library._AreaGraph(box, {
 			Theme = T, Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, GH), Height = GH, Points = GN, Interval = SAMPLE_T,
@@ -3997,9 +4958,9 @@ animHome[obj] = nil
 end
 end
 Library.Kinds = {
-Success = { Color = rgb(52, 211, 153), Icon = "check" },
-Warning = { Color = rgb(251, 191, 36), Icon = "!" },
-Error   = { Color = rgb(248, 113, 113), Icon = "cross" },
+Success = { Color = Library.Status.Success, Icon = "check" },
+Warning = { Color = Library.Status.Warn, Icon = "!" },
+Error   = { Color = Library.Status.Danger, Icon = "cross" },
 Info    = { Color = rgb(96, 165, 250), Icon = "i" },
 Loading = { Color = nil, Icon = "spinner" },
 }
@@ -4156,7 +5117,7 @@ Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy) + th * 0.5, th), Rotation =
 BackgroundColor3 = color, BorderSizePixel = 0, Parent = parent,
 }, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 end
-local function buildIcon(parent, icon, color, T, size, bag)
+local function buildIcon(parent, icon, color, T, size, bag, chip)
 local holder = new("Frame", { Name = "Icon", Size = UDim2.fromOffset(size, size), BackgroundTransparency = 1, Parent = parent })
 local u = size / 22
 if icon == "spinner" then
@@ -4176,9 +5137,11 @@ lp:Play()
 if bag then bag:Add(lp) end
 return holder
 end
+if not chip then
 new("Frame", {
 Size = UDim2.fromScale(1, 1), BackgroundColor3 = color, BackgroundTransparency = 0.82, BorderSizePixel = 0, Parent = holder,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }) })
+}, { corner(8) })
+end
 if icon == "check" then
 seg(holder, 6.2 * u, 11.6 * u, 9.6 * u, 15 * u, 2 * u, color)
 seg(holder, 9.6 * u, 15 * u, 16.2 * u, 7.6 * u, 2 * u, color)
@@ -4232,7 +5195,7 @@ Name = "SpectreUI_Notify", ResetOnSpawn = false, IgnoreGuiInset = false,
 ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 1000,
 })
 local og = self.Owner.Gui
-if og and og.Parent then g.Parent = og.Parent else mountGui(g) end
+if og and og.Parent then g.Parent = og.Parent if Library._i18nWatch then Library._i18nWatch(g) end else mountGui(g) end
 self.Gui = g
 self.GuiConn = g:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() self:_RefitSoon() end)
 return g
@@ -4261,8 +5224,16 @@ local m = NotifyCfg.MaxVisible
 if type(m) ~= "number" then m = 5 end
 return math.clamp(math.floor(m), 1, 10)
 end
+function NM:_K(vp)
+local o = self.Owner
+local k = (not o.Headless and tonumber(o._k)) or Library._autoK(vp)
+return math.clamp(k, 0.5, 2)
+end
 function NM:_FitRegion(r)
 local vp = self:_VP()
+local k = self:_K(vp)
+r.K = k
+if r.Scale then r.Scale.Scale = k end
 local m = NotifyCfg.Margin
 local mx, mt, mb
 if type(m) == "number" then
@@ -4275,8 +5246,9 @@ if e then mx, mb = e.L, e.B end
 end
 local maxW = NotifyCfg.Width
 if type(maxW) ~= "number" then maxW = (r.AX == 0.5) and 400 or (Library.Mobile and 320 or 340) end
-r.W = math.floor(math.clamp(vp.X - mx * 2, 120, maxW))
-r.H = math.max(vp.Y - mt - mb, 60)
+mx, mt, mb = mx / k, mt / k, mb / k
+r.W = math.floor(math.clamp(vp.X / k - mx * 2, 120, maxW))
+r.H = math.max(vp.Y / k - mt - mb, 60)
 r.Gap = type(NotifyCfg.Gap) == "number" and NotifyCfg.Gap or 8
 r.Holder.AnchorPoint = Vector2.new(r.AX, r.AY)
 r.Holder.Position = UDim2.new(r.AX, r.AX == 0 and mx or (r.AX == 1 and -mx or 0), r.AY, r.AY == 0 and mt or -mb)
@@ -4301,7 +5273,8 @@ HorizontalAlignment = ax == 0 and Enum.HorizontalAlignment.Left or (ax == 1 and 
 VerticalAlignment = ay == 0 and Enum.VerticalAlignment.Top or Enum.VerticalAlignment.Bottom,
 })
 layout.Parent = holder
-r = { Pos = pos, AX = ax, AY = ay, Holder = holder, Layout = layout, Items = {}, Queue = {}, W = 300, H = 400, Gap = 8 }
+local scale = new("UIScale", { Scale = 1, Parent = holder })
+r = { Pos = pos, AX = ax, AY = ay, Holder = holder, Layout = layout, Scale = scale, K = 1, Items = {}, Queue = {}, W = 300, H = 400, Gap = 8 }
 self.Regions[pos] = r
 self:_FitRegion(r)
 return r
@@ -4399,19 +5372,21 @@ local card = new("CanvasGroup", {
 Name = "Card", BackgroundTransparency = 1, GroupTransparency = 1,
 Size = toast and UDim2.fromOffset(0, 0) or UDim2.new(1, 0, 0, 0), AutomaticSize = toast and Enum.AutomaticSize.XY or AY,
 Parent = wrap,
-}, { corner(toast and 16 or 10) })
+}, { corner(toast and 16 or 12) })
 ui.Card = card
-if not toast then new("UISizeConstraint", { MinSize = Vector2.new(0, 46), Parent = card }) end
-ui.Bg = new("Frame", { Name = "Bg", Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Panel, BackgroundTransparency = 0.03, BorderSizePixel = 0, ZIndex = 1, Parent = card })
+if not toast then new("UISizeConstraint", { MinSize = Vector2.new(0, 56), Parent = card }) end
+local glassK = (not self.Owner.Headless and tonumber(self.Owner.Glass)) or 0
+ui.Bg = new("Frame", { Name = "Bg", Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Panel, BackgroundTransparency = 0.03 + 0.97 * glassK, BorderSizePixel = 0, ZIndex = 1, Parent = card })
 ui.BgGrad = wash(cseq({ 0, T.Top }, { 1, T.Deep }), 90)
 ui.BgGrad.Parent = ui.Bg
+if T.Clean then ui.BgGrad.Enabled = false end
 ui.Tint = new("Frame", { Name = "Tint", Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Accent, BackgroundTransparency = 0,
-BorderSizePixel = 0, ZIndex = 2, Visible = not lowPower(), Parent = card },
+BorderSizePixel = 0, ZIndex = 2, Visible = not lowPower() and not T.Clean, Parent = card },
 { new("UIGradient", { Transparency = NumberSequence.new({
-NumberSequenceKeypoint.new(0, 0.78), NumberSequenceKeypoint.new(0.55, 0.94), NumberSequenceKeypoint.new(1, 1),
+NumberSequenceKeypoint.new(0, 0.84), NumberSequenceKeypoint.new(0.5, 0.94), NumberSequenceKeypoint.new(1, 0.99),
 }) }) })
 ui.Rim = new("Frame", { Name = "Rim", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 2, Parent = card },
-{ corner(toast and 16 or 10), stroke(T.Accent, 2, 0.5) })
+{ corner(toast and 16 or 12), stroke(T.Border, 1.25, 0.35) })
 ui.RimStroke = ui.Rim:FindFirstChildOfClass("UIStroke")
 if toast then
 local row = new("Frame", { Name = "Row", Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, BackgroundTransparency = 1, ZIndex = 3, Parent = card },
@@ -4426,24 +5401,30 @@ Font = T.Font, TextSize = 14, TextColor3 = T.Text, TextWrapped = true, TextXAlig
 ui.MaxText = ui.Content:FindFirstChildOfClass("UISizeConstraint")
 else
 local cs = touch and 32 or 24
-ui.Rail = new("Frame", { Name = "Rail", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 6, 0.5, 0), Size = UDim2.new(0, 3, 1, -20),
+ui.Rail = new("Frame", { Name = "Hairline", Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -24, 0, 1),
+BackgroundColor3 = T.Accent, BorderSizePixel = 0, ZIndex = 3, Parent = card },
+{ new("UIGradient", { Transparency = NumberSequence.new({
+NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(0.45, 0.85), NumberSequenceKeypoint.new(1, 1),
+}) }) })
+ui.Glow = new("Frame", { Name = "GlowLine", Position = UDim2.fromOffset(14, 0), Size = UDim2.fromOffset(36, 2),
+BackgroundColor3 = T.Accent, BorderSizePixel = 0, ZIndex = 4, Visible = not T.Clean, Parent = card }, { corner(4) })
+ui.IconSlot = new("Frame", { Name = "IconSlot", Position = UDim2.fromOffset(14, 13), Size = UDim2.fromOffset(30, 30),
 BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, ZIndex = 3, Parent = card },
-{ corner(2), gradient(T.Accent, T.Accent2, 90) })
-ui.RailGrad = ui.Rail:FindFirstChildOfClass("UIGradient")
-ui.IconSlot = new("Frame", { Name = "IconSlot", Position = UDim2.fromOffset(16, 10), Size = UDim2.fromOffset(22, 22), BackgroundTransparency = 1, ZIndex = 3, Parent = card })
+{ corner(10), gradient(T.Accent, T.Accent2, 45), stroke(T.Border, 1, 0.3) })
+ui.ChipGrad = ui.IconSlot:FindFirstChildOfClass("UIGradient")
 local inner = new("Frame", {
-Name = "Inner", Position = UDim2.fromOffset(48, 0), Size = UDim2.new(1, -(48 + 27 + cs / 2 + 4), 0, 0), AutomaticSize = AY,
+Name = "Inner", Position = UDim2.fromOffset(56, 0), Size = UDim2.new(1, -(56 + 12 + cs + 10), 0, 0), AutomaticSize = AY,
 BackgroundTransparency = 1, ZIndex = 3, Parent = card,
-}, { list(3), padding(0, 11, 0, 13) })
+}, { list(3), padding(0, 13, 0, 14) })
 ui.Title = new("TextLabel", {
 LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Font = T.FontBold, TextSize = 14,
 TextColor3 = T.Text, TextXAlignment = LEFT, TextWrapped = true, Parent = inner,
 })
 ui.Content = new("TextLabel", {
-LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Font = T.Font, TextSize = 14,
+LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Font = T.Font, TextSize = 13,
 TextColor3 = T.SubText, TextXAlignment = LEFT, TextWrapped = true, Parent = inner,
 })
-ui.Track = new("Frame", { Name = "Track", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -6), Size = UDim2.new(1, -32, 0, 3),
+ui.Track = new("Frame", { Name = "Track", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -6), Size = UDim2.new(1, -28, 0, 2),
 BackgroundColor3 = T.Accent, BackgroundTransparency = 0.86, BorderSizePixel = 0, ZIndex = 4, Visible = false, Parent = card }, { corner(2) })
 ui.Fill = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = ui.Track },
 { corner(2), gradient(T.Accent, T.Accent2, 0) })
@@ -4458,14 +5439,15 @@ end))
 if not toast then
 local cs = touch and 32 or 24
 ui.Close = new("TextButton", {
-Name = "Close", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -(27 - cs / 2), 0, 21 - cs / 2), Size = UDim2.fromOffset(cs, cs),
-BackgroundTransparency = 1, Text = "\u{00D7}", Font = T.FontBold, TextSize = 20, TextColor3 = T.SubText, AutoButtonColor = false, ZIndex = 6, Parent = card,
-})
+Name = "Close", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 13), Size = UDim2.fromOffset(cs, cs),
+BackgroundColor3 = T.Control, BackgroundTransparency = 0.6, BorderSizePixel = 0,
+Text = "\u{00D7}", Font = T.FontBold, TextSize = 18, TextColor3 = T.SubText, AutoButtonColor = false, ZIndex = 6, Parent = card,
+}, { corner(10), stroke(T.Border, 1, 0.5) })
 bag:Add(ui.Close.MouseButton1Click:Connect(function() self:_Dismiss(entry, "close") end))
 bag:Add(ui.Close.MouseEnter:Connect(function()
-if not usingTouch() then tween(ui.Close, 0.12, { TextColor3 = T.Text }) end
+if not usingTouch() then tween(ui.Close, 0.12, { TextColor3 = T.Text, BackgroundTransparency = 0.25 }) end
 end))
-bag:Add(ui.Close.MouseLeave:Connect(function() tween(ui.Close, 0.14, { TextColor3 = T.SubText }) end))
+bag:Add(ui.Close.MouseLeave:Connect(function() tween(ui.Close, 0.14, { TextColor3 = T.SubText, BackgroundTransparency = 0.6 }) end))
 end
 if NotifyCfg.PauseOnHover ~= false then
 bag:Add(ui.Hit.MouseEnter:Connect(function()
@@ -4491,9 +5473,11 @@ local T = self:Theme()
 local spec, ui = entry.spec, entry.ui
 local accent, accent2 = styleOf(T, spec)
 local toast = spec.Role == "toast"
-ui.RimStroke.Color = accent
+ui.RimStroke.Color = T.Border:Lerp(accent, 0.35)
 if ui.Tint then ui.Tint.BackgroundColor3 = accent end
-if ui.RailGrad then ui.RailGrad.Color = ColorSequence.new(accent, accent2) end
+if ui.Rail then ui.Rail.BackgroundColor3 = accent end
+if ui.Glow then ui.Glow.BackgroundColor3 = accent end
+if ui.ChipGrad then ui.ChipGrad.Color = ColorSequence.new(accent, accent2) end
 if ui.FillGrad then ui.FillGrad.Color = ColorSequence.new(accent, accent2) end
 if ui.Track then ui.Track.BackgroundColor3 = accent end
 local content = spec.Content or ""
@@ -4517,20 +5501,54 @@ if ui.IconKey ~= key then
 ui.IconKey = key
 ui.IconBag = ui.IconBag or Util.Bag()
 ui.IconBag:Clean()
-for _, c in ipairs(ui.IconSlot:GetChildren()) do c:Destroy() end
+for _, c in ipairs(ui.IconSlot:GetChildren()) do if c.Name == "Icon" then c:Destroy() end end
 ui.IconSlot.Visible = icon ~= false
-if icon ~= false then buildIcon(ui.IconSlot, icon, accent, T, toast and 18 or 22, ui.IconBag) end
+if icon ~= false then
+if toast then
+buildIcon(ui.IconSlot, icon, accent, T, 18, ui.IconBag)
+else
+buildIcon(ui.IconSlot, icon, Library.OnAccent(accent, accent2), T, 30, ui.IconBag, true)
+end
+end
 end
 if ui.IconBag and not entry.iconBagAdded then
 entry.iconBagAdded = true
 entry.bag:Add(function() ui.IconBag:Destroy() end)
 end
 end
+function NM:Retheme()
+if self.Dead then return end
+local T = self:Theme()
+self:_Each(function(e)
+local ui = e.ui
+if not ui or e.state == "dead" then return end
+ui.Bg.BackgroundColor3 = T.Panel
+ui.BgGrad.Color = cseq({ 0, T.Top }, { 1, T.Deep })
+ui.BgGrad.Enabled = not T.Clean and not lowPower()
+if ui.Tint then ui.Tint.Visible = not T.Clean and not lowPower() end
+if ui.Glow then ui.Glow.Visible = not T.Clean end
+if ui.Title then
+ui.Title.Font, ui.Title.TextColor3 = T.FontBold, T.Text
+ui.Content.Font, ui.Content.TextColor3 = T.Font, T.SubText
+else
+ui.Content.Font, ui.Content.TextColor3 = T.Font, T.Text
+end
+if ui.Close then
+ui.Close.Font, ui.Close.TextColor3, ui.Close.BackgroundColor3 = T.FontBold, T.SubText, T.Control
+local cs = ui.Close:FindFirstChildOfClass("UIStroke")
+if cs then cs.Color = T.Border end
+end
+local ch = ui.IconSlot and ui.IconSlot:FindFirstChildOfClass("UIStroke")
+if ch then ch.Color = T.Border end
+self:_Paint(e)
+end)
+end
 function NM:_OnSize(entry)
 if entry.state == "dead" or not entry.ui then return end
 local sz = entry.ui.Card.AbsoluteSize
 if sz.Y <= 0 then return end
-entry.h, entry.w = sz.Y, sz.X
+local k = entry.region and entry.region.K or 1
+entry.h, entry.w = sz.Y / k, sz.X / k
 if not entry.measured then
 entry.measured = true
 if entry.state == "entering" then self:_Enter(entry) end
@@ -4639,14 +5657,21 @@ entry.pauseThread = nil
 end
 if on then
 if entry.life then pcall(function() entry.life:Pause() end) end
-if entry.ui.RimStroke then tween(entry.ui.RimStroke, 0.15, { Transparency = 0.1 }) end
+if entry.ui.RimStroke then
+local a = styleOf(self:Theme(), entry.spec)
+tween(entry.ui.RimStroke, 0.15, { Transparency = 0.05, Color = a })
+end
 entry.pauseThread = task.delay(12, function()
 entry.pauseThread = nil
 self:_Hover(entry, false)
 end)
 else
 if entry.life then pcall(function() entry.life:Play() end) end
-if entry.ui.RimStroke then tween(entry.ui.RimStroke, 0.2, { Transparency = 0.5 }) end
+if entry.ui.RimStroke then
+local T = self:Theme()
+local a = styleOf(T, entry.spec)
+tween(entry.ui.RimStroke, 0.2, { Transparency = 0.2, Color = T.Border:Lerp(a, 0.35) })
+end
 end
 end
 function NM:_Kill(entry, reason)
@@ -4932,10 +5957,10 @@ local btn = new("TextButton", {
 LayoutOrder = (vertical and (n - i + 1)) or i, AutoButtonColor = false, Text = "", BackgroundColor3 = style == "Secondary" and T.Control or fill,
 BackgroundTransparency = style == "Secondary" and 0.35 or 0, ZIndex = 3,
 Size = vertical and UDim2.new(1, 0, 0, btnH) or UDim2.new(1 / n, -math.ceil(10 * (n - 1) / n), 0, btnH), Parent = brow,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 12) }) })
+}, { corner(12) })
 if style == "Secondary" then
 btn.BackgroundColor3 = T.Control
-new("UIStroke", { Color = T.Border, Thickness = 1.2, Transparency = 0.15, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = btn })
+new("UIStroke", { Color = T.Border, Thickness = 1, Transparency = 0.15, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = btn })
 feedback(btn, btn, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
 else
 local c1 = style == "Danger" and Library.Kinds.Error.Color or accent
@@ -4947,11 +5972,11 @@ g = gradient(c1, accent2, 0)
 end
 g.Parent = btn
 if style ~= "Danger" then table.insert(accentGrads, g) end
-feedback(btn, btn, "BackgroundColor3", fill, Color3.fromRGB(236, 236, 236), Color3.fromRGB(200, 200, 200))
+feedback(btn, btn, "BackgroundColor3", fill, Color3.new(1, 1, 1):Lerp(T.Background, 0.08), Color3.new(1, 1, 1):Lerp(T.Background, 0.22))
 new("UIStroke", { Color = style == "Danger" and Util.Lighten(c1, 0.45) or Util.Lighten(accent, 0.45), Thickness = 1, Transparency = 0.45, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = btn })
 new("Frame", {
 Name = "Gloss", Size = UDim2.fromScale(1, 0.5), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Active = false, ZIndex = 3, Parent = btn,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 12) }), new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(0.8, 1) }) })
+}, { corner(12), new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(0.8, 1) }) })
 end
 local pressScale = new("UIScale", { Scale = 1, Parent = btn })
 bag:Add(btn.MouseButton1Down:Connect(function() tween(pressScale, 0.08, { Scale = 0.96 }) end))
@@ -4959,7 +5984,7 @@ bag:Add(btn.MouseButton1Up:Connect(function() tween(pressScale, 0.14, { Scale = 
 bag:Add(btn.MouseLeave:Connect(function() tween(pressScale, 0.14, { Scale = 1 }) end))
 local btnLbl = new("TextLabel", {
 Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = tostring(b.Text or "OK"), Font = T.FontBold,
-TextSize = 15, TextColor3 = style == "Secondary" and T.Text or (style == "Danger" and Color3.new(1, 1, 1) or Library.OnAccent(T)),
+TextSize = 14, TextColor3 = style == "Secondary" and T.Text or (style == "Danger" and Color3.new(1, 1, 1) or Library.OnAccent(T)),
 TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 4, Parent = btn,
 }, { padding(8, 0, 8, 0) })
 if style ~= "Secondary" and style ~= "Danger" then Library._oa(btnLbl) end
@@ -5327,7 +6352,7 @@ tab._lblX = lblX
 tab._lblBase = 15
 tab.Label = new("TextLabel", {
 Position = UDim2.fromOffset(lblX, 0), Size = UDim2.new(1, -(lblX + 6), 1, 0), BackgroundTransparency = 1, Text = tab.Name,
-Font = T.Font, TextSize = 15, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
+Font = T.Font, TextSize = 14, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 })
 tab.Label:SetAttribute("SGSkip", true)
 tab._locked = false
@@ -5553,7 +6578,7 @@ Tab = self, Window = self.Window, Name = cfg.Name or "Section", Controls = {}, E
 s.Frame = new("Frame", {
 Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundColor3 = T.Card, BackgroundTransparency = (function(b) return b + (1 - b) * (self.Window.Glass or 0) end)(self.Window.FXOn and 0.2 or 0),
 BorderSizePixel = 0, Parent = self.Cols[1],
-}, { corner(14), stroke(T.Border, 1, 0.45), list(0, { HorizontalAlignment = Enum.HorizontalAlignment.Center }),
+}, { corner(14), stroke(T.Border, 1, 0.6), list(0, { HorizontalAlignment = Enum.HorizontalAlignment.Center }),
 wash(cseq({ 0, T.Top }, { 1, T.Card }), 90) })
 if self.Window._flat then
 local g = s.Frame:FindFirstChildOfClass("UIGradient")
@@ -5561,7 +6586,7 @@ if g then g.Enabled = false end
 end
 local collapsible = cfg.Collapsible ~= false
 local head = new("TextButton", {
-LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = T.Control, BackgroundTransparency = 1,
+LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = T.Control, BackgroundTransparency = 1,
 Text = "", AutoButtonColor = false, Parent = s.Frame,
 }, { corner(12) })
 if collapsible then feedback(head, head, "BackgroundTransparency", 1, 0.85, 0.7, true) end
@@ -5580,7 +6605,7 @@ BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = head,
 end
 new("TextLabel", {
 Position = UDim2.fromOffset(secIcon and 42 or 28, 0), Size = UDim2.new(1, secIcon and -72 or -58, 1, 0), BackgroundTransparency = 1, Text = s.Name,
-Font = T.FontBold, TextSize = 15, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = head,
+Font = T.FontBold, TextSize = 14, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = head,
 })
 local arrow
 do
@@ -5601,7 +6626,7 @@ Visible = collapsible, Parent = head,
 end
 end
 new("Frame", {
-LayoutOrder = 2, Size = UDim2.new(1, -24, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.55,
+LayoutOrder = 2, Size = UDim2.new(1, -24, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.75,
 BorderSizePixel = 0, Parent = s.Frame,
 }, { gradient(cseq({ 0, T.Border }, { 1, T.Border }), 0) })
 s.Body = new("Frame", {
@@ -5769,10 +6794,10 @@ local gradText = cfg.TextColor or (grad and Library.OnAccent(grad[1], grad[2] or
 local gradTracks = grad and not cfg.TextColor and grad[1] == T.Accent
 local b = new("TextButton", {
 Size = UDim2.new(1, 0, 0, rowH()), BackgroundColor3 = grad and Color3.new(1, 1, 1) or (accent or T.Control),
-BackgroundTransparency = 0.1, AutoButtonColor = false,
+BackgroundTransparency = 0, AutoButtonColor = false,
 Text = cfg.Name or "Button", Font = cfg.Bold and T.FontBold or T.Font, TextSize = 14,
 TextColor3 = cfg.TextColor or (accent and Library.OnAccent(accent)) or T.Text, TextTruncate = Enum.TextTruncate.AtEnd, ClipsDescendants = true, Parent = self.Body,
-}, { new("UICorner", { CornerRadius = UDim.new(0, R) }), stroke(grad and (grad[2] or T.Accent2) or (accent and accent:Lerp(Color3.new(1, 1, 1), 0.3) or T.Border), 1, grad and 0.5 or 0.35) })
+}, { new("UICorner", { CornerRadius = UDim.new(0, R) }), stroke(grad and (grad[2] or T.Accent2) or (accent and accent:Lerp(Color3.new(1, 1, 1), 0.3) or T.Border), 1, grad and 0.6 or 0.55) })
 if grad then
 b.BackgroundColor3 = Color3.new(1, 1, 1)
 b.BackgroundTransparency = 0
@@ -5935,16 +6960,16 @@ Font = T.Font, TextSize = 14, TextColor3 = T.Text, TextXAlignment = LEFT, TextTr
 local track = new("Frame", {
 AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(42, 22),
 BackgroundColor3 = value and T.Accent or T.Control, BorderSizePixel = 0, Parent = row,
-}, { corner(11), stroke(T.Border, 1, 0.5) })
+}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(T.Border, 1, 0.7) })
 Library._bevel(track, T.Control, true)
 local trackFill = new("Frame", {
 Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = value and 0 or 1,
 BorderSizePixel = 0, ZIndex = 1, Parent = track,
-}, { corner(2), gradient(T.Accent, T.Accent2, 0) })
+}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), gradient(T.Accent, T.Accent2, 0) })
 local knob = new("Frame", {
 AnchorPoint = Vector2.new(0, 0.5), Position = value and ON_POS or OFF_POS, ZIndex = 2,
 Size = UDim2.fromOffset(16, 16), BackgroundColor3 = T.Knob, BorderSizePixel = 0, Parent = track,
-}, { corner(2), stroke(T.Accent, 1.5, 0.4) })
+}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(T.Accent, 1.5, 0.4) })
 local knobStroke = knob:FindFirstChildOfClass("UIStroke")
 knobStroke.Enabled = false
 local obj = {}
@@ -6019,7 +7044,7 @@ local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Col
 local knob = new("Frame", {
 AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(knobS, knobS),
 BackgroundColor3 = T.Knob, BorderSizePixel = 0, ZIndex = 2, Parent = track,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }), stroke(T.Accent, 2, 0) })
+}, { corner(8), stroke(T.Accent, 2, 0) })
 local obj = {}
 local pendingX, pumpC, dragging
 local tgtA, visA, lastPut
@@ -7181,7 +8206,7 @@ Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BorderSize
 }, { corner(6), new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(1, 0) }) })
 svKnob = new("Frame", {
 AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(12, 12), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 3, Parent = svBox,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }), stroke(Color3.new(1, 1, 1), 2, 0) })
+}, { corner(8), stroke(Color3.new(1, 1, 1), 2, 0) })
 local svHit = new("TextButton", {
 Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 4, Parent = svBox,
 })
@@ -8379,7 +9404,7 @@ BackgroundColor3 = T.Panel, BackgroundTransparency = 1, BorderSizePixel = 0, Act
 local box = new("TextBox", {
 Position = UDim2.fromOffset(8, 8), Size = UDim2.new(1, -16, 0, 28), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1,
 BorderSizePixel = 0, Text = initial or "", PlaceholderText = "Search settings or run a command   (try: speed = 50)",
-PlaceholderColor3 = T.SubText, TextColor3 = T.Text, Font = T.Font, TextSize = 12, TextXAlignment = LEFT,
+PlaceholderColor3 = T.SubText, TextColor3 = T.Text, Font = T.Font, TextSize = 13, TextXAlignment = LEFT,
 ClearTextOnFocus = false, TextTruncate = Enum.TextTruncate.AtEnd, Parent = card,
 }, { corner(8), stroke(T.Border, 1, 0.35), padding(10, 0, 10, 0) })
 local scroll = new("ScrollingFrame", { ElasticBehavior = Enum.ElasticBehavior.Never,
@@ -8420,11 +9445,11 @@ subX = 54
 end
 new("TextLabel", {
 Position = UDim2.fromOffset(38, 2 + PADY), Size = UDim2.new(1, -112, 0, 15), BackgroundTransparency = 1, Text = it.title,
-Font = T.FontBold, TextSize = 12, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
+Font = T.FontBold, TextSize = 13, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 })
 new("TextLabel", {
 Position = UDim2.fromOffset(subX, 17 + PADY), Size = UDim2.new(1, -(subX + 74), 0, 12), BackgroundTransparency = 1, Text = it.sub or "",
-Font = T.Font, TextSize = 10, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
+Font = T.Font, TextSize = 11, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 })
 local chip = new("TextLabel", {
 Name = "Chip", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0), Size = UDim2.fromOffset(60, 16),
@@ -8626,7 +9651,7 @@ local function mkKnob()
 return new("Frame", {
 AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(knobS, knobS),
 BackgroundColor3 = T.Knob, BorderSizePixel = 0, ZIndex = 2, Parent = track,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }), stroke(T.Accent, 2, 0) })
+}, { corner(8), stroke(T.Accent, 2, 0) })
 end
 local knobLo, knobHi = mkKnob(), mkKnob()
 local function frac(v) return (max == min) and 0 or (v - min) / (max - min) end
@@ -8819,7 +9844,7 @@ function Section:CreateHoldButton(cfg)
 cfg = cfg or {}
 local T = self.Window.Theme
 local dur = cfg.Duration or 1
-local accent = cfg.Color or Color3.fromRGB(248, 113, 113)
+local accent = cfg.Color or Library.Status.Danger
 local h = rowH()
 local b = new("TextButton", {
 Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = T.Control, BackgroundTransparency = 0.1, AutoButtonColor = false, Text = "",
@@ -8966,14 +9991,14 @@ ScrollingDirection = Enum.ScrollingDirection.Y, Parent = frame,
 local lines, order, scrollQueued = {}, 0, false
 local obj = { Frame = frame }
 local COLORS = {
-Info = T.Text, Success = Color3.fromRGB(52, 211, 153), Warn = Color3.fromRGB(251, 191, 36), Error = Color3.fromRGB(248, 113, 113),
+Info = T.Text, Success = Library.Status.Success, Warn = Library.Status.Warn, Error = Library.Status.Danger,
 }
 function obj:Print(text, color)
 order += 1
 local stamp = (cfg.Timestamp ~= false) and (os.date("%H:%M:%S") .. "  ") or ""
 local l = new("TextLabel", {
 LayoutOrder = order, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Text = stamp .. tostring(text),
-Font = Enum.Font.Code, TextSize = 13, TextColor3 = color or T.Text, TextXAlignment = LEFT, TextWrapped = true, Parent = view,
+Font = Library.FontMono, TextSize = 13, TextColor3 = color or T.Text, TextXAlignment = LEFT, TextWrapped = true, Parent = view,
 })
 table.insert(lines, l)
 if #lines > maxLines then
@@ -9524,6 +10549,7 @@ if remember then
 if type(t) == "string" then Library:SetTheme(t) end
 Library:SaveThemes()
 end
+if self._nm then pcall(self._nm.Retheme, self._nm) end
 fire("switch", self, name)
 return true, name
 end
@@ -9536,6 +10562,7 @@ local oldR, oldB = T.Font, T.FontBold
 T.Font, T.FontBold = r, b
 self.FontName = name or "Custom"
 Library._remapFonts(self.Gui, oldR, oldB, r, b)
+if self._nm then pcall(self._nm.Retheme, self._nm) end
 if remember then
 Library:SetFont(f)
 Library:SaveThemes()
@@ -9671,7 +10698,7 @@ end,
 end
 if cfg.Delete == true then
 self:CreateButton({
-Name = cfg.DeleteButton or "Delete theme", Color = Color3.fromRGB(248, 113, 113),
+Name = cfg.DeleteButton or "Delete theme", Color = Library.Status.Danger,
 Callback = function()
 local name = win.ThemeName
 if Library._builtin[name] or Library._alias[name] or not Library.Themes[name] then
@@ -9713,7 +10740,7 @@ self:CreateButton({ Name = "Load", Callback = function()
 local ok, res = Library:LoadConfig(pick())
 if ok then win:Success(T, "Loaded", 3) else win:Error(T, tostring(res), 3) end
 end })
-self:CreateButton({ Name = "Delete", Color = Color3.fromRGB(248, 113, 113), Callback = function()
+self:CreateButton({ Name = "Delete", Color = Library.Status.Danger, Callback = function()
 local n = pick()
 if not n or n == "" then return win:Warning(T, "Select a config first", 3) end
 win:Confirm({ Title = "Delete config", Content = "\"" .. n .. "\" - can't be undone", Yes = "Delete", No = "Cancel", Danger = true,
@@ -9874,6 +10901,44 @@ local flag = P .. "menu_key"
 parts.MenuKey = ui:CreateKeybind({ Name = tx(L, "MenuKey", "Menu toggle key"), Default = win.Cfg.ToggleKey or Enum.KeyCode.RightShift, Flag = flag,
 Changed = function(k) if k then win:SetToggleKey(k) end end })
 Library:Watch(flag, function(k) if typeof(k) == "EnumItem" then win:SetToggleKey(k) end end)
+do
+local function names()
+local out, byName = {}, {}
+for _, l in ipairs(Library:ListLanguages()) do
+local label = l.Native or l.Name or l.Code
+out[#out + 1] = label
+byName[label] = l.Code
+end
+return out, byName
+end
+local function labelOf(code)
+for _, l in ipairs(Library:ListLanguages()) do
+if l.Code == code then return l.Native or l.Name or l.Code end
+end
+return code
+end
+local opts, byName = names()
+local dd = ui:CreateDropdown({ Name = tx(L, "Language", "Language"), Options = opts, Default = labelOf(Library:GetLanguage()),
+Tooltip = tx(L, "LanguageTip", "Interface language"),
+Callback = function(v)
+local code = byName[v]
+if code and code ~= Library:GetLanguage() then Library:SetLanguage(code, true) end
+end })
+parts.LanguageDropdown = dd
+parts.AutoTranslate = ui:CreateToggle({ Name = tx(L, "AutoTranslate", "Auto translate (online)"), Default = true, Flag = P .. "auto_translate",
+Tooltip = tx(L, "AutoTranslateTip", "Translate texts that have no built-in translation, using the internet"),
+Callback = function(v)
+Library.AutoTranslate = v == true
+pcall(function() Library:SetLanguage(Library:GetLanguage()) end)
+end })
+Library:OnLanguageChange(function(code)
+pcall(function()
+opts, byName = names()
+dd:Refresh(opts, true)
+dd:Set(labelOf(code), true)
+end)
+end)
+end
 ui:CreateButton({ Icon = ico("Palette", "lucide:search"), Name = tx(L, "Palette", "Search / commands (Ctrl+K)"), Gradient = { win.Theme.Accent, win.Theme.Accent2 },
 Callback = function() win:OpenPalette() end })
 ui:CreateParagraph({ Title = tx(L, "HowTitle", "Tip"),
@@ -9925,7 +10990,7 @@ cs:CreateButton({ Icon = ico("Load", "lucide:folder-open"), Name = tx(L, "Load",
 local ok, res = Library:LoadConfig(pick())
 if ok then win:Success(CFG_T, tx(L, "Loaded", "Loaded"), 3) else win:Error(CFG_T, tostring(res), 3) end
 end })
-cs:CreateButton({ Icon = ico("Delete", "lucide:trash-2"), Name = tx(L, "Delete", "Delete"), Color = Color3.fromRGB(248, 113, 113), Callback = function()
+cs:CreateButton({ Icon = ico("Delete", "lucide:trash-2"), Name = tx(L, "Delete", "Delete"), Color = Library.Status.Danger, Callback = function()
 local n = list:Get()
 if not n then return win:Warning(CFG_T, tx(L, "PickFirst", "Select a config first"), 3) end
 win:Confirm({ Title = tx(L, "DeleteTitle", "Delete config"), Content = "\"" .. n .. "\" - " .. tx(L, "CannotUndo", "can't be undone"),
@@ -9982,7 +11047,7 @@ end
 if S.Window == true then
 local ws = tab:CreateSection({ Icon = ico("WindowSection", "lucide:app-window"), Name = tx(L, "WindowSection", "Window"), Column = 1 })
 ws:CreateButton({ Icon = ico("Center", "lucide:locate-fixed"), Name = tx(L, "Center", "Center window"), Callback = function() win:Center() win:Flash() end })
-ws:CreateButton({ Icon = ico("Unload", "lucide:power"), Name = tx(L, "Unload", "Close UI completely (Unload)"), Color = Color3.fromRGB(248, 113, 113), Callback = function()
+ws:CreateButton({ Icon = ico("Unload", "lucide:power"), Name = tx(L, "Unload", "Close UI completely (Unload)"), Color = Library.Status.Danger, Callback = function()
 win:Confirm({ Title = tx(L, "UnloadTitle", "Unload UI"), Content = tx(L, "UnloadText", "Close and remove the whole UI?"),
 Yes = tx(L, "Yes", "Unload"), No = tx(L, "Cancel", "Cancel"), Danger = true, OnYes = function() Library:Unload() end })
 end })
@@ -11412,7 +12477,7 @@ BackgroundColor3 = T.Control, BorderSizePixel = 0, Parent = frame,
 local function mkBtn(txt, left)
 return new("TextButton", {
 AnchorPoint = Vector2.new(left and 0 or 1, 0), Position = UDim2.fromScale(left and 0 or 1, 0), Size = UDim2.new(0, btnW, 1, 0),
-BackgroundColor3 = T.Accent, BackgroundTransparency = 0.82, AutoButtonColor = false, Text = txt, Font = Enum.Font.Code,
+BackgroundColor3 = T.Accent, BackgroundTransparency = 0.82, AutoButtonColor = false, Text = txt, Font = Library.FontMono,
 TextSize = 18, TextColor3 = T.Accent, Parent = box,
 }, { corner(2) })
 end
@@ -11606,7 +12671,7 @@ function Section:CreateRating(cfg)
 	for i = 1, max do
 		local s = new("TextButton", {
 			LayoutOrder = i, Size = UDim2.fromOffset(starW, h), BackgroundTransparency = 1, AutoButtonColor = false, Text = "★",
-			Font = Enum.Font.GothamBold, TextSize = touch and 22 or 20, TextColor3 = T.SubText, TextTransparency = 0.55, Parent = bar,
+			Font = T.FontBold, TextSize = touch and 22 or 20, TextColor3 = T.SubText, TextTransparency = 0.55, Parent = bar,
 		})
 		s.MouseEnter:Connect(function() if not touch then paint(i) end end)
 		s.MouseLeave:Connect(function() paint() end)
@@ -12143,12 +13208,12 @@ BackgroundColor3 = color or T.Control, BackgroundTransparency = 0.1, AutoButtonC
 Text = d.Name or "Button", Font = d.Bold and T.FontBold or T.Font, TextSize = 14,
 TextColor3 = d.TextColor or (color and Library.OnAccent(color)) or T.Text,
 TextTruncate = Enum.TextTruncate.AtEnd, ClipsDescendants = true, Parent = row,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }), stroke(color and color:Lerp(Color3.new(1, 1, 1), 0.3) or T.Border, 1, color and 0.5 or 0.35) })
+}, { corner(8), stroke(color and color:Lerp(Color3.new(1, 1, 1), 0.3) or T.Border, 1, color and 0.5 or 0.35) })
 local bs = b:FindFirstChildOfClass("UIStroke")
 new("Frame", {
 Size = UDim2.fromScale(1, 0.55), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Active = false, ZIndex = 3, Visible = false, Parent = b,
 }, {
-new("UICorner", { CornerRadius = UDim.new(0, 8) }),
+corner(8),
 new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.9), NumberSequenceKeypoint.new(1, 1) }) }),
 })
 if not color then
@@ -12294,7 +13359,7 @@ BorderSizePixel = 0, ScrollBarThickness = Library.Mobile and 5 or 3, ScrollBarIm
 ScrollingDirection = Enum.ScrollingDirection.Y, Parent = frame,
 }, { corner(10), stroke(T.Border, 1, 0.4), padding(8, 6, 8, 6) })
 local label = new("TextLabel", {
-Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Text = text, Font = Enum.Font.Code, TextSize = 13,
+Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AY, BackgroundTransparency = 1, Text = text, Font = Library.FontMono, TextSize = 13,
 TextColor3 = T.Text, TextXAlignment = LEFT, TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true, Parent = scroll,
 })
 local obj = {}
@@ -12382,8 +13447,8 @@ local expired = s <= 0
 local text = expired and (cfg.ExpiredText or "Expired") or fmt(s)
 if text ~= shown then shown = text val.Text = text end
 local col = cfg.Color or win.Theme.Accent
-if expired then col = statusColor("Error", Color3.fromRGB(248, 113, 113))
-elseif cfg.WarnAt and s <= cfg.WarnAt then col = statusColor("Warning", Color3.fromRGB(250, 204, 21)) end
+if expired then col = statusColor("Error", Library.Status.Danger)
+elseif cfg.WarnAt and s <= cfg.WarnAt then col = statusColor("Warning", Library.Status.Warn) end
 val.TextColor3 = col
 if expired and not done then
 done = true
@@ -12795,11 +13860,11 @@ local RIGHT = Enum.TextXAlignment.Right
 local ATEND = Enum.TextTruncate.AtEnd
 local card = new("Frame", {
 Size = UDim2.new(1, 0, 0, H), BackgroundColor3 = T.Control, BackgroundTransparency = 0.2, BorderSizePixel = 0, Parent = self.Body,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 10) }), stroke(T.Border, 1, 0.4) })
+}, { corner(10), stroke(T.Border, 1, 0.4) })
 local tile = new("Frame", {
 Position = UDim2.fromOffset(PAD, PAD), Size = UDim2.fromOffset(TILE, TILE), BackgroundColor3 = accent, BackgroundTransparency = 0.86,
 BorderSizePixel = 0, ClipsDescendants = true, Parent = card,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 10) }), stroke(accent, 1, 0.6) })
+}, { corner(10), stroke(accent, 1, 0.6) })
 local bx = PAD * 2 + TILE
 local body = new("Frame", {
 Position = UDim2.fromOffset(bx, 0), Size = UDim2.new(1, -(bx + PAD), 1, 0), BackgroundTransparency = 1, Parent = card,
@@ -13046,7 +14111,8 @@ i.Parent = p.Parent
 return i
 end
 local function fr(p, kids) p.BorderSizePixel = 0 return mk("Frame", p, kids) end
-local function lb(p, kids) p.BackgroundTransparency, p.BorderSizePixel, p.Font = 1, 0, p.Font or Enum.Font.Gotham return mk("TextLabel", p, kids) end
+local SF = setmetatable({}, { __index = function(_, k) local th = Library.Theme return k == "B" and th.FontBold or th.Font end })
+local function lb(p, kids) p.BackgroundTransparency, p.BorderSizePixel, p.Font = 1, 0, p.Font or SF.R return mk("TextLabel", p, kids) end
 local function round(px) return mk("UICorner", { CornerRadius = UDim.new(0, px) }) end
 local function tw(o, sec, p, st, dir)
 local t = TS:Create(o, TweenInfo.new(sec, st or EZ.Quad, dir or ED.Out), p)
@@ -13069,11 +14135,12 @@ end
 end
 local function C(k, d) return (type(ov) == "table" and ov[k]) or base[k] or d end
 local white = Color3.new(1, 1, 1)
-local acc = C("Accent", Color3.fromRGB(139, 92, 246))
+local acc = C("Accent", Library.Theme.Accent)
 local acc2 = C("Accent2", acc)
 local txt = C("Text", white)
-local subc = C("SubText", Color3.fromRGB(160, 160, 180))
-local bgc = C("Background", Color3.fromRGB(10, 10, 16))
+local subc = C("SubText", Library.Theme.SubText)
+SF.R, SF.B = C("Font", SF.R), C("FontBold", SF.B)
+local bgc = C("Background", Library.Theme.Background)
 local onAcc = Library.OnAccent and Library.OnAccent(acc, acc2) or white
 local title = tostring(cfg.Title or "SpectreUI")
 local brand, sub = title:match("^(.-)%s*|%s*(.+)$")
@@ -13137,23 +14204,23 @@ else
 local okc, ch = pcall(function() return utf8.char(utf8.codepoint(brand, 1)) end)
 logo = fr({ Position = U2(0, 0, 0, 0), Size = U2(0, logoBase, 0, logoBase), BackgroundColor3 = bgc:Lerp(white, 0.14), Parent = stack }, { round(8) })
 local ls = mk("UIStroke", { Color = edge, Thickness = 1, Parent = logo })
-local lt = lb({ Size = U2(1, 0, 1, 0), Text = okc and ch:upper() or "S", Font = Enum.Font.GothamBold, TextSize = 20, TextColor3 = txt, Parent = logo })
+local lt = lb({ Size = U2(1, 0, 1, 0), Text = okc and ch:upper() or "S", Font = SF.B, TextSize = 20, TextColor3 = txt, Parent = logo })
 R(logo, "BackgroundTransparency", 0.1) R(ls, "Transparency", 0.1) R(lt, "TextTransparency", 0.1)
 end
 M(logo, 0.1)
 local logoScale = mk("UIScale", { Parent = logo })
-local brandL = T({ Position = U2(0, 52, 0, sub ~= "" and 2 or 10), Size = U2(1, -52, 0, 20), Text = brand, Font = Enum.Font.GothamBold, TextSize = 17, TextColor3 = txt,
+local brandL = T({ Position = U2(0, 52, 0, sub ~= "" and 2 or 10), Size = U2(1, -52, 0, 20), Text = brand, Font = SF.B, TextSize = 16, TextColor3 = txt,
 TextXAlignment = Enum.TextXAlignment.Left, Parent = stack }, 0.2)
 M(brandL, 0.2)
 if sub ~= "" then
-local subL = T({ Position = U2(0, 52, 0, 23), Size = U2(1, -52, 0, 16), Text = sub, Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = subc,
+local subL = T({ Position = U2(0, 52, 0, 23), Size = U2(1, -52, 0, 16), Text = sub, Font = SF.R, TextSize = 13, TextColor3 = subc,
 TextXAlignment = Enum.TextXAlignment.Left, Parent = stack }, 0.3)
 M(subL, 0.3)
 end
 local status = T({ Position = U2(0, 0, 0, 64), Size = U2(1, -56, 0, 16), Text = steps[1], TextSize = 13, TextColor3 = subc,
 TextXAlignment = Enum.TextXAlignment.Left, Parent = stack }, 0.4)
 local pct = T({ Position = U2(1, -56, 0, 64), Size = U2(0, 56, 0, 16), Text = "0%", TextSize = 13, TextColor3 = subc,
-TextXAlignment = Enum.TextXAlignment.Right, Font = Enum.Font.GothamMedium, Parent = stack }, 0.4)
+TextXAlignment = Enum.TextXAlignment.Right, Font = SF.R, Parent = stack }, 0.4)
 M(status, 0.4) M(pct, 0.4)
 local track = fr({ Position = U2(0, 0, 0, 90), Size = U2(1, 0, 0, 3), BackgroundColor3 = white, BackgroundTransparency = 0.88, Parent = stack }, { round(2) })
 local fill = fr({ Size = U2(0, 0, 1, 0), BackgroundColor3 = acc, Parent = track }, { round(2) })
@@ -13647,10 +14714,6 @@ local A = Library.Anim
 local EQUAD, EBACK, ESINE = Enum.EasingStyle.Quad, Enum.EasingStyle.Back, Enum.EasingStyle.Sine
 local EOUT = Enum.EasingDirection.Out
 if A.Plus == nil then A.Plus = true end
-if A.Cascade == nil then A.Cascade = true end
-if A.CascadeStep == nil then A.CascadeStep = 0.03 end
-if A.CascadeMax == nil then A.CascadeMax = 5 end
-if A.CascadeLow == nil then A.CascadeLow = false end
 if A.ToggleStretch == nil then A.ToggleStretch = true end
 local function lite() return false end
 local function go(o, t, props, style, dir, delay)
@@ -13697,53 +14760,6 @@ end
 end)
 return obj
 end
-local inflight = setmetatable({}, { __mode = "k" })
-function Window:PlayCascade(tab)
-tab = tab or self.Active
-if not A.Plus or not A.Cascade or not tab or self._destroyed then return end
-if lite() and A.CascadeLow ~= true then return end
-local win = self
-task.spawn(function()
-RS.RenderStepped:Wait()
-if win._destroyed or win.Active ~= tab or not tab.Page or not tab.Page.Visible then return end
-local cards = {}
-for _, s in ipairs(tab.Sections or {}) do
-local f = s.Frame
-if f and f.Parent and f.Visible then table.insert(cards, f) end
-end
-table.sort(cards, function(a, b)
-local ay, by = a.AbsolutePosition.Y, b.AbsolutePosition.Y
-if math.abs(ay - by) > 4 then return ay < by end
-return a.AbsolutePosition.X < b.AbsolutePosition.X
-end)
-local step = A.CascadeStep or 0.045
-for i = 1, math.min(#cards, A.CascadeMax or 8) do
-local f = cards[i]
-local st = f:FindFirstChildOfClass("UIStroke")
-local rest = inflight[f]
-if not rest then
-rest = { bg = f.BackgroundTransparency, stroke = st and st.Transparency or nil }
-inflight[f] = rest
-end
-local delay = (i - 1) * step
-f.BackgroundTransparency = 1
-if st and rest.stroke then st.Transparency = 1 end
-local t1 = go(f, 0.34, { BackgroundTransparency = rest.bg }, ESINE, EOUT, delay)
-if st and rest.stroke then go(st, 0.34, { Transparency = rest.stroke }, ESINE, EOUT, delay) end
-t1.Completed:Connect(function(state)
-if state == Enum.PlaybackState.Completed and inflight[f] == rest then inflight[f] = nil end
-end)
-end
-end)
-end
-local origSelect = Window.SelectTab
-function Window:SelectTab(tab)
-local prev = self.Active
-origSelect(self, tab)
-if prev and prev ~= tab and self.Active == tab then
-pcall(self.PlayCascade, self, tab)
-end
-end
 local origSettings = Window.CreateSettingsTab
 function Window:CreateSettingsTab(cfg)
 local parts = origSettings(self, cfg)
@@ -13762,10 +14778,6 @@ end
 parts.AnimSpeed = sec:CreateSegmented({
 Name = "Speed", Options = { "Snappy", "Normal", "Soft" }, Default = current, Flag = P .. "anim_speed",
 Callback = function(v) if PRESETS[v] then A.Speed = PRESETS[v] end end,
-})
-parts.AnimCascade = sec:CreateToggle({
-Name = "Card cascade on tab change", Default = A.Cascade == true, Flag = P .. "anim_cascade",
-Callback = function(v) A.Cascade = v and true or false end,
 })
 parts.AnimJelly = sec:CreateToggle({
 Name = "Toggle jelly", Default = A.ToggleStretch == true, Flag = P .. "anim_jelly",
@@ -14055,7 +15067,7 @@ o.Size = UDim2.fromOffset(size, size)
 else
 o = new("TextLabel", {
 Size = UDim2.fromOffset(size, size), BackgroundTransparency = 1, Text = fallback,
-Font = Enum.Font.GothamBold, TextSize = size, TextColor3 = color,
+Font = (Library.Theme and Library.Theme.FontBold) or Enum.Font.GothamBold, TextSize = size, TextColor3 = color,
 })
 end
 o.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -14107,7 +15119,7 @@ if not (side and win.TabList and win.Pages and win.Main) then return end
 local bar = new("Frame", { Name = "UXBar", Position = UDim2.fromOffset(10, 12), Size = UDim2.new(1, -19, 0, 36), BackgroundTransparency = 1, Parent = side })
 local crumb = new("TextLabel", {
 Name = "UXCrumb", Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -52, 1, 0), BackgroundTransparency = 1, Text = "",
-Font = T.FontBold, TextSize = 12, TextColor3 = T.SubText, TextXAlignment = Enum.TextXAlignment.Left,
+Font = T.FontBold, TextSize = 13, TextColor3 = T.SubText, TextXAlignment = Enum.TextXAlignment.Left,
 TextTruncate = Enum.TextTruncate.AtEnd, Parent = bar,
 })
 local cbtn = new("TextButton", {
@@ -14133,7 +15145,7 @@ local chip = new("TextButton", {
 Name = "UXTheme", BackgroundColor3 = T.Control, BackgroundTransparency = 0.55, Text = "", AutoButtonColor = false,
 BorderSizePixel = 0, Parent = side,
 }, {
-new("UICorner", { CornerRadius = UDim.new(0, 10) }),
+corner(10),
 new("UIStroke", { Color = T.Border, Thickness = 1, Transparency = 0.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
 })
 addRipple(chip, win)
@@ -14211,7 +15223,7 @@ local on = n == cur
 local row = new("TextButton", {
 LayoutOrder = i, Size = UDim2.new(1, 0, 0, ROW), BackgroundColor3 = TH.Accent, BackgroundTransparency = on and 0.82 or 1,
 Text = "", AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 62, Parent = scr,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 10) }) })
+}, { corner(10) })
 swatch(row, th, 18, 10)
 new("TextLabel", {
 Position = UDim2.fromOffset(36, 0), Size = UDim2.new(1, -46, 1, 0), BackgroundTransparency = 1, Text = n,
@@ -14454,7 +15466,7 @@ task.delay(0.7, self._uxPaint)
 end
 end)
 end)()
-Library.TextGuard = { Enabled = false, MinSize = 10, Wrap = true }
+Library.TextGuard = { Enabled = true, MinSize = 10, Wrap = true, PreferWrap = true }
 do
 local TextService = game:GetService("TextService")
 local base = setmetatable({}, { __mode = "k" })
@@ -14466,6 +15478,48 @@ local function measure(text, size, font, bound)
 local ok, v = pcall(TextService.GetTextSize, TextService, text, size, font, bound)
 if ok then return v end
 return nil
+end
+local rowOf = setmetatable({}, { __mode = "k" })
+local function findRow(win, d)
+local cur = d
+while cur and cur.Parent and cur ~= win.Main and cur ~= win.Gui do
+local par = cur.Parent
+if cur:IsA("GuiObject") and par:FindFirstChildOfClass("UIListLayout") then
+if win.HeaderCard and cur:IsDescendantOf(win.HeaderCard) then return nil end
+if cur.Size.Y.Scale ~= 0 or cur.AutomaticSize ~= NONE then return nil end
+return cur
+end
+cur = par
+end
+return nil
+end
+local function growRow(d, row, textH)
+local base = row:GetAttribute("SGBaseH")
+if not base then base = row.Size.Y.Offset row:SetAttribute("SGBaseH", base) end
+local target = math.max(base, math.ceil(textH) + 12)
+if row.Size.Y.Offset ~= target then
+row.Size = UDim2.new(row.Size.X.Scale, row.Size.X.Offset, 0, target)
+end
+if d ~= row and d.Size.Y.Scale == 0 then
+if not d:GetAttribute("SGBaseLH") then d:SetAttribute("SGBaseLH", d.Size.Y.Offset) end
+d.Size = UDim2.new(d.Size.X.Scale, d.Size.X.Offset, 0, target)
+end
+rowOf[d] = row
+end
+local function shrinkRow(d)
+local row = rowOf[d]
+rowOf[d] = nil
+if not row then return end
+local base = row:GetAttribute("SGBaseH")
+if base and row.Parent then
+row.Size = UDim2.new(row.Size.X.Scale, row.Size.X.Offset, 0, base)
+row:SetAttribute("SGBaseH", nil)
+end
+local lb = d:GetAttribute("SGBaseLH")
+if lb then
+d.Size = UDim2.new(d.Size.X.Scale, d.Size.X.Offset, 0, lb)
+d:SetAttribute("SGBaseLH", nil)
+end
 end
 function Library._fitOne(win, d)
 local g = Library.TextGuard
@@ -14511,6 +15565,7 @@ elseif wrapBy[d] then
 d.TextWrapped = false
 d.TextTruncate = wrapBy[d]
 wrapBy[d] = nil
+shrinkRow(d)
 end
 end
 if multi then
@@ -14522,6 +15577,15 @@ end
 end
 apply(minS, false)
 return "cut"
+end
+if g.PreferWrap ~= false and not fitsLine(b) then
+local row = findRow(win, d)
+local v = row and measure(text, b, font, Vector2.new(aw, 100000))
+if v and v.Y > b * 1.1 then
+apply(b, true)
+growRow(d, row, v.Y)
+return "wrapped"
+end
 end
 local soft = math.max(minS, math.floor(b * 0.8))
 for size = b, soft, -1 do
@@ -14576,6 +15640,29 @@ for _, r in ipairs({ self.HeaderCard, self.Sidebar, self.Active and self.Active.
 if r then pcall(self.FitText, self, r) end
 end
 self._fitBusy = false
+if not self._fitAllBusy then task.spawn(self._FitAllTabs, self) end
+end
+function Window:_FitAllTabs()
+if self._fitAllBusy or self._destroyed then return end
+self._fitAllBusy = true
+for _, t in ipairs(self.Tabs) do
+if self._destroyed then break end
+local pg = t.Page
+if pg and pg.Parent and not pg.Visible and not (self.Active and self.Active.Page == pg) then
+local pos = pg.Position
+pg.Position = UDim2.fromScale(3, 0)
+pg.Visible = true
+task.wait()
+pcall(self.FitText, self, pg)
+if self.Active and self.Active.Page == pg then
+pg.Position = pos
+else
+pg.Visible = false
+pg.Position = pos
+end
+end
+end
+self._fitAllBusy = false
 end
 function Window:_QueueFit(delay)
 if self._destroyed or Library.TextGuard.Enabled == false then return end
@@ -15876,7 +16963,7 @@ function Section:CreatePerformance(cfg)
 	local h = showGraph and (topH + 8 + (GH + 6) * 2 + 4) or topH
 	local frame = new("Frame", { Size = UDim2.new(1, 0, 0, h), BackgroundColor3 = T.Control, BorderSizePixel = 0, Parent = self.Body },
 		{ corner(10), stroke(T.Border, 1, 0.5) })
-	local good, mid, bad = Color3.fromRGB(74, 222, 128), Color3.fromRGB(250, 204, 21), Color3.fromRGB(248, 113, 113)
+	local good, mid, bad = Library.Status.Success, Library.Status.Warn, Library.Status.Danger
 
 	local cells = {}
 	for i, cap in ipairs({ "FPS", "PING", "MEM" }) do
@@ -15886,7 +16973,7 @@ function Section:CreatePerformance(cfg)
 		cell.Size = UDim2.new(1 / 3, 0, 0, topH)
 		cells[i] = new("TextLabel", {
 			Position = UDim2.fromOffset(0, 6), Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1, Text = "-",
-			Font = T.FontBold, TextSize = 17, TextColor3 = T.Accent, Parent = cell,
+			Font = T.FontBold, TextSize = 16, TextColor3 = T.Accent, Parent = cell,
 		})
 		new("TextLabel", {
 			Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1, Text = cap,
@@ -16002,7 +17089,7 @@ function Window:CreateSettingsTab(...)
 	local parts = prevSettings(self, ...)
 	pcall(function()
 		local tab = parts and parts.Tab
-		if not tab or parts.InterfaceSection then return end
+		if not tab or parts.InterfaceSection or self.NoAutoInterface then return end
 		local sec = tab:CreateSection({ Name = "Interface", Column = 1 })
 		parts.InterfaceSection = sec
 		sec:CreateSlider({
@@ -16196,13 +17283,14 @@ function Library:Http(o)
 	end
 	local req = reqFn()
 	local tries = math.max(0, math.floor(tonumber(o.Retries) or 1))
-	local last = "failed"
+	local last, wait = "failed", nil
 	for attempt = 0, tries do
 		local res
 		if req then
 			local ok, r = pcall(req, { Url = url, Method = method, Headers = headers, Body = body })
 			if ok and type(r) == "table" then res = r else last = tostring(r) end
 		elseif method == "GET" then
+			if next(headers) then return false, "executor has no request function (headers unsupported)" end
 			local ok, r = pcall(game.HttpGet, game, url, true)
 			if ok then
 				res = { Success = true, StatusCode = 200, Body = r, Headers = {} }
@@ -16224,8 +17312,11 @@ function Library:Http(o)
 			end
 			last = "HTTP " .. tostring(code or res.StatusMessage or "?")
 			if code and code < 500 and code ~= 429 then return false, last, res end
+			if code and code >= 500 and method == "POST" then return false, last, res end
+			local rh = type(res.Headers) == "table" and (res.Headers["retry-after"] or res.Headers["Retry-After"]) or nil
+			wait = code == 429 and tonumber(rh) or nil
 		end
-		if attempt < tries then task.wait(math.min(0.5 * 2 ^ attempt, 4)) end
+		if attempt < tries then task.wait(math.min(wait or 0.5 * 2 ^ attempt, 10)) wait = nil end
 	end
 	return false, last
 end
@@ -16304,7 +17395,8 @@ function Library:Webhook(url, payload, opts)
 		body = { content = cut(payload, 2000) }
 	elseif type(payload) == "table" then
 		if payload.content ~= nil or payload.embeds ~= nil then
-			body = payload
+			body = {}
+			for k, v in pairs(payload) do body[k] = v end
 		else
 			body = {}
 			if payload.Content then body.content = cut(payload.Content, 2000) end
@@ -16345,7 +17437,8 @@ local function fsOk()
 end
 local function dataPath(key)
 	local k = tostring(key):gsub("[^%w_%-]", function(c) return string.format("%%%02X", c:byte()) end)
-	return DATA_DIR .. "/" .. k:sub(1, 80) .. ".json"
+	if #k > 80 then local h = 5381 for i = 1, #k do h = (h * 33 + k:byte(i)) % 4294967296 end k = k:sub(1, 60) .. "_" .. string.format("%x", h) end
+	return DATA_DIR .. "/" .. k .. ".json"
 end
 local function ensureDir()
 	if type(isfolder) == "function" and type(makefolder) == "function" then
@@ -16356,10 +17449,10 @@ local function ensureDir()
 	end
 end
 function Library:SaveData(key, value)
-	mem[key] = value
-	if not fsOk() then return false, "no filesystem" end
 	local ok, enc = pcall(HttpService.JSONEncode, HttpService, { v = value })
 	if not ok then return false, tostring(enc) end
+	mem[key] = value
+	if not fsOk() then return false, "no filesystem" end
 	ensureDir()
 	local okw, err = pcall(writefile, dataPath(key), enc)
 	if not okw then return false, tostring(err) end
@@ -16520,7 +17613,7 @@ end
 --   OnUpdate    function(newSource) -> return false to skip this update
 -- A new version is compiled first; a broken upload never tears down the working UI.
 -- Returns a handle { Check(), Stop() }.
-local function fingerprint(src) return src end
+local function fingerprint(s) local h = 5381 for i = 1, #s do h = (h * 33 + s:byte(i)) % 4294967296 end return #s .. ":" .. h end
 function Library:AutoUpdate(o)
 	if type(o) == "string" then o = { Url = o } end
 	o = o or {}
@@ -16604,7 +17697,7 @@ function Library:AutoUpdate(o)
 		busy = true
 		local okc, changed, bodies, token = pcall(check)
 		local res = false
-		if okc and changed then res = reload(bodies, token) end
+		if okc and changed then local okr, r = pcall(reload, bodies, token) res = okr and r end
 		busy = false
 		return res
 	end
@@ -16642,5 +17735,7 @@ function Library:Run(build, o)
 end
 Library.SourceUrl = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Ui/SpectreUI.lua"
 if Library.Perf.LowPower == nil then Library:SetQuality("high") end
-Library.Version = "3.25"
+function Window:SetLanguage(code, save) return Library:SetLanguage(code, save) end
+Library:_loadSavedLanguage()
+Library.Version = "3.27"
 return Library
