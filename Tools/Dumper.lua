@@ -1,1083 +1,1243 @@
--- AI Dumper v3.5
--- ดัมพ์แมพ (หลายเป้าหมาย) | ผู้เล่น | remote spy | deep scan | หา remote
+-- MapDumper v4.2 (adjustable speed + cleanup)
+-- PERF changes vs v4.0:
+--   1. YIELD_INTERVAL 0.012 → 0.04  + batch counter (ลด task.wait() ~12×)
+--   2. notAttrClass negative cache  (ข้าม GetAttributes/GetTags ของ class ที่ไม่เคยมี)
+--   3. decompileAsync prefetch      (decompile ล่วงหน้า DECOMPILE_WORKERS thread พร้อมกัน)
+--   4. DECOMPILE_TIMEOUT 6 → 4s, fail threshold 5→3, pause 15→10s
+--   5. collectConstants depth 16 → 8
 
--- เก็บ native function ไว้ในตัวแปร (ใช้ชุดนี้ทั้งไฟล์)
-local _pcall    = pcall
-local _typeof   = typeof
-local _tostring = tostring
-local _mmin     = math.min
-local _floor    = math.floor
-local _clock    = os.clock
-local _tinsert  = table.insert
-local _tconcat  = table.concat
-local _tsort    = table.sort
-local _sformat  = string.format
-local _rawget   = rawget
-local _next     = next
-local _pairs    = pairs
-local _ipairs   = ipairs
-
--- รันซ้ำ: ปิดอินสแตนซ์เก่าก่อน
-local _g = getgenv and getgenv() or nil
-if _g and type(_g.__AI_DUMPER_CLEANUP) == "function" then _pcall(_g.__AI_DUMPER_CLEANUP); _g.__AI_DUMPER_CLEANUP = nil end
-
-local CS = game:GetService("CollectionService")
-local Players = game:GetService("Players")
-local LP = Players.LocalPlayer
-
--- ประกาศตัวแปรล่วงหน้า
-local UI, Window
-local Status, PlayerStatus, SpyStatus, DeepStatus, HiddenStatus
-
--- คืนผลลัพธ์ของ fn หรือ `def` ถ้า error / เป็น nil
-local safe = function(fn, def)
-    local ok, r = _pcall(fn)
-    if ok and r ~= nil then return r end
-    return def
+local env = getgenv()
+if type(env.__MAPDUMPER_CLEANUP) == "function" then
+	pcall(env.__MAPDUMPER_CLEANUP)
 end
 
+-- Services.
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local collectionService = game:GetService("CollectionService")
+local marketplaceService = game:GetService("MarketplaceService")
+local playersService = game:GetService("Players")
+
+-- Constants.
+local VERSION = "4.2"
 local ROOT = "dump.map"
-local mkdirSafe = function(p)
-    if not (isfolder and makefolder) then return end
-    _pcall(function() if not isfolder(p) then makefolder(p) end end)
-end
--- ทุกการดัมพ์มีโฟลเดอร์ของตัวเอง: dump.map/<MapName> ถ้าดัมพ์ซ้ำ -> <MapName>-1, -2, ...
-local OUT, _mapName = ROOT, nil
-local function getMapName()
-    if _mapName then return _mapName end
-    local n, done = nil, false
-    task.spawn(function() -- ชื่อ place จริง (game.Name บนเกม UGC จะเป็นแค่ "Ugc"); รอไม่เกิน 3 วินาที
-        local ok, info = _pcall(function() return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId) end)
-        if ok and type(info) == "table" then n = info.Name end
-        done = true
-    end)
-    local t0 = _clock()
-    while not done and _clock() - t0 < 3 do task.wait() end
-    -- ตัวเลือกเรียงจากดีสุด: ชื่อจริง -> ชื่อ ASCII + PlaceId -> PlaceId ตัดตามตัวอักษร ไม่ตัดตาม byte
-    local raw = _tostring(n or game.Name)
-    local pid = _tostring(game.PlaceId)
-    local uni = raw:gsub('[%c\\/:*?"<>|]+', "-"):gsub("[\240-\247][\128-\191]*", "") -- เอาอักขระต้องห้ามและอีโมจิ 4 byte ออก
-    uni = uni:gsub("%s+", " "):gsub("^[%s%.%-]+", ""):gsub("[%s%.%-]+$", "")
-    local len = utf8.len(uni)
-    if not len then
-        uni = ""
-    elseif len > 40 then
-        uni = uni:sub(1, utf8.offset(uni, 41) - 1):gsub("[%s%.%-]+$", "") -- ตัดตามตัวอักษร ไม่ตัดกลาง sequence
-    end
-    local ascii = raw:gsub("[^%w _%.%-]+", "_"):gsub("[%s_]+", "_"):gsub("^[%._%-]+", ""):gsub("[%._%-]+$", ""):sub(1, 40)
-    ascii = (ascii ~= "") and (ascii .. "_" .. pid) or pid
-    _mapName = {}
-    if uni ~= "" then _mapName[#_mapName + 1] = uni end
-    if ascii ~= uni then _mapName[#_mapName + 1] = ascii end
-    if pid ~= ascii then _mapName[#_mapName + 1] = pid end
-    return _mapName
-end
-local function newRunDir()
-    -- ชื่อที่ถูกโฟลเดอร์หรือไฟล์เก่า (ไฟล์ 0B) ใช้ไปแล้ว จะต่อท้าย -1, -2, ...
-    local function pick(base)
-        local p, i = base, 0
-        while isfolder and (isfolder(p) or (isfile and isfile(p))) and i < 999 do i = i + 1; p = base .. "-" .. i end
-        return p
-    end
-    mkdirSafe(ROOT)
-    for _, name in _ipairs(getMapName()) do
-        local p = pick(ROOT .. "/" .. name)
-        mkdirSafe(p)
-        if not isfolder or isfolder(p) then OUT = p; return end -- executor รับชื่อนี้
-    end
-    OUT = ROOT -- ใช้ไม่ได้เลย (ไม่มี isfolder/makefolder): เขียนลง dump.map ตรงๆ
-end
-local function outDir() if OUT == ROOT then newRunDir() end return OUT end -- เครื่องมืออื่น: สร้างโฟลเดอร์ตอนใช้ครั้งแรก
+local PART_LIMIT = 1500000
+local MAX_NAME_LEN = 40
+local QUEUE_MAX, KEY_MAX = 3000, 2000
+local SPEED_PRESETS = {
+	Safe   = { yieldInterval = 0.08, yieldBatch = 10  },
+	Normal = { yieldInterval = 0.04, yieldBatch = 25  },
+	Fast   = { yieldInterval = 0.02, yieldBatch = 50  },
+	Turbo  = { yieldInterval = 0.0,  yieldBatch = 150 },
+}
+local DECOMPILE_TIMEOUT  = 4    -- [PERF] เดิม 6
+local DECOMPILE_WORKERS  = 3    -- [PERF] prefetch thread พร้อมกัน
+local SPY_METHODS = { FireServer = true, InvokeServer = true }
+local UI_URL = "https://raw.githubusercontent.com/tigergenz/SpectreMain/refs/heads/main/Library/SpectreUI.lua"
+local ALL_SERVICES = {
+	"Workspace", "ReplicatedStorage", "ReplicatedFirst", "StarterGui", "StarterPack", "StarterPlayer",
+	"Lighting", "SoundService", "Teams", "Players", "Chat", "MaterialService", "TextChatService",
+	"ProximityPromptService", "ServerScriptService", "ServerStorage", "TestService", "LocalizationService",
+	"InsertService", "GuiService", "VoiceChatService", "BadgeService", "CoreGui",
+}
+local EXTRA_TARGETS = { NIL = true, HUI = true, ACTORS = true, CLIENT = true, RUNTIME = true }
+local RESERVED = {}
+for word in ("con prn aux nul com1 com2 com3 com4 com5 com6 com7 com8 com9 lpt1 lpt2 lpt3 lpt4 lpt5 lpt6 lpt7 lpt8 lpt9"):gmatch("%a+%d*") do RESERVED[word] = true end
+local D2C_URL = "https://raw.githubusercontent.com/Awakenchan/GcViewerV2/refs/heads/main/Utility/Data2Code%40Amity.lua"
+local STATES = {
+	["🔄"] = "กำลังทำงาน", ["✅"] = "เสร็จแล้ว", ["❌"] = "ผิดพลาด",
+	["⚠"] = "มีปัญหา", ["🟢"] = "พร้อม", ["🔴"] = "กำลังดักจับ",
+}
+local TOSTRING_TYPES = {
+	number = true, boolean = true, Vector2 = true, UDim = true, UDim2 = true,
+	BrickColor = true, Rect = true, NumberRange = true, EnumItem = true,
+}
+local USAGE = {
+	RemoteEvent = "%s:FireServer(args...)",
+	UnreliableRemoteEvent = "%s:FireServer(args...)",
+	RemoteFunction = "local res = %s:InvokeServer(args...)",
+	ProximityPrompt = "fireproximityprompt(%s)",
+	ClickDetector = "fireclickdetector(%s)",
+}
+local ACTIONABLE = {
+	RemoteEvent = true, UnreliableRemoteEvent = true, RemoteFunction = true,
+	BindableEvent = true, BindableFunction = true,
+	ProximityPrompt = true, ClickDetector = true,
+}
+local TYPE_PROPS = {
+	BasePart = { "Position", "Size", "Anchored", "CanCollide" },
+	Humanoid = { "Health", "MaxHealth", "WalkSpeed", "JumpPower" },
+	TextLabel = { "Text" }, TextButton = { "Text" }, TextBox = { "Text" },
+	ProximityPrompt = { "ActionText", "ObjectText", "HoldDuration", "MaxActivationDistance", "Enabled" },
+	ClickDetector = { "MaxActivationDistance" },
+	ValueBase = { "Value" },
+	Sound = { "SoundId", "Volume", "Looped" },
+	Animation = { "AnimationId" },
+}
 
--- writefile ที่ทนต่อโฟลเดอร์ถูกลบ / executor ล้มชั่วคราว
-local function safeWrite(name, content)
-    if not writefile then return false end
-    if _pcall(writefile, name, content) then return true end
-    mkdirSafe(ROOT); mkdirSafe(OUT)
-    _pcall(task.wait, 0.05)
-    return (_pcall(writefile, name, content))
+local USEFUL, KEYWORDS = {}, {}
+for name in ([[RemoteEvent RemoteFunction UnreliableRemoteEvent BindableEvent BindableFunction ProximityPrompt
+	ClickDetector Sound ModuleScript Tool Humanoid Animation SpawnLocation Seat VehicleSeat Configuration]]):gmatch("%a+") do
+	USEFUL[name] = true
+end
+for word in ([[and break do else elseif end false for function if in local nil not or repeat return then true until while continue]]):gmatch("%a+") do
+	KEYWORDS[word] = true
 end
 
-local function setStatusOf(obj, text)
-    if obj then _pcall(function() obj:Set(nil, text) end) end
+-- State.
+local fmt = string.format
+local localPlayer = playersService.LocalPlayer or playersService.PlayerAdded:Wait()
+local window, mapStatus, spyStatus, spyToggle
+local runDir, mapCancelled, singleFile, indexCache = ROOT, false, false, nil
+local busy, pathCache = {}, setmetatable({}, { __mode = "k" })
+local usefulByClass, propsByClass = {}, {}
+-- [PERF] negative cache: class ที่ไม่เคยมี attrs/tags เลย → ข้ามการเรียกได้
+local notAttrClass, notAttrMiss = {}, {}
+
+local function safe(fn, default)
+	local ok, result = pcall(fn)
+	if ok and result ~= nil then return result end
+	return default
+end
+
+local function httpGet(url)
+	local ok, res = pcall(request, { Url = url, Method = "GET" })
+	if ok and type(res) == "table" and res.Success then return res.Body end
+end
+
+local function ensureFolder(path)
+	pcall(function() if not isfolder(path) then makefolder(path) end end)
+end
+
+local function safeWrite(path, content)
+	if pcall(writefile, path, content) then return true end
+	ensureFolder(ROOT)
+	ensureFolder(runDir)
+	task.wait(0.05)
+	return (pcall(writefile, path, content))
+end
+
+local function splitState(text)
+	text = tostring(text):gsub("\239\184\143", "")
+	for emoji, title in pairs(STATES) do
+		if text:sub(1, #emoji) == emoji then
+			return (text:sub(#emoji + 1):gsub("^%s+", "")), title
+		end
+	end
+	return text
+end
+
+local function setStatus(label, text)
+	if not label then return end
+	local clean, title = splitState(text)
+	pcall(label.Set, label, title, clean)
 end
 
 local function notify(title, content, kind)
-    if Window then _pcall(function() Window:Notify({ Title = title, Content = content, Duration = 3, Kind = kind or "Success" }) end) end
+	if not window then return end
+	pcall(function()
+		window:Notify({ Title = (splitState(title)), Content = (splitState(content)), Duration = 3, Kind = kind or "Success" })
+	end)
 end
 
-local ALL_SERVICES = {
-    "Workspace", "ReplicatedStorage", "ReplicatedFirst", "StarterGui",
-    "StarterPack", "StarterPlayer", "Lighting", "SoundService", "Teams",
-    "Players", "Chat", "MaterialService", "TextChatService", "ProximityPromptService"
-}
+-- สร้างโฟลเดอร์ dump.map/<ชื่อแมพ> ซ้ำก็ต่อ -1, -2
+local function newRunDir()
+	ensureFolder(ROOT)
+	local info = safe(function() return marketplaceService:GetProductInfo(game.PlaceId) end, {})
+	local name = tostring(info.Name or game.Name)
+	name = name:gsub('[%c\\/:*?"<>|]+', "-"):gsub("[\240-\247][\128-\191]*", ""):gsub("%s+", " "):gsub("^[%s%.%-]+", ""):gsub("[%s%.%-]+$", "")
+	local len = utf8.len(name)
+	if not len then
+		name = ""
+	elseif len > MAX_NAME_LEN then
+		name = name:sub(1, utf8.offset(name, MAX_NAME_LEN + 1) - 1)
+	end
 
--- ------------------------------------------------------------
--- path ที่ resolve กลับมาเป็น instance เดิมได้จริง
---  * ชื่อพี่น้องซ้ำกัน              -> :GetChildren()[i]
---  * ชื่อตรงกับ property/method    -> :FindFirstChild("X")   (game.Foo.Parent จะได้ property แทน)
---  * ชื่อแปลก / keyword            -> ["name"]
---  * instance ที่ไม่มี parent       -> NIL["name"]
--- ------------------------------------------------------------
-local LUA_KEYWORDS = {}
-for _, w in _ipairs({ "and", "break", "do", "else", "elseif", "end", "false", "for", "function",
-    "if", "in", "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while", "continue" }) do
-    LUA_KEYWORDS[w] = true
+	for _, base in ipairs({ name, tostring(game.PlaceId) }) do
+		if base ~= "" then
+			local dir, i = ROOT .. "/" .. base, 0
+			while (isfolder(dir) or isfile(dir)) and i < 999 do
+				i += 1
+				dir = ROOT .. "/" .. base .. "-" .. i
+			end
+			ensureFolder(dir)
+			if isfolder(dir) then
+				runDir = dir
+				return
+			end
+		end
+	end
+	runDir = ROOT
 end
 
-local _pathCache = setmetatable({}, { __mode = "k" })
-local _idxCache = nil -- มีค่าเฉพาะตอนดัมพ์ (กัน O(n^2) เวลาพี่น้องชื่อซ้ำเยอะมาก)
+local function getRunDir()
+	if runDir == ROOT then newRunDir() end
+	return runDir
+end
 
+local function outPath(name)
+	return runDir .. "/" .. name
+end
+
+-- ชื่อโฟลเดอร์/ไฟล์ให้ตรงกับชื่อใน Dex (ตัดเฉพาะอักขระที่ Windows ไม่รับ)
+local function cleanName(name)
+	name = tostring(name):gsub('[%c\\/:*?"<>|]+', "_"):gsub("[\240-\247][\128-\191]*", ""):gsub("[%s%.]+$", "")
+	name = name ~= "" and name:sub(1, 60) or "_"
+	if RESERVED[name:lower():match("^[^%.]*")] then name = "_" .. name end
+	return name
+end
+
+-- path ที่ resolve กลับเป็น instance เดิมได้จริง
 local function childIndex(parent, obj)
-    if _idxCache then
-        local m = _idxCache[parent]
-        if not m then
-            m = {}
-            for i, c in _ipairs(parent:GetChildren()) do m[c] = i end
-            _idxCache[parent] = m
-        end
-        return m[obj]
-    end
-    for i, c in _ipairs(parent:GetChildren()) do
-        if c == obj then return i end
-    end
-    return nil
+	local map = indexCache and indexCache[parent]
+	if not map then
+		map = {}
+		for i, child in ipairs(parent:GetChildren()) do map[child] = i end
+		if indexCache then indexCache[parent] = map end
+	end
+	return map[obj]
 end
 
-local function segFor(obj, parent)
-    if LP and obj == LP and parent == Players then return ".LocalPlayer" end
-    local name = obj.Name
-    local ok, v = _pcall(function() return parent[name] end)
-    if ok and v == obj then
-        if name:match("^[%a_][%w_]*$") and not LUA_KEYWORDS[name] then
-            return "." .. name
-        end
-        return "[" .. _sformat("%q", name) .. "]"
-    end
-    if parent:FindFirstChild(name) == obj then
-        return _sformat(":FindFirstChild(%q)", name)
-    end
-    local idx = childIndex(parent, obj)
-    if idx then return _sformat(":GetChildren()[%d]", idx) end
-    return _sformat(":FindFirstChild(%q)", name)
+local function pathSegment(obj, parent)
+	if obj == localPlayer and parent == playersService then return ".LocalPlayer" end
+	local name = obj.Name
+	local ok, found = pcall(function() return parent[name] end)
+	if ok and found == obj then
+		if name:match("^[%a_][%w_]*$") and not KEYWORDS[name] then return "." .. name end
+		return fmt("[%q]", name)
+	end
+	if parent:FindFirstChild(name) == obj then return fmt(":FindFirstChild(%q)", name) end
+	local idx = childIndex(parent, obj)
+	return idx and fmt(":GetChildren()[%d]", idx) or fmt(":FindFirstChild(%q)", name)
 end
 
-local function getCleanPath(obj)
-    if obj == game then return "game" end
-    local chain, base = {}, nil
-    local cur = obj
-    while cur do
-        if cur == game then base = "game" break end
-        local c = _pathCache[cur]
-        if c and c.parent == cur.Parent and c.name == cur.Name then base = c.path break end
-        chain[#chain + 1] = cur
-        cur = cur.Parent
-    end
-    for i = #chain, 1, -1 do
-        local o = chain[i]
-        local par = o.Parent
-        local path
-        if par == game then
-            path = _sformat('game:GetService("%s")', o.ClassName)
-        elseif par == nil then
-            path = _sformat("NIL[%q]", o.Name)
-        else
-            path = base .. segFor(o, par)
-        end
-        _pathCache[o] = { parent = par, name = o.Name, path = path }
-        base = path
-    end
-    return base
+local function getPath(obj)
+	local chain, base, cur = {}, "game", obj
+	while cur and cur ~= game do
+		local cached = pathCache[cur]
+		if cached and cached.parent == cur.Parent and cached.name == cur.Name then
+			base = cached.path
+			break
+		end
+		chain[#chain + 1] = cur
+		cur = cur.Parent
+	end
+
+	for i = #chain, 1, -1 do
+		local o = chain[i]
+		local parent, path = o.Parent, nil
+		if parent == game then
+			path = fmt('game:GetService("%s")', o.ClassName)
+		elseif parent == nil then
+			path = fmt("NIL[%q]", o.Name)
+		else
+			path = base .. pathSegment(o, parent)
+		end
+		pathCache[o] = { parent = parent, name = o.Name, path = path }
+		base = path
+	end
+	return base
 end
 
--- Full serializer — รองรับทุก type ที่เจอบ่อย
-local function serVal(v, depth)
-    depth = depth or 0
-    if depth > 3 then return "..." end
-    local t = _typeof(v)
-    if t == "string" then
-        return _sformat("%q", #v > 50 and (v:sub(1, 50) .. "...") or v)
-    elseif t == "number" or t == "boolean" then
-        return _tostring(v)
-    elseif t == "Instance" then
-        return _sformat("<%s.%s>", v.ClassName, v.Name)
-    elseif t == "Vector3" then
-        return _sformat("V3(%.2f,%.2f,%.2f)", v.X, v.Y, v.Z)
-    elseif t == "CFrame" then
-        return _sformat("CF(%.2f,%.2f,%.2f)", v.X, v.Y, v.Z)
-    elseif t == "Color3" then
-        return _sformat("RGB(%d,%d,%d)", _floor(v.R * 255 + 0.5), _floor(v.G * 255 + 0.5), _floor(v.B * 255 + 0.5))
-    elseif t == "Vector2" or t == "UDim" or t == "UDim2" or t == "BrickColor"
-        or t == "Rect" or t == "NumberRange" or t == "EnumItem" then
-        return _tostring(v)
-    elseif t == "table" then
-        local items = {}
-        local c = 0
-        for k, val in _pairs(v) do
-            c = c + 1
-            if c > 5 then _tinsert(items, "...") break end
-            _tinsert(items, _tostring(k) .. "=" .. serVal(val, depth + 1))
-        end
-        return "{" .. _tconcat(items, ", ") .. "}"
-    elseif t == "function" then
-        return "<function>"
-    else
-        return _sformat("<%s>", t)
-    end
+local function serialize(v, depth)
+	depth = depth or 0
+	local t = typeof(v)
+	if t == "string" then
+		return fmt("%q", #v > 50 and v:sub(1, 50) .. "..." or v)
+	elseif TOSTRING_TYPES[t] then
+		return tostring(v)
+	elseif t == "Instance" then
+		return fmt("<%s.%s>", v.ClassName, v.Name)
+	elseif t == "Vector3" or t == "CFrame" then
+		return fmt("%s(%.2f,%.2f,%.2f)", t, v.X, v.Y, v.Z)
+	elseif t == "Color3" then
+		return fmt("RGB(%d,%d,%d)", math.floor(v.R * 255 + 0.5), math.floor(v.G * 255 + 0.5), math.floor(v.B * 255 + 0.5))
+	elseif t == "table" then
+		if depth > 3 then return "..." end
+		local items = {}
+		for k, val in pairs(v) do
+			if #items >= 5 then
+				items[#items + 1] = "..."
+				break
+			end
+			items[#items + 1] = tostring(k) .. "=" .. serialize(val, depth + 1)
+		end
+		return "{" .. table.concat(items, ", ") .. "}"
+	end
+	return fmt("<%s>", t)
 end
 
--- ชนิด Remote (ใช้ร่วมกันทุกเครื่องมือ)
-local function isRemoteEvent(o) return o:IsA("RemoteEvent") or o:IsA("UnreliableRemoteEvent") end
-local function isRemote(o) return isRemoteEvent(o) or o:IsA("RemoteFunction") end
-
--- ตัวกรอง
-local USEFUL_EXACT = {}
-for _, cn in _ipairs({
-    "RemoteEvent", "RemoteFunction", "UnreliableRemoteEvent", "BindableEvent", "BindableFunction",
-    "ProximityPrompt", "ClickDetector", "Sound", "ModuleScript",
-    "Tool", "Humanoid", "Animation", "SpawnLocation", "Seat", "VehicleSeat", "Configuration",
-}) do USEFUL_EXACT[cn] = true end
-
--- ผลขึ้นกับ ClassName อย่างเดียว เลย cache ไว้ (IsA ไล่บน part 100k+ ชิ้นคือจุดที่ช้า)
-local _classUseful = {}
-local function classUseful(obj)
-    local cn = obj.ClassName
-    local v = _classUseful[cn]
-    if v == nil then
-        v = USEFUL_EXACT[cn] == true
-            or obj:IsA("ValueBase") or obj:IsA("BaseScript")
-            or obj:IsA("LayerCollector") or obj:IsA("GuiObject")
-        _classUseful[cn] = v
-    end
-    return v
+local function readProp(obj, key)
+	local ok, value = pcall(function() return obj[key] end)
+	if ok then return value end
+	return "<unreadable>"
 end
 
-local function isUseful(obj, detail)
-    if detail == "everything" then return true end
-    if classUseful(obj) then return true end
-    if safe(function() return _next(obj:GetAttributes()) ~= nil end, false) then return true end
-    if safe(function() return #CS:GetTags(obj) > 0 end, false) then return true end
-    return false
+-- Data2Code serializer (โหลดไม่ได้ก็ใช้ serialize ธรรมดา)
+local d2c
+local function toCode(value)
+	if d2c == nil then
+		local body = httpGet(D2C_URL)
+		local chunk = body and loadstring(body)
+		local ok, lib = pcall(chunk or error)
+		d2c = ok and type(lib) == "table" and lib or false
+	end
+	local ok, text = pcall(function() return d2c and d2c.Convert(value, true) or serialize(value) end)
+	text = ok and tostring(text) or serialize(value)
+	return #text > 4000 and text:sub(1, 4000) .. "\n--[[truncated]]" or text
 end
 
--- เอาต์พุต: แบ่งเป็นไฟล์ย่อยจำกัดขนาด (writefile ก้อนใหญ่ก้อนเดียวเคยพังแล้วหายหมด)
-local PART_LIMIT = 1500000 -- byte ต่อการ flush หนึ่งครั้ง
-local SINGLE_FILE = false   -- ตั้งค่าทุกรอบจากสวิตช์ "Single file"
-local SINGLE_NAME = "dump_all.txt"
+-- [PERF] isUseful: เพิ่ม negative cache สำหรับ class ที่ไม่เคยมี attr/tag เลย
+-- หลังจาก miss 80 ครั้ง จะข้าม GetAttributes()+GetTags() โดยตรง
+local function isUseful(obj, everything)
+	if everything then return true end
+	local class = obj.ClassName
+	local cached = usefulByClass[class]
+	if cached == nil then
+		cached = USEFUL[class] or obj:IsA("ValueBase") or obj:IsA("BaseScript")
+			or obj:IsA("LayerCollector") or obj:IsA("GuiObject") or false
+		usefulByClass[class] = cached
+	end
+	if cached then return true end
+	-- fast path: class นี้ไม่เคยมี attr/tag ใน session นี้
+	if notAttrClass[class] then return false end
+	local hasAttr = next(obj:GetAttributes()) ~= nil
+	if not hasAttr and #collectionService:GetTags(obj) == 0 then
+		local n = (notAttrMiss[class] or 0) + 1
+		notAttrMiss[class] = n
+		if n >= 80 then notAttrClass[class] = true end
+		return false
+	end
+	return true
+end
 
+local function isActionable(obj)
+	return ACTIONABLE[obj.ClassName] == true
+end
+
+local function typeProps(obj)
+	local class = obj.ClassName
+	local list = propsByClass[class]
+	if list == nil then
+		list = false
+		for base, props in pairs(TYPE_PROPS) do
+			if obj:IsA(base) then
+				list = props
+				break
+			end
+		end
+		propsByClass[class] = list
+	end
+	return list
+end
+
+-- เขียนผลลัพธ์เป็นไฟล์ย่อย กัน writefile ก้อนใหญ่พัง
 local function newSink(base)
-    local s = { base = base, part = 0, buf = {}, size = 0, files = {}, failed = 0 }
-    -- เขียน buf[a..b] เป็นไฟล์ย่อยหนึ่งไฟล์ ถ้าพังจะแบ่งครึ่ง (สาเหตุปกติคือเขียนก้อนเดียวใหญ่เกินไป)
-    function s:writeRange(buf, a, b, depth)
-        if a > b then return end
-        self.part = self.part + 1
-        local name = _sformat("%s/%s_%03d.txt", OUT, self.base, self.part)
-        mkdirSafe(OUT)
-        local ok
-        if SINGLE_FILE and appendfile then
-            -- รวมทุกอย่างลงไฟล์เดียว ต่อทีละก้อน (ไม่สร้าง string ยักษ์ก้อนเดียว)
-            name = OUT .. "/" .. SINGLE_NAME
-            local head = _sformat("\n\n===== [%s] part %d =====\n", self.base, self.part)
-            ok = _pcall(appendfile, name, head .. _tconcat(buf, "\n", a, b))
-            if not ok then name = _sformat("%s/%s_%03d.txt", OUT, self.base, self.part) end
-        end
-        if not ok then ok = safeWrite(name, _tconcat(buf, "\n", a, b)) end
-        if ok then
-            if not (SINGLE_FILE and appendfile and name:find(SINGLE_NAME, 1, true)) or #self.files == 0 then
-                _tinsert(self.files, name)
-            end
-        elseif b > a and depth < 3 then
-            self.part = self.part - 1 -- ใช้เลขเดิมซ้ำ
-            local mid = _floor((a + b) / 2)
-            self:writeRange(buf, a, mid, depth + 1)
-            self:writeRange(buf, mid + 1, b, depth + 1)
-        else
-            self.failed = self.failed + 1
-        end
-    end
-    function s:flush()
-        if #self.buf == 0 then return end
-        local buf = self.buf
-        self.buf = {}
-        self.size = 0
-        self:writeRange(buf, 1, #buf, 0)
-    end
-    function s:write(str)
-        self.buf[#self.buf + 1] = str
-        self.size = self.size + #str + 1
-        if self.size >= PART_LIMIT then self:flush() end
-    end
-    return s
+	local sink = { part = 0, buf = {}, size = 0, files = {}, failed = 0 }
+
+	function sink:flush()
+		if #self.buf == 0 then return end
+		local data = table.concat(self.buf, "\n")
+		self.buf, self.size = {}, 0
+		self.part += 1
+		ensureFolder(runDir)
+		local path = outPath(self.part == 1 and base .. ".txt" or fmt("%s_%d.txt", base, self.part))
+		local ok = singleFile and pcall(appendfile, outPath("all.txt"), fmt("\n===== [%s] %d =====\n%s", base, self.part, data))
+		if ok then
+			path = outPath("all.txt")
+		else
+			ok = safeWrite(path, data)
+		end
+		if not ok then
+			self.failed += 1
+		elseif self.files[#self.files] ~= path then
+			self.files[#self.files + 1] = path
+		end
+	end
+
+	function sink:write(str)
+		self.buf[#self.buf + 1] = str
+		self.size += #str + 1
+		if self.size >= PART_LIMIT then self:flush() end
+	end
+
+	return sink
 end
 
--- 0.5 Deobfuscator: อยู่ใน deobf_module.lua โหลดแบบ lazy (เฉพาะตอนดัมพ์ที่เปิด deobf) รอไม่เกิน 10 วินาที
--- โฮสต์ช้าหรือโดนบล็อกก็ไม่ทำให้สตาร์ทค้าง ก่อนโหลดเสร็จใช้ stub ให้ทุกอย่างทำงานตอนปิด deobf
-local DEOBF_URL = "https://pastefy.app/BC8JRbuF/raw"
-local Deobf = {
-    failed = true,
-    constants = function() return nil end,
-    process = function() return nil end,
-}
-local _deobfTried = false
-local function loadDeobf()
-    if _deobfTried then return not Deobf.failed end
-    _deobfTried = true
-    local done, mod = false, nil
-    task.spawn(function()
-        local ok, r = _pcall(function()
-            local fn = loadstring(game:HttpGet(DEOBF_URL), "=deobf_module")
-            return fn and fn()
-        end)
-        if ok then mod = r end
-        done = true
-    end)
-    local t0 = _clock()
-    while not done and _clock() - t0 < 10 do task.wait() end
-    if type(mod) == "table" and mod.process and mod.constants then
-        Deobf = mod
-        return true
-    end
-    warn("[dumper] โหลด deobf_module จาก DEOBF_URL ไม่ได้ - ปิด deobf")
-    return false
+-- [PERF] decompile แบบ parallel prefetch
+-- decompileCore  = logic เดิมของ decompileSafe
+-- decompileAsync = เริ่ม decompile ล่วงหน้า (ไม่บล็อก)
+-- decompileSafe  = ตรวจ cache ก่อน ถ้าไม่มีค่อย decompileCore ตามปกติ
+
+local decompileFails, decompilePausedUntil = 0, 0
+local decompileCache = setmetatable({}, { __mode = "k" })  -- obj → true|{code,why}
+local decompileSem = 0  -- จำนวน prefetch thread ที่รันอยู่
+
+local function decompileCore(scr)
+	if os.clock() < decompilePausedUntil then return nil, "paused (timeouts)" end
+	local done, result, errMsg
+	local thread = task.spawn(function()
+		local ok, r = pcall(decompile, scr)
+		if ok then result = r else errMsg = tostring(r) end
+		done = true
+	end)
+	local start = os.clock()
+	while not done and os.clock() - start < DECOMPILE_TIMEOUT do task.wait() end
+	if not done then
+		pcall(task.cancel, thread)
+		decompileFails += 1
+		if decompileFails >= 3 then   -- [PERF] เดิม 5
+			decompileFails, decompilePausedUntil = 0, os.clock() + 10  -- เดิม 15
+		end
+		return nil, "timeout"
+	end
+	decompileFails = 0
+	if type(result) ~= "string" or result == "" then return nil, errMsg and errMsg:sub(1, 80) or "empty" end
+	return result
 end
 
--- 1. ดัมพ์แมพ
-local function rd(o, k)
-    local ok, v = _pcall(function() return o[k] end)
-    if ok then return v end
-    return "<unreadable>"
+-- เริ่ม decompile ล่วงหน้าโดยไม่บล็อก (ถ้า slot ว่าง)
+local function decompileAsync(scr)
+	if decompileCache[scr] ~= nil then return end
+	if decompileSem >= DECOMPILE_WORKERS then return end
+	if os.clock() < decompilePausedUntil then return end
+	decompileCache[scr] = true
+	decompileSem += 1
+	task.spawn(function()
+		local code, why = decompileCore(scr)
+		decompileCache[scr] = { code = code, why = why }
+		decompileSem -= 1
+	end)
 end
 
--- decompile อาจค้างตลอดกาลในบางสคริปต์ -> ตั้ง timeout เด็ดขาดไม่ให้ดัมพ์ค้าง
--- breaker: นับเฉพาะ timeout ถ้าติดกัน 5 ครั้งจะพัก decompile 15 วินาที แล้วลองใหม่
-local _decFail, _decPause = 0, 0
-
-local function decompileSafe(scr, timeout)
-    if not decompile then return nil, "ใช้ decompile ไม่ได้" end
-    if _clock() < _decPause then return nil, "พัก decompile (timeout ติดกัน 5 ครั้ง เดี๋ยวลองใหม่)" end
-    local done, res, errMsg = false, nil, nil
-    local th = task.spawn(function()
-        local ok, r = _pcall(decompile, scr)
-        if ok then res = r ~= nil and _tostring(r) or nil
-        else res = nil; errMsg = _tostring(r) end
-        done = true
-    end)
-    local t0 = _clock()
-    while not done and _clock() - t0 < (timeout or 6) do task.wait() end
-    if not done then
-        _pcall(task.cancel, th)
-        _decFail = _decFail + 1
-        if _decFail >= 5 then _decFail, _decPause = 0, _clock() + 15 end
-        return nil, "decompile timeout"
-    end
-    _decFail = 0
-    if res == nil or #res == 0 then
-        return nil, "decompile error" .. (errMsg and (": " .. errMsg:sub(1, 80)) or "")
-    end
-    return res, nil
+local function decompileSafe(scr)
+	-- ตรวจ prefetch cache ก่อน
+	local cached = decompileCache[scr]
+	if type(cached) == "table" then
+		decompileCache[scr] = nil
+		return cached.code, cached.why
+	end
+	-- prefetch กำลังรันอยู่ → รอ
+	if cached == true then
+		local deadline = os.clock() + DECOMPILE_TIMEOUT + 1
+		while decompileCache[scr] == true and os.clock() < deadline do
+			task.wait()
+		end
+		local res = decompileCache[scr]
+		if type(res) == "table" then
+			decompileCache[scr] = nil
+			return res.code, res.why
+		end
+	end
+	-- ไม่มี cache: decompile ตรงๆ
+	return decompileCore(scr)
 end
 
--- เก็บ property เฉพาะชนิดของ instance ลงใน L
-local function addTypeProps(L, obj)
-    if obj:IsA("BasePart") then
-        _tinsert(L, _sformat("Position = %s", serVal(rd(obj, "Position"))))
-        _tinsert(L, _sformat("Size = %s", serVal(rd(obj, "Size"))))
-        _tinsert(L, _sformat("Anchored = %s | CanCollide = %s", serVal(rd(obj, "Anchored")), serVal(rd(obj, "CanCollide"))))
-    elseif obj:IsA("Humanoid") then
-        _tinsert(L, _sformat("Health = %s | MaxHealth = %s", serVal(rd(obj, "Health")), serVal(rd(obj, "MaxHealth"))))
-        _tinsert(L, _sformat("WalkSpeed = %s | JumpPower = %s", serVal(rd(obj, "WalkSpeed")), serVal(rd(obj, "JumpPower"))))
-    elseif obj:IsA("TextButton") or obj:IsA("TextBox") or obj:IsA("TextLabel") then
-        _tinsert(L, _sformat("Text = %q", _tostring(rd(obj, "Text"))))
-    elseif obj:IsA("ProximityPrompt") then
-        _tinsert(L, _sformat("ActionText = %q", _tostring(rd(obj, "ActionText"))))
-        _tinsert(L, _sformat("ObjectText = %q", _tostring(rd(obj, "ObjectText"))))
-        _tinsert(L, _sformat("HoldDuration = %s | MaxActivationDistance = %s | Enabled = %s",
-            serVal(rd(obj, "HoldDuration")), serVal(rd(obj, "MaxActivationDistance")), serVal(rd(obj, "Enabled"))))
-    elseif obj:IsA("ClickDetector") then
-        _tinsert(L, _sformat("MaxActivationDistance = %s", serVal(rd(obj, "MaxActivationDistance"))))
-    elseif obj:IsA("ValueBase") then
-        _tinsert(L, _sformat("Value = %s", serVal(rd(obj, "Value"))))
-    elseif obj:IsA("Sound") then
-        _tinsert(L, _sformat("SoundId = %q", _tostring(rd(obj, "SoundId"))))
-        _tinsert(L, _sformat("Volume = %s | Looped = %s", serVal(rd(obj, "Volume")), serVal(rd(obj, "Looped"))))
-    elseif obj:IsA("Animation") then
-        _tinsert(L, _sformat("AnimationId = %q", _tostring(rd(obj, "AnimationId"))))
-    end
+local function collectConstants(fn, out, seen, depth)
+	if depth > 8 then return end   -- [PERF] เดิม 16
+	for _, v in pairs(safe(function() return debug.getconstants(fn) end, {})) do
+		local t = type(v)
+		if t == "string" or t == "number" then
+			local line = t == "string" and fmt("%q", v) or tostring(v)
+			if not seen[line] then
+				seen[line] = true
+				out[#out + 1] = line
+			end
+		end
+	end
+	for _, proto in ipairs(safe(function() return debug.getprotos(fn) end, {})) do
+		collectConstants(proto, out, seen, depth + 1)
+	end
 end
 
--- บรรทัดวิธีเรียกใช้ (FireServer, fireproximityprompt ฯลฯ)
-local function addUsage(L, obj, path)
-    if isRemoteEvent(obj) then
-        _tinsert(L, "-- Usage: " .. path .. ":FireServer(args...)")
-    elseif obj:IsA("RemoteFunction") then
-        _tinsert(L, "-- Usage: local res = " .. path .. ":InvokeServer(args...)")
-    elseif obj:IsA("ProximityPrompt") then
-        _tinsert(L, "-- Usage: fireproximityprompt(" .. path .. ")")
-    elseif obj:IsA("ClickDetector") then
-        _tinsert(L, "-- Usage: fireclickdetector(" .. path .. ")")
-    end
+-- decompile ไม่ได้ -> constants หรือ bytecode ดิบ
+local function bytecodeFallback(obj)
+	local fn = safe(function() return getscriptclosure(obj) end)
+	if type(fn) == "function" then
+		local out = {}
+		collectConstants(fn, out, {}, 0)
+		if #out > 0 then return "-- [BYTECODE] constants\n" .. table.concat(out, "\n") end
+	end
+	local bc = safe(function() return getscriptbytecode(obj) end)
+	if type(bc) == "string" and bc ~= "" then return "-- [BYTECODE] base64\n" .. base64encode(bc) end
 end
 
-local function getProps(obj, ctx)
-    local L = {}
-    local okp, path = _pcall(getCleanPath, obj)
-    if not okp or type(path) ~= "string" then path = "<path error: " .. _tostring(obj.ClassName) .. "." .. _tostring(obj.Name) .. ">" end
-    local cn = obj.ClassName
-    _tinsert(L, _sformat("-- [%s] %s", cn, path))
-    local tags = safe(function() return CS:GetTags(obj) end, {})
-    if #tags > 0 then
-        _tsort(tags)
-        _tinsert(L, _sformat("Tags: { %s }", _tconcat(tags, ", ")))
-    end
-    local attrs = safe(function() return obj:GetAttributes() end, {})
-    if _next(attrs) then
-        local keys = {}
-        for k in _pairs(attrs) do keys[#keys + 1] = k end
-        _tsort(keys)
-        local aL = {}
-        for _, k in _ipairs(keys) do _tinsert(aL, k .. " = " .. serVal(attrs[k])) end
-        _tinsert(L, _sformat("Attributes: { %s }", _tconcat(aL, ", ")))
-    end
-    addTypeProps(L, obj)
-    local src, raw
-    if obj:IsA("BaseScript") or obj:IsA("ModuleScript") then
-        if obj:IsA("BaseScript") then
-            _tinsert(L, _sformat("Disabled = %s | RunContext = %s", serVal(rd(obj, "Disabled")), _tostring(rd(obj, "RunContext"))))
-        end
-        if ctx and ctx.scripts then
-            local st = ctx.cur.st
-            local s, why = decompileSafe(obj, 6)
-            if s and #s > 0 then
-                src = "=== " .. path .. " ===\n" .. s .. "\n"
-                local note = "-- Source: see scripts_" .. ctx.cur.label .. "_*.txt (search the path above)"
-                st.scripts = st.scripts + 1
-                if ctx.deobf then
-                    local okd, dsrc, score = _pcall(Deobf.process, path, s, obj)
-                    if not okd then dsrc = nil end
-                    if dsrc then
-                        src = dsrc
-                        raw = "=== " .. path .. " ===\n" .. s .. "\n"
-                        st.deobf = st.deobf + 1
-                        note = note .. _sformat(" | OBFUSCATED (score %d) -> deobf'd%s", score,
-                            ctx.keepRaw and (", original in scripts-original_" .. ctx.cur.label .. "_*.txt") or "")
-                    end
-                end
-                _tinsert(L, note)
-            else
-                st.srcFail = st.srcFail + 1
-                local cs = ctx.deobf and Deobf.constants(obj)
-                if cs then
-                    src = _sformat("=== %s ===\n-- [DEOBF] decompile failed (%s) - constants only\n%s\n", path, why or "empty", cs)
-                    st.deobf = st.deobf + 1
-                    _tinsert(L, "-- Source: decompile failed (" .. (why or "empty") .. ") -> constants only, see scripts_" .. ctx.cur.label .. "_*.txt")
-                else
-                    _tinsert(L, "-- Source: unavailable (" .. (why or "empty") .. ")")
-                end
-            end
-        end
-    end
-    addUsage(L, obj, path)
-    return _tconcat(L, "\n"), src, raw
+-- สคริปต์เนื้อหาเหมือนกันจะไม่ดัมพ์ซ้ำ
+local function dumpScript(lines, obj, path, ctx)
+	local stats = ctx.cur.stats
+	local hash = safe(function() return "hash:" .. getscripthash(obj) end)
+	local function duplicate(first)
+		stats.dupes += 1
+		lines[#lines + 1] = "-- Source: DUPLICATE of " .. first
+	end
+	if hash and ctx.scriptSeen[hash] then return duplicate(ctx.scriptSeen[hash]) end
+
+	local code, why = decompileSafe(obj)
+	if code then
+		local first = ctx.scriptSeen[code]
+		if first then
+			if hash then ctx.scriptSeen[hash] = first end
+			return duplicate(first)
+		end
+		ctx.scriptSeen[code] = path
+		stats.scripts += 1
+		lines[#lines + 1] = "-- Source: saved as .lua at the same path as in Dex"
+	else
+		stats.srcFail += 1
+		code = bytecodeFallback(obj)
+		if not code then
+			lines[#lines + 1] = "-- Source: unavailable (" .. why .. ")"
+			return
+		end
+		lines[#lines + 1] = "-- Source: decompile failed (" .. why .. "), fallback saved as .lua"
+	end
+	if hash then ctx.scriptSeen[hash] = path end
+	return code
 end
 
-local _mapCancel = false
+local function describe(obj, ctx)
+	local path = safe(function() return getPath(obj) end, fmt("<path error: %s.%s>", obj.ClassName, obj.Name))
+	local lines = { fmt("-- [%s] %s", obj.ClassName, path) }
 
--- DFS แบบวนลูป (ไม่ใช้ recursion -> ไม่จำกัดความลึก ไม่ stack overflow) แบ่งเวลาทำงาน
+	local tags = safe(function() return collectionService:GetTags(obj) end, {})
+	if #tags > 0 then
+		table.sort(tags)
+		lines[#lines + 1] = fmt("Tags: { %s }", table.concat(tags, ", "))
+	end
+
+	local attrs, keys = safe(function() return obj:GetAttributes() end, {}), {}
+	for k in pairs(attrs) do keys[#keys + 1] = k end
+	table.sort(keys)
+	for i, k in ipairs(keys) do keys[i] = k .. " = " .. serialize(attrs[k]) end
+	if #keys > 0 then lines[#lines + 1] = fmt("Attributes: { %s }", table.concat(keys, ", ")) end
+
+	for _, key in ipairs(typeProps(obj) or {}) do
+		lines[#lines + 1] = fmt("%s = %s", key, serialize(readProp(obj, key)))
+	end
+
+	local getter = gethiddenproperties or getproperties
+	if ctx.everything and getter then
+		local props, names = safe(function() return getter(obj) end, {}), {}
+		for k, v in pairs(props) do
+			if v ~= nil and v ~= "" then names[#names + 1] = tostring(k) end
+		end
+		table.sort(names)
+		for _, k in ipairs(names) do lines[#lines + 1] = fmt("Prop %s = %s", k, serialize(props[k])) end
+	end
+
+	local source
+	if obj:IsA("LuaSourceContainer") then
+		if obj:IsA("BaseScript") then
+			if readProp(obj, "Disabled") == true then lines[#lines + 1] = "Disabled = true" end
+			local runContext = tostring(readProp(obj, "RunContext"))
+			if runContext ~= "Enum.RunContext.Legacy" then lines[#lines + 1] = "RunContext = " .. runContext end
+		end
+		if ctx.scripts then source = dumpScript(lines, obj, path, ctx) end
+	end
+
+	local usage = USAGE[obj.ClassName]
+	if usage then lines[#lines + 1] = "-- Usage: " .. fmt(usage, path) end
+	return table.concat(lines, "\n"), source
+end
+
+-- เซฟสคริปต์เป็น .lua ตามโครงสร้างโฟลเดอร์แบบ Dex (ชื่อซ้ำจะต่อ (2), (3))
+local function saveScript(obj, code, ctx)
+	local names, cur = {}, obj
+	while cur and cur ~= game do
+		names[#names + 1] = cleanName(cur.Name)
+		cur = cur.Parent
+	end
+	if not cur then names[#names + 1] = "NIL" end
+
+	local dir = runDir
+	for i = #names, 2, -1 do
+		dir = dir .. "/" .. names[i]
+		ensureFolder(dir)
+	end
+	local base = dir .. "/" .. names[1]
+	local path, n = base .. ".lua", 1
+	while ctx.used[path:lower()] do
+		n += 1
+		path = fmt("%s (%d).lua", base, n)
+	end
+	ctx.used[path:lower()] = true
+	return safeWrite(path, code)
+end
+
+-- [PERF] DFS แบบ batch yield + prefetch decompile ล่วงหน้า
 local function scanRoots(label, roots, childrenOnly, ctx)
-    local st = { visited = 0, dumped = 0, errors = 0, gone = 0, scripts = 0, srcFail = 0, deobf = 0 }
-    local entry = { name = label, st = st }
-    ctx.sections[#ctx.sections + 1] = entry
-    local mapSink = newSink("map_" .. label)
-    local srcSink = ctx.scripts and newSink("scripts_" .. label) or nil
-    local rawSink = (ctx.deobf and ctx.keepRaw) and newSink("scripts-original_" .. label) or nil
-    ctx.cur = { label = label, st = st }
-    entry.map, entry.src, entry.raw = mapSink, srcSink, rawSink
-    local stack, sp = {}, 0
-    for i = #roots, 1, -1 do
-        if childrenOnly then
-            local kids = safe(function() return roots[i]:GetChildren() end, {})
-            for j = #kids, 1, -1 do sp = sp + 1; stack[sp] = kids[j] end
-        else
-            sp = sp + 1; stack[sp] = roots[i]
-        end
-    end
-    local lastYield, lastUi = _clock(), _clock()
-    while sp > 0 do
-        if _mapCancel then entry.cancelled = true break end
-        local obj = stack[sp]; stack[sp] = nil; sp = sp - 1
-        st.visited = st.visited + 1
-        if childrenOnly and obj.Parent == nil then
-            st.gone = st.gone + 1 -- ถูกทำลายระหว่างที่เรา yield อยู่
-        else
-            local kids = safe(function() return obj:GetChildren() end, nil)
-            if kids then
-                for j = #kids, 1, -1 do sp = sp + 1; stack[sp] = kids[j] end
-            end
-            local okU, useful = _pcall(isUseful, obj, ctx.detail)
-            if okU and useful then
-                local ok, text, src, raw = _pcall(getProps, obj, ctx)
-                if ok and text then
-                    mapSink:write(text .. "\n")
-                    st.dumped = st.dumped + 1
-                    if src and srcSink then srcSink:write(src) end
-                    if raw and rawSink then rawSink:write(raw) end
-                else
-                    st.errors = st.errors + 1
-                    if #ctx.errors < 20 then
-                        _tinsert(ctx.errors, _sformat("%s: %s", label, _tostring(text)))
-                    end
-                end
-            end
-        end
-        local now = _clock()
-        if now - lastYield > 0.012 then task.wait(); lastYield = _clock() end
-        if now - lastUi > 0.5 then
-            lastUi = now
-            ctx.setStatus(_sformat("🔄 %s\nสแกนแล้ว %d | ดัมพ์ %d | สคริปต์ %d | deobf %d", label, st.visited, st.dumped, st.scripts, st.deobf))
-        end
-    end
-    mapSink:flush()
-    if srcSink then srcSink:flush() end
-    if rawSink then rawSink:flush() end
+	local stats = { visited = 0, dumped = 0, errors = 0, scripts = 0, dupes = 0, srcFail = 0 }
+	local mapSink = newSink(label)
+	local entry = { name = label, stats = stats, sinks = { mapSink } }
+	ctx.sections[#ctx.sections + 1] = entry
+	ctx.cur = { label = label, stats = stats }
+
+	local stack = {}
+	-- [PERF] push พร้อม prefetch decompile สำหรับ BaseScript ที่เจอ
+	local function push(list)
+		for j = #list, 1, -1 do
+			local child = list[j]
+			if not ctx.seen[child] then
+				stack[#stack + 1] = child
+				-- เริ่ม decompile ล่วงหน้าทันที (ไม่บล็อก)
+				if ctx.scripts and safe(function() return child:IsA("BaseScript") end, false) then
+					pcall(decompileAsync, child)
+				end
+			end
+		end
+	end
+
+	if childrenOnly then
+		for i = #roots, 1, -1 do push(safe(function() return roots[i]:GetChildren() end, {})) end
+	else
+		push(roots)
+	end
+
+	-- [PERF] batch counter: เช็ค clock ทุก yieldBatch รายการแทนทุกรายการ
+	local speed = ctx.speed or SPEED_PRESETS.Normal
+	local lastYield, lastUi, batchN = os.clock(), 0, 0
+	while #stack > 0 and not mapCancelled do
+		local obj = table.remove(stack)
+		if not ctx.seen[obj] then
+			ctx.seen[obj] = true
+			stats.visited += 1
+
+			if not (childrenOnly and obj.Parent == nil) then
+				push(safe(function() return obj:GetChildren() end, {}))
+				local okU, useful = pcall(ctx.actionableOnly and isActionable or isUseful, obj, ctx.everything)
+				if okU and useful then
+					local ok, text, source = pcall(describe, obj, ctx)
+					if ok and text then
+						mapSink:write(text)
+						stats.dumped += 1
+						if source then
+							if singleFile then
+								mapSink:write(fmt("=== %s ===\n%s\n", obj:GetFullName(), source))
+							elseif not saveScript(obj, source, ctx) then
+								stats.errors += 1
+							end
+						end
+					else
+						stats.errors += 1
+						if #ctx.errors < 20 then ctx.errors[#ctx.errors + 1] = fmt("%s: %s", label, tostring(text)) end
+					end
+				end
+			end
+		end
+
+		-- [PERF] เช็ค clock + yield เฉพาะทุก YIELD_BATCH รายการ
+		batchN += 1
+		if batchN >= speed.yieldBatch then
+			batchN = 0
+			local now = os.clock()
+			if now - lastYield > speed.yieldInterval then
+				task.wait()
+				lastYield = os.clock()
+				now = lastYield
+			end
+			if now - lastUi > 0.15 then
+				lastUi = now
+				setStatus(mapStatus, fmt("🔄 %s\nสแกน %d | ดัมพ์ %d | สคริปต์ %d (ซ้ำ %d)", label, stats.visited, stats.dumped, stats.scripts, stats.dupes))
+			end
+		end
+	end
+
+	entry.cancelled = mapCancelled
+	for _, sink in pairs(entry.sinks) do sink:flush() end
 end
 
--- รันได้ทีละงานต่อเครื่องมือ ปลดล็อกเสมอ error จะขึ้นที่สถานะของเครื่องมือนั้น
-local _busy = {}
-local function once(key, fn, getStatus, ...)
-    if _busy[key] then return end
-    _busy[key] = true
-    local ok, err = _pcall(fn, ...)
-    _busy[key] = nil
-    if not ok then
-        warn("[dumper] " .. key .. ": " .. _tostring(err))
-        setStatusOf(getStatus and getStatus(), "❌ " .. _tostring(err):sub(1, 200))
-    end
+local function runOnce(key, fn, getStatus, ...)
+	if busy[key] then return notify("กำลังทำงานอยู่", "รอให้งานเดิมจบก่อนนะ", "Warning") end
+	busy[key] = true
+	local ok, err = pcall(fn, ...)
+	busy[key] = nil
+	if not ok then
+		warn("[dumper] " .. key .. ": " .. tostring(err))
+		setStatus(getStatus and getStatus(), "❌ " .. tostring(err):sub(1, 200))
+		notify("เกิดข้อผิดพลาด", tostring(err):sub(1, 80), "Warning")
+	end
 end
 
--- สารบัญ + รายงานความครอบคลุม เรียกหลังจบทุก section ด้วย เพื่อให้ถ้าเกมแครช/โดนเตะยังมีสารบัญใช้ได้
-local function writeIndex(ctx, t0, final)
-    local R = {
-        "# AI MAP DUMP v3.5" .. (final and "" or " (CHECKPOINT - dump still running or died here)"),
-        "# Time: " .. os.date("%Y-%m-%d %H:%M:%S") .. " | Place: " .. game.PlaceId,
-        "# Target: " .. (ctx.targetLabel or "All") .. " | Detail: " .. ctx.detail
-            .. " | Scripts: " .. (ctx.scripts and "decompiled" or "off") .. " | Deobf: " .. (ctx.deobf and "on" or "off"),
-        _sformat("# Elapsed: %.1fs%s", _clock() - t0, _mapCancel and " (STOPPED by user - partial)" or ""),
-        "", "# COVERAGE (visited = every instance seen, dumped = passed the filter)",
-    }
-    local failed, files = 0, {}
-    for _, e in _ipairs(ctx.sections) do
-        local s = e.st
-        _tinsert(R, _sformat("  %-24s visited=%d dumped=%d scripts=%d deobf=%d srcFail=%d errors=%d gone=%d%s",
-            e.name, s.visited, s.dumped, s.scripts, s.deobf, s.srcFail, s.errors, s.gone, e.cancelled and " (cancelled)" or ""))
-        for _, sk in _ipairs({ e.map or false, e.src or false, e.raw or false }) do
-            if sk then
-                failed = failed + sk.failed
-                for _, f in _ipairs(sk.files) do files[#files + 1] = "  " .. f end
-            end
-        end
-    end
-    _tinsert(R, "\n# FILES"); for _, f in _ipairs(files) do _tinsert(R, f) end
-    if failed > 0 then _tinsert(R, _sformat("\n# WARNING: %d part file(s) failed to write", failed)) end
-    if #ctx.errors > 0 then
-        _tinsert(R, "\n# ERRORS (first 20)")
-        for _, m in _ipairs(ctx.errors) do _tinsert(R, "  " .. m) end
-    end
-    return safeWrite(OUT .. "/index.txt", _tconcat(R, "\n")), failed
+local function writeIndex(ctx, startTime)
+	local report = {
+		fmt("# MAP DUMP v%s | Place: %d | %s", VERSION, game.PlaceId, os.date("%Y-%m-%d %H:%M:%S")),
+		fmt("# Target: %s | Detail: %s | Scripts: %s | Elapsed: %.1fs%s", ctx.targetLabel, ctx.everything and "everything" or "useful",
+			ctx.scripts and "decompiled" or "off", os.clock() - startTime, mapCancelled and " (STOPPED - partial)" or ""),
+		"",
+		"# COVERAGE",
+	}
+	local failed, files = 0, {}
+	for _, e in ipairs(ctx.sections) do
+		local s = e.stats
+		report[#report + 1] = fmt("  %-24s visited=%d dumped=%d scripts=%d dupes=%d srcFail=%d errors=%d%s",
+			e.name, s.visited, s.dumped, s.scripts, s.dupes, s.srcFail, s.errors, e.cancelled and " (cancelled)" or "")
+		for _, sink in pairs(e.sinks) do
+			failed += sink.failed
+			for _, f in ipairs(sink.files) do files[#files + 1] = "  " .. f end
+		end
+	end
+	report[#report + 1] = "\n# FILES"
+	table.move(files, 1, #files, #report + 1, report)
+	if failed > 0 then report[#report + 1] = fmt("\n# WARNING: %d part file(s) failed to write", failed) end
+	if #ctx.errors > 0 then
+		report[#report + 1] = "\n# ERRORS (first 20)"
+		for _, msg in ipairs(ctx.errors) do report[#report + 1] = "  " .. msg end
+	end
+	return safeWrite(outPath("index.txt"), table.concat(report, "\n")), failed
 end
 
--- target เป็น "All" ชื่อเดียว หรือ list (เลือกหลายอัน) ก็ได้; "NIL" = instance ที่ parent เป็น nil
--- คืน: รายชื่อที่เลือก, เอา NIL ไหม, เป็น All ไหม
 local function parseTargets(raw)
-    local picked, wantNil, seen = {}, false, {}
-    if type(raw) ~= "table" then raw = { raw } end
-    for _, v in _ipairs(raw) do
-        if type(v) == "table" then v = v.Title or v.Name or v[1] end
-        if type(v) == "string" and not seen[v] then
-            seen[v] = true
-            if v == "NIL" then wantNil = true
-            elseif v ~= "All" then picked[#picked + 1] = v end
-        end
-    end
-    -- ถ้าเลือกเฉพาะเจาะจงจะชนะ "All" เสมอ; ถ้าไม่ได้เลือกอะไรเฉพาะ -> ทั้งหมด
-    return picked, wantNil, (#picked == 0 and not wantNil)
+	local picked, extras = {}, {}
+	for _, v in ipairs(type(raw) == "table" and raw or { raw }) do
+		if type(v) == "table" then v = v.Title or v.Name or v[1] end
+		if EXTRA_TARGETS[v] then
+			extras[v] = true
+		elseif type(v) == "string" and v ~= "All" and not table.find(picked, v) then
+			picked[#picked + 1] = v
+		end
+	end
+	return picked, extras, #picked == 0 and next(extras) == nil
+end
+
+local function collectNil()
+	local roots = {}
+	for _, o in ipairs(safe(getnilinstances, {})) do
+		if typeof(o) == "Instance" and safe(function() return o.Parent == nil end, false) then roots[#roots + 1] = o end
+	end
+	return roots
+end
+
+-- actor ที่ถูกลบ + สคริปต์บน foreign state ที่ไม่อยู่ใน DataModel
+local function collectActors()
+	local roots = {}
+	for _, actor in ipairs(safe(getdeletedactors, {})) do roots[#roots + 1] = actor end
+	if getallthreads and getscriptfromthread then
+		for i, thread in ipairs(safe(getallthreads, {})) do
+			local scr = safe(function() return getscriptfromthread(thread) end)
+			if typeof(scr) == "Instance" and not safe(function() return scr:IsDescendantOf(game) end, false) then
+				roots[#roots + 1] = scr
+			end
+			if i % 200 == 0 then task.wait() end
+		end
+	end
+	return roots
+end
+
+local function describeFn(fn, withConstants)
+	local info = safe(function() return debug.getinfo(fn) end, {})
+	local text = fmt("%s:%s %s\nupvalues = %s", tostring(info.short_src or info.source), tostring(info.linedefined),
+		tostring(info.name or "?"), toCode(safe(function() return debug.getupvalues(fn) end, {})))
+	if withConstants then
+		text ..= "\nconstants = " .. toCode(safe(function() return debug.getconstants(fn) end, {}))
+	end
+	return text
+end
+
+local function runtimeSection(ctx, label)
+	local sink = newSink(label)
+	local stats = { visited = 0, dumped = 0, errors = 0, scripts = 0, dupes = 0, srcFail = 0 }
+	ctx.sections[#ctx.sections + 1] = { name = label, stats = stats, sinks = { sink } }
+	return sink, stats
+end
+
+-- ข้อมูล runtime: ค่าที่ module return, handler ของ remote, ฟังก์ชัน/ตารางใน getgc
+local function dumpRuntime(ctx)
+	local lastYield = os.clock()
+	local function alive()
+		if os.clock() - lastYield > 0.012 then
+			task.wait()
+			lastYield = os.clock()
+		end
+		return not mapCancelled
+	end
+	local function nameOf(obj) return safe(function() return getPath(obj) end, tostring(obj)) end
+
+	local sink, stats = runtimeSection(ctx, "RUNTIME_modules")
+	for _, module in ipairs(safe(getloadedmodules, {})) do
+		if not alive() then break end
+		setthreadidentity(2)
+		local ok, value = pcall(require, module)
+		setthreadidentity(8)
+		stats.visited += 1
+		stats.dumped += 1
+		sink:write(fmt("-- [Module] %s\n%s\n", nameOf(module), ok and toCode(value) or "-- require failed: " .. tostring(value)))
+		if stats.visited % 20 == 0 then setStatus(mapStatus, fmt("🔄 RUNTIME modules %d", stats.visited)) end
+	end
+	sink:flush()
+
+	sink, stats = runtimeSection(ctx, "RUNTIME_remotes")
+	local remotes = (getinstances and safe(getinstances)) or game:GetDescendants()
+	for _, obj in ipairs(remotes) do
+		if not alive() then break end
+		local ok, kind = pcall(function()
+			if obj:IsA("BaseRemoteEvent") then return "OnClientEvent" end
+			if obj:IsA("BindableEvent") then return "Event" end
+			if obj:IsA("RemoteFunction") then return "OnClientInvoke" end
+			if obj:IsA("BindableFunction") then return "OnInvoke" end
+		end)
+		if ok and kind then
+			stats.visited += 1
+			local fns, lines = {}, { fmt("-- [%s] %s", obj.ClassName, nameOf(obj)) }
+			if kind == "OnClientEvent" or kind == "Event" then
+				for _, conn in ipairs(safe(function() return getconnections(obj[kind]) end, {})) do
+					fns[#fns + 1] = conn.Function or false
+				end
+			else
+				fns[1] = safe(function() return getcallbackvalue(obj, kind) end, false)
+			end
+			for _, fn in ipairs(fns) do
+				if type(fn) ~= "function" then
+					lines[#lines + 1] = "  " .. kind .. ": foreign state / none"
+				elseif not isexecutorclosure(fn) then
+					lines[#lines + 1] = "  " .. kind .. ": " .. describeFn(fn)
+				end
+			end
+			if #lines > 1 then
+				stats.dumped += 1
+				sink:write(table.concat(lines, "\n") .. "\n")
+			end
+			if stats.visited % 50 == 0 then setStatus(mapStatus, fmt("🔄 RUNTIME remotes %d", stats.visited)) end
+		end
+	end
+	sink:flush()
+
+	sink, stats = runtimeSection(ctx, "RUNTIME_gc_functions")
+	for _, fn in ipairs(safe(function() return getgc(false) end, {})) do
+		if not alive() then break end
+		if type(fn) == "function" and islclosure(fn) and not isexecutorclosure(fn) then
+			stats.visited += 1
+			stats.dumped += 1
+			sink:write("-- [Function] " .. describeFn(fn, true) .. "\n")
+			if stats.visited % 100 == 0 then setStatus(mapStatus, fmt("🔄 RUNTIME getgc functions %d", stats.visited)) end
+		end
+	end
+	sink:flush()
+
+	if ctx.gcTables then
+		sink, stats = runtimeSection(ctx, "RUNTIME_gc_tables")
+		for _, t in ipairs(safe(function() return getgc(true) end, {})) do
+			if not alive() or stats.dumped >= 3000 then break end
+			if type(t) == "table" and t ~= env and next(t) ~= nil then
+				stats.visited += 1
+				stats.dumped += 1
+				sink:write("-- [Table]\n" .. toCode(t) .. "\n")
+				if stats.visited % 50 == 0 then setStatus(mapStatus, fmt("🔄 RUNTIME getgc tables %d", stats.visited)) end
+			end
+		end
+		sink:flush()
+	end
 end
 
 local function startMapDump(opts)
-    opts = opts or {}
-    if not writefile then setStatusOf(Status, "❌ executor ไม่มี writefile"); return end
-    local picked, wantNil, isAll = parseTargets(opts.target)
-    local labelParts = {}
-    for _, n in _ipairs(picked) do labelParts[#labelParts + 1] = n end
-    if wantNil then labelParts[#labelParts + 1] = "NIL" end
-    local ctx = {
-        targetLabel = isAll and "All" or _tconcat(labelParts, ", "),
-        detail = (opts.detail == "Everything") and "everything" or "useful",
-        scripts = (opts.scripts ~= false) and decompile ~= nil,
-        sections = {}, errors = {},
-        setStatus = function(s) setStatusOf(Status, s) end,
-    }
-    ctx.deobf = ctx.scripts and opts.deobf ~= false
-    if ctx.deobf then
-        ctx.setStatus("🔄 กำลังโหลด deobfuscator...")
-        if not loadDeobf() then
-            ctx.deobf = false
-            _tinsert(ctx.errors, "โหลด deobf module ไม่ได้ -> ดัมพ์สคริปต์โดยไม่ deobfuscate")
-        end
-    end
-    ctx.keepRaw = opts.keepRaw ~= false
-    local t0 = _clock()
-    _mapCancel, _decFail, _decPause, _idxCache = false, 0, 0, {}
-    for k in _pairs(_pathCache) do _pathCache[k] = nil end -- ชื่ออาจเปลี่ยนไปตั้งแต่ดัมพ์รอบก่อน
-    newRunDir()
-    SINGLE_FILE = (opts.single == true) and appendfile ~= nil
-    if SINGLE_FILE then
-        if not safeWrite(OUT .. "/" .. SINGLE_NAME, "# AI MAP DUMP - single file | Place: " .. game.PlaceId .. "\n") then SINGLE_FILE = false end
-    elseif opts.single then
-        _tinsert(ctx.errors, "ขอ Single file แต่ executor ไม่มี appendfile -> เขียนแยกเป็นไฟล์ย่อยแทน")
-    end
-    ctx.setStatus("🔄 กำลังสแกน...")
-    local function section(label, roots, childrenOnly)
-        if _mapCancel then return end
-        local ok, err = _pcall(scanRoots, label, roots, childrenOnly, ctx)
-        if not ok then
-            _tinsert(ctx.errors, _sformat("%s: section ล้มเหลว (%s)", label, _tostring(err)))
-            local e = ctx.sections[#ctx.sections]
-            for _, sk in _ipairs({ e and e.map or false, e and e.src or false, e and e.raw or false }) do
-                if sk then _pcall(sk.flush, sk) end
-            end
-        end
-        _pcall(writeIndex, ctx, t0, false)
-    end
-    local ok, err = _pcall(function()
-        for _, svcName in _ipairs(isAll and ALL_SERVICES or picked) do
-            local svc = safe(function() return game:GetService(svcName) end, nil)
-            if svc then section(svcName, { svc }, true)
-            else _tinsert(ctx.errors, svcName .. ": เกมนี้ไม่มี service นี้") end
-        end
-        if ((isAll and opts.nilInst ~= false) or wantNil) and getnilinstances and not _mapCancel then
-            local roots, seen = {}, {}
-            for _, o in _ipairs(safe(getnilinstances, {})) do
-                if _typeof(o) == "Instance" and not seen[o] and safe(function() return o.Parent == nil end, false) then
-                    seen[o] = true; roots[#roots + 1] = o
-                end
-            end
-            if #roots > 0 then section("NIL", roots, false) end
-        end
-    end)
-    _idxCache = nil
-    if not ok then _tinsert(ctx.errors, "ผิดพลาดร้ายแรง (ข้อมูลที่ได้บางส่วนยังถูกบันทึกไว้): " .. _tostring(err)) end
-    local saved, failed = writeIndex(ctx, t0, true)
-    local good = saved and ok and failed == 0
-    local where = SINGLE_FILE and ("/" .. SINGLE_NAME .. " (ไฟล์เดียว) + index.txt")
-        or "/index.txt (สารบัญ) + ไฟล์ map_* / scripts_*"
-    if good then
-        ctx.setStatus("✅ เสร็จแล้ว! → " .. OUT .. where)
-    else
-        ctx.setStatus("⚠️ จบแต่มีปัญหา — ดู index.txt" .. (saved and "" or " (เขียน index ไม่สำเร็จ)"))
-    end
-    notify("Map Dump", good and "✅ เสร็จสมบูรณ์" or "⚠️ ได้บางส่วน", good and "Success" or "Warning")
+	opts = opts or {}
+	local picked, extras, isAll = parseTargets(opts.target)
+	local labels = table.clone(picked)
+	for key in pairs(extras) do labels[#labels + 1] = key end
+	table.sort(labels)
+
+	local ctx = {
+		targetLabel = isAll and "All" or table.concat(labels, ", "),
+		everything = opts.detail == "Everything",
+		actionableOnly = opts.detail == "Actionable",
+		scripts = opts.scripts ~= false and decompile ~= nil, gcTables = opts.gcTables == true,
+		speed = SPEED_PRESETS[opts.speed] or SPEED_PRESETS.Normal,
+		sections = {}, errors = {}, seen = {}, scriptSeen = {}, used = {},
+	}
+	local startTime = os.clock()
+	mapCancelled, indexCache, decompileFails, decompilePausedUntil = false, {}, 0, 0
+	-- [PERF] ล้าง prefetch cache ของ run ก่อน
+	for k in next, decompileCache do decompileCache[k] = nil end
+	table.clear(pathCache)
+	newRunDir()
+
+	singleFile = opts.single == true
+	if singleFile and not safeWrite(outPath("all.txt"), "# MAP DUMP - single file | Place: " .. game.PlaceId .. "\n") then
+		singleFile = false
+	end
+	setStatus(mapStatus, "🔄 กำลังสแกน...")
+
+	local jobs = {}
+	local function add(label, getRoots, childrenOnly) jobs[#jobs + 1] = { label, getRoots, childrenOnly } end
+	local function want(key, flag) return (isAll and opts[flag] ~= false) or extras[key] end
+
+	local names = picked
+	if isAll then
+		names = table.clone(ALL_SERVICES)
+		for _, child in ipairs(game:GetChildren()) do
+			if not table.find(names, child.ClassName) then names[#names + 1] = child.ClassName end
+		end
+	end
+	for _, name in ipairs(names) do
+		local service = safe(function() return game:GetService(name) end)
+		if service then
+			add(name, function() return { service } end, true)
+		elseif not isAll then
+			ctx.errors[#ctx.errors + 1] = name .. ": เกมนี้ไม่มี service นี้"
+		end
+	end
+	if want("NIL", "nilInst") and getnilinstances then add("NIL", collectNil, false) end
+	if want("HUI", "hiddenUi") and gethui then add("HUI", function() return { gethui() } end, true) end
+	if want("ACTORS", "actors") then add("ACTORS", collectActors, false) end
+	if extras.CLIENT then add("CLIENT", function() return { localPlayer, localPlayer.Character } end, true) end
+
+	local ok, err = pcall(function()
+		for _, job in ipairs(jobs) do
+			if mapCancelled then break end
+			local roots = job[2]()
+			if #roots > 0 then
+				local okScan, scanErr = pcall(scanRoots, job[1], roots, job[3], ctx)
+				if not okScan then
+					ctx.errors[#ctx.errors + 1] = fmt("%s: section ล้มเหลว (%s)", job[1], tostring(scanErr))
+					for _, sink in pairs(ctx.sections[#ctx.sections].sinks) do pcall(sink.flush, sink) end
+				end
+			end
+		end
+	end)
+	indexCache = nil
+	if want("RUNTIME", "runtime") and not mapCancelled then
+		local okRt, errRt = pcall(dumpRuntime, ctx)
+		if not okRt then ok, err = false, errRt end
+	end
+	if not ok then ctx.errors[#ctx.errors + 1] = "ผิดพลาดร้ายแรง: " .. tostring(err) end
+
+	local saved, failed = writeIndex(ctx, startTime)
+	local good = saved and ok and failed == 0
+	setStatus(mapStatus, good and ("✅ เสร็จแล้ว! → " .. runDir) or "⚠ จบแต่มีปัญหา — ดู index.txt")
+	notify("Map Dump", good and "✅ เสร็จสมบูรณ์" or "⚠ ได้บางส่วน", good and "Success" or "Warning")
 end
 
--- 2. ดัมพ์ข้อมูลผู้เล่น
 local function dumpPlayerData()
-    local plr = Players.LocalPlayer
-    if not plr then error("ไม่พบ LocalPlayer", 0) end
-    setStatusOf(PlayerStatus, "🔄 กำลังสแกน...")
-    local L = { "# PLAYER DATA", "# Time: " .. os.date("%Y-%m-%d %H:%M:%S"), "",
-        "Name: " .. plr.Name, "DisplayName: " .. plr.DisplayName, "UserId: " .. plr.UserId, "AccountAge: " .. plr.AccountAge, "" }
-    local function add(s) _tinsert(L, s) end
-    local ls = plr:FindFirstChild("leaderstats")
-    if ls then
-        add("# Leaderstats:")
-        for _, v in _ipairs(ls:GetChildren()) do
-            if v:IsA("ValueBase") then add("  " .. v.Name .. " = " .. serVal(rd(v, "Value"))) end
-        end
-    end
-    local char = plr.Character
-    if char then
-        local hum, root = char:FindFirstChildOfClass("Humanoid"), char:FindFirstChild("HumanoidRootPart")
-        if hum then
-            add("\n# Character:")
-            add(_sformat("  Health = %s | WalkSpeed = %s | JumpPower = %s", serVal(hum.Health), serVal(hum.WalkSpeed), serVal(rd(hum, "JumpPower"))))
-        end
-        if root then add("  Position = " .. serVal(root.Position)) end
-        add("\n# Equipped:")
-        for _, tool in _ipairs(char:GetChildren()) do
-            if tool:IsA("Tool") then add("  Tool: " .. tool.Name) end
-        end
-    end
-    local bp = plr:FindFirstChildOfClass("Backpack")
-    if bp then
-        add("\n# Backpack:")
-        for _, tool in _ipairs(bp:GetChildren()) do add("  Tool: " .. tool.Name) end
-    end
-    local saved = safeWrite(outDir() .. "/player.txt", _tconcat(L, "\n"))
-    setStatusOf(PlayerStatus, saved and "✅ เสร็จแล้ว! → " .. outDir() .. "/player.txt" or "❌ writefile ล้มเหลว")
-    notify("Player Dump", "✅ เสร็จสมบูรณ์")
+	if not localPlayer then error("ไม่พบ LocalPlayer", 0) end
+	setStatus(mapStatus, "🔄 กำลังสแกน...")
+
+	local lines = {}
+	local function add(s) lines[#lines + 1] = s end
+	add("# PLAYER DATA | " .. os.date("%Y-%m-%d %H:%M:%S"))
+	add(fmt("Name: %s\nDisplayName: %s\nUserId: %d\nAccountAge: %d", localPlayer.Name, localPlayer.DisplayName, localPlayer.UserId, localPlayer.AccountAge))
+
+	local stats = localPlayer:FindFirstChild("leaderstats")
+	if stats then
+		add("\n# Leaderstats:")
+		for _, v in ipairs(stats:GetChildren()) do
+			if v:IsA("ValueBase") then add(fmt("  %s = %s", v.Name, serialize(readProp(v, "Value")))) end
+		end
+	end
+
+	local char = localPlayer.Character
+	local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if humanoid then
+		add(fmt("\n# Character:\n  Health = %s | WalkSpeed = %s | JumpPower = %s",
+			serialize(humanoid.Health), serialize(humanoid.WalkSpeed), serialize(readProp(humanoid, "JumpPower"))))
+	end
+	if root then add("  Position = " .. serialize(root.Position)) end
+
+	for _, group in ipairs({ { "Equipped", char }, { "Backpack", localPlayer:FindFirstChildOfClass("Backpack") } }) do
+		if group[2] then
+			add("\n# " .. group[1] .. ":")
+			for _, tool in ipairs(group[2]:GetChildren()) do
+				if tool:IsA("Tool") then add("  Tool: " .. tool.Name) end
+			end
+		end
+	end
+
+	getRunDir()
+	local path = outPath("player.txt")
+	local saved = safeWrite(path, table.concat(lines, "\n"))
+	setStatus(mapStatus, saved and ("✅ เสร็จแล้ว! → " .. path) or "❌ writefile ล้มเหลว")
+	notify("Player Dump", saved and "✅ เสร็จสมบูรณ์" or "❌ writefile ล้มเหลว", saved and "Success" or "Warning")
 end
 
--- ============================================================
--- 3. Remote Spy v5
---   hook ทำแค่จด (self, method, args ที่แพ็คไว้) ลงคิว งานหนักทั้งหมด (หา path, serialize)
---   ทำใน worker thread v4 ทำใน __namecall เลย ซึ่ง (a) อาจ throw เข้าไปในเกม และ
---   (b) ทับค่า getnamecallmethod() ก่อนที่ของเดิมจะรัน -> method ผิดตัว
--- ============================================================
-local spyActive, spyDirty, spyKeys = false, false, 0
-local spyData, spyQueue, _inConns = {}, {}, {}
-local _hookMethod, _origNamecall = "none", nil
-local SPY_METHODS = { FireServer = true, InvokeServer = true, Fire = true, Invoke = true }
-local QUEUE_MAX, KEY_MAX = 3000, 2000
+-- Remote Spy: hook แค่จดลงคิว งานหนักทำใน worker thread
+local spyActive, spyDirty, spyKeyCount, spyTotal, spyRun = false, false, 0, 0, 0
+local spyData, spyQueue, inboundConns = {}, {}, {}
+
+-- เก็บ hook ไว้ใน getgenv() รันซ้ำจะได้ไม่ hook ซ้อน
+local hook = env.__MAPDUMPER_HOOK or {}
+env.__MAPDUMPER_HOOK = hook
 
 local function enqueue(self, method, ...)
-    if #spyQueue < QUEUE_MAX then spyQueue[#spyQueue + 1] = { self, method, table.pack(...) } end
+	if #spyQueue < QUEUE_MAX then spyQueue[#spyQueue + 1] = { self, method, table.pack(...) } end
 end
 
-local function logCall(self, method, pk)
-    local key = getCleanPath(self) .. ":" .. method
-    local d = spyData[key]
-    if not d then
-        if spyKeys >= KEY_MAX then return end
-        spyKeys = spyKeys + 1
-        d = { count = 0, samples = {}, seen = {}, class = self.ClassName }
-        spyData[key] = d
-    end
-    d.count, spyDirty = d.count + 1, true
-    if #d.samples < 5 then
-        local a = {}
-        for i = 1, _mmin(pk.n, 8) do a[i] = serVal(pk[i]) end
-        local s = _tconcat(a, ", ")
-        if not d.seen[s] then d.seen[s] = true; _tinsert(d.samples, s) end
-    end
+hook.record = function(...)
+	if spyActive then enqueue(...) end
 end
 
-local function spyDrain()
-    local q = spyQueue
-    spyQueue = {}
-    for i = 1, #q do
-        _pcall(logCall, q[i][1], q[i][2], q[i][3])
-        if i % 200 == 0 then task.wait() end
-    end
+local function logCall(self, method, packed)
+	local key = getPath(self) .. ":" .. method
+	local entry = spyData[key]
+	if not entry then
+		if spyKeyCount >= KEY_MAX then return end
+		spyKeyCount += 1
+		entry = { count = 0, samples = {}, seen = {}, class = self.ClassName }
+		spyData[key] = entry
+	end
+	entry.count += 1
+	spyTotal += 1
+	spyDirty = true
+
+	if #entry.samples < 5 then
+		local args = {}
+		for i = 1, math.min(packed.n, 8) do args[i] = serialize(packed[i]) end
+		local sample = table.concat(args, ", ")
+		if not entry.seen[sample] then
+			entry.seen[sample] = true
+			entry.samples[#entry.samples + 1] = sample
+		end
+	end
+end
+
+local function spyDrain(noYield)
+	local queue = spyQueue
+	spyQueue = {}
+	for i, item in ipairs(queue) do
+		pcall(logCall, item[1], item[2], item[3])
+		if not noYield and i % 200 == 0 then task.wait() end
+	end
 end
 
 local function spyFlush()
-    if not _next(spyData) then return end
-    local keys = {}
-    for k in _pairs(spyData) do keys[#keys + 1] = k end
-    _tsort(keys)
-    local out = { "# REMOTE SPY REPORT v5", "# Hook Method: " .. _hookMethod, "# Time: " .. os.date("%Y-%m-%d %H:%M:%S"), "" }
-    for _, key in _ipairs(keys) do
-        local d = spyData[key]
-        _tinsert(out, "## " .. key .. "\n  Class: " .. d.class .. "\n  Calls: " .. d.count .. "\n  Args:")
-        for _, s in _ipairs(d.samples) do _tinsert(out, "    - " .. s) end
-        _tinsert(out, "")
-    end
-    spyDirty = false
-    safeWrite(outDir() .. "/remote_spy.txt", _tconcat(out, "\n"))
-end
-
-local function makeHook()
-    local gm, sm, cc = getnamecallmethod, setnamecallmethod, checkcaller
-    return (newcclosure or function(f) return f end)(function(self, ...)
-        local method = gm and gm() or ""
-        if spyActive and SPY_METHODS[method] and not (cc and cc()) then
-            _pcall(enqueue, self, method, ...) -- ไม่ throw เข้าไปในเกม
-            if sm then _pcall(sm, method) end  -- คืนค่า: ของเดิมอ่าน method จาก state นี้
-        end
-        return _origNamecall(self, ...)
-    end)
+	local keys = {}
+	for key in pairs(spyData) do keys[#keys + 1] = key end
+	table.sort(keys)
+	local out = { "# REMOTE SPY REPORT | " .. os.date("%Y-%m-%d %H:%M:%S"), "" }
+	for _, key in ipairs(keys) do
+		local e = spyData[key]
+		out[#out + 1] = fmt("## %s\n  Class: %s\n  Calls: %d\n  Args:\n    - %s\n", key, e.class, e.count, table.concat(e.samples, "\n    - "))
+	end
+	spyDirty = false
+	getRunDir()
+	safeWrite(outPath("remote_spy.txt"), table.concat(out, "\n"))
 end
 
 local function setupHooks()
-    if not _origNamecall then -- hook ครั้งเดียวพอ (ซ้อนจะ recurse); spyActive เป็นตัวคุมการบันทึก
-        local ok, orig = false, nil
-        if hookmetamethod then ok, orig = _pcall(hookmetamethod, game, "__namecall", makeHook()) end
-        if ok and orig then
-            _origNamecall, _hookMethod = orig, "hookmetamethod ✅"
-        elseif getrawmetatable then
-            -- สำรอง: แพตช์ metatable ของ Instance ที่ใช้ร่วมกัน (setrawmetatable(game, ...) จะไม่เห็น remote เลย)
-            local mt = getrawmetatable(game)
-            local old = mt and _rawget(mt, "__namecall")
-            local unlocked = old and ((setreadonly and _pcall(setreadonly, mt, false)) or (make_writeable and _pcall(make_writeable, mt)))
-            if unlocked then
-                _origNamecall = old
-                if _pcall(rawset, mt, "__namecall", makeHook()) then _hookMethod = "direct __namecall override"
-                else _origNamecall = nil end
-                if setreadonly then _pcall(setreadonly, mt, true) end
-            end
-        end
-        if not _origNamecall then _hookMethod = "FAILED" end
-    end
-    return _origNamecall and 1 or 0
+	if hook.orig then return true end
+	local getMethod, setMethod, isOwnCall, isOurs = getnamecallmethod, setnamecallmethod, checkcaller, isourthread
+
+	local fn = newcclosure(function(self, ...)
+		local method = getMethod()
+		if method == "Kick" and self == localPlayer then return end
+		if not SPY_METHODS[method] or isOwnCall() or (isOurs and isOurs()) then return hook.orig(self, ...) end
+		pcall(hook.record, self, method, ...)
+		pcall(setMethod, method)
+		return hook.orig(self, ...)
+	end)
+	pcall(setstackhidden, fn, true)
+	pcall(debug.setinfo, fn, "s", "[C]")
+	pcall(debug.setname, fn, "")
+
+	local ok, orig = pcall(hookmetamethod, game, "__namecall", fn)
+	if ok and orig then hook.orig = orig end
+	return hook.orig ~= nil
 end
 
 -- ขาเข้า (server -> client): OnClientEvent
-local function hookInbound(r)
-    if not spyActive or not isRemoteEvent(r) then return end
-    local ok, conn = _pcall(function()
-        return r.OnClientEvent:Connect(function(...) if spyActive then enqueue(r, "OnClientEvent", ...) end end)
-    end)
-    if ok and conn then _tinsert(_inConns, conn) end
+local function hookInbound(remote)
+	if not spyActive or not remote:IsA("BaseRemoteEvent") then return end
+	local ok, conn = pcall(function()
+		return remote.OnClientEvent:Connect(function(...)
+			if spyActive then enqueue(remote, "OnClientEvent", ...) end
+		end)
+	end)
+	if ok then inboundConns[#inboundConns + 1] = conn end
 end
 
 local function startInbound()
-    _pcall(function() _tinsert(_inConns, game.DescendantAdded:Connect(hookInbound)) end)
-    task.spawn(safe, function()
-        for i, obj in _ipairs(game:GetDescendants()) do
-            if not spyActive then break end
-            hookInbound(obj)
-            if i % 2000 == 0 then task.wait() end
-        end
-    end)
+	local root = cloneref(game:GetService("ReplicatedStorage"))
+	inboundConns[#inboundConns + 1] = root.DescendantAdded:Connect(hookInbound)
+	task.spawn(function()
+		for i, obj in ipairs(root:GetDescendants()) do
+			if not spyActive then break end
+			hookInbound(obj)
+			if i % 500 == 0 then task.wait() end
+		end
+	end)
 end
 
 local function stopInbound()
-    for _, c in _ipairs(_inConns) do _pcall(function() c:Disconnect() end) end
-    _inConns = {}
+	for _, conn in ipairs(inboundConns) do pcall(conn.Disconnect, conn) end
+	inboundConns = {}
 end
 
 local function spyStart()
-    if spyActive then return end
-    spyActive, spyData, spyQueue, spyKeys = true, {}, {}, 0
-    if setupHooks() == 0 then
-        spyActive = false
-        setStatusOf(SpyStatus, "❌ ติด hook ไม่สำเร็จ\nhookmetamethod: " .. (hookmetamethod and "✅" or "❌") .. "\ngetrawmetatable: " .. (getrawmetatable and "✅" or "❌"))
-        return
-    end
-    startInbound()
-    task.spawn(function()
-        local last = _clock()
-        while spyActive do
-            task.wait(0.5)
-            _pcall(spyDrain)
-            if spyDirty and _clock() - last >= 2 then last = _clock(); _pcall(spyFlush) end
-        end
-    end)
-    setStatusOf(SpyStatus, "🔴 กำลังดักจับ (ขาออก + OnClientEvent)...\nวิธี: " .. _hookMethod)
+	if spyActive then return end
+	spyActive, spyData, spyQueue, spyKeyCount, spyTotal = true, {}, {}, 0, 0
+
+	if not setupHooks() then
+		spyActive = false
+		setStatus(spyStatus, "❌ ติด hook ไม่สำเร็จ (hookmetamethod: " .. tostring(hookmetamethod ~= nil) .. ")")
+		if spyToggle then pcall(spyToggle.Set, spyToggle, false, true) end
+		return
+	end
+
+	startInbound()
+	spyRun += 1
+	local myRun = spyRun
+	task.spawn(function()
+		local lastFlush = os.clock()
+		while spyActive and spyRun == myRun do
+			task.wait(0.5)
+			pcall(spyDrain)
+			setStatus(spyStatus, fmt("🔴 กำลังดักจับ\nจับได้ %d ครั้ง | %d remote", spyTotal, spyKeyCount))
+			if spyDirty and os.clock() - lastFlush >= 2 then
+				lastFlush = os.clock()
+				pcall(spyFlush)
+			end
+		end
+	end)
 end
 
 local function spyStop()
-    if not spyActive then return end
-    spyActive = false
-    stopInbound()
-    task.wait(0.3)
-    _pcall(spyDrain); _pcall(spyFlush)
-    setStatusOf(SpyStatus, "🟢 หยุดแล้ว\n📄 " .. outDir() .. "/remote_spy.txt")
+	if not spyActive then return end
+	spyActive = false
+	spyRun += 1
+	stopInbound()
+	pcall(spyDrain, true)
+	pcall(spyFlush)
+	setStatus(spyStatus, "🟢 หยุดแล้ว\n" .. (getRunDir() and outPath("remote_spy.txt")))
 end
 
--- 4. Deep Analyzer (getgc + upvalue)
-local function runDeepAnalysis()
-    setStatusOf(DeepStatus, "🔄 กำลังวิเคราะห์...")
-    local report, seen, MAXL = { "# DEEP GAME ANALYTICS", "# Time: " .. os.date("%Y-%m-%d %H:%M:%S"), "" }, {}, 8000
-    local function add(s) if #report < MAXL and not seen[s] then seen[s] = true; report[#report + 1] = s end end
-    local function pathOf(o)
-        local ok, p = _pcall(getCleanPath, o)
-        return ok and p or ("<" .. _tostring(o) .. ">")
-    end
-    local function isRemoteValue(v)
-        return _typeof(v) == "Instance" and isRemote(v)
-    end
-    local function scanTbl(tbl, name)
-        if type(tbl) ~= "table" then return end
-        local c = 0
-        for k, v in _pairs(tbl) do
-            c = c + 1; if c > 50 then break end
-            local t = _typeof(v)
-            if t == "string" or t == "number" or t == "boolean" then
-                add(_sformat("%s.%s = %s", name, _tostring(k), _tostring(v)))
-            elseif t == "function" then
-                if getconstants then
-                    local okc, consts = _pcall(getconstants, v)
-                    local strs = {}
-                    for _, cv in _ipairs(okc and type(consts) == "table" and consts or {}) do
-                        if type(cv) == "string" and #cv > 3 then strs[#strs + 1] = cv end
-                    end
-                    if #strs > 0 then add(_sformat("%s.%s -> { %s }", name, _tostring(k), _tconcat(strs, ", "))) end
-                end
-                local oku, ups = false, nil
-                if getupvalues then oku, ups = _pcall(getupvalues, v) end
-                for uk, uv in _pairs(oku and type(ups) == "table" and ups or {}) do
-                    if isRemoteValue(uv) then add(_sformat("%s.%s upvalue[%s] = REMOTE: %s", name, _tostring(k), _tostring(uk), pathOf(uv))) end
-                end
-            elseif t == "Instance" then
-                add(_sformat("%s.%s = Instance<%s> %s", name, _tostring(k), v.ClassName, v.Name))
-            end
-        end
-    end
-    local renv = getrenv and safe(getrenv, nil)
-    _pcall(scanTbl, renv and renv._G or _G, "_G")
-    _pcall(scanTbl, renv and renv.shared or shared, "shared")
-    if getgc then
-        add("\n# GC Scan (closures with remote references):")
-        local okg, gc = _pcall(getgc, true)
-        local nFn = 0
-        for i, obj in _ipairs(okg and type(gc) == "table" and gc or {}) do
-            if i % 500 == 0 then task.wait() end
-            if type(obj) == "function" and not (iscclosure and _pcall(iscclosure, obj) and iscclosure(obj)) then
-                nFn = nFn + 1
-                if nFn > 20000 then break end
-                local oku, ups = false, nil
-                if getupvalues then oku, ups = _pcall(getupvalues, obj) end
-                for _, uv in _pairs(oku and type(ups) == "table" and ups or {}) do
-                    if isRemoteValue(uv) then
-                        add(_sformat("  Closure(%s) -> Remote: %s", safe(function() return debug.info(obj, "s") end, "?"), pathOf(uv)))
-                    end
-                end
-            end
-        end
-    end
-    if getloadedmodules then
-        add("\n# Loaded Modules:")
-        for _, mod in _ipairs(safe(getloadedmodules, {})) do add(_sformat("  %s [%s]", mod.Name, mod.ClassName)) end
-    end
-    if #report >= MAXL then report[#report + 1] = "# (report truncated at " .. MAXL .. " lines)" end
-    local saved = safeWrite(outDir() .. "/deep_scan.txt", _tconcat(report, "\n"))
-    setStatusOf(DeepStatus, saved and "✅ เสร็จแล้ว! → " .. outDir() .. "/deep_scan.txt" or "❌ writefile ล้มเหลว")
-    notify("Deep Scan", "✅ เสร็จสมบูรณ์")
-end
-
--- ============================================================
--- 5. หา Remote ที่ซ่อนอยู่
---   keyword สั้น (<=4 ตัว: ban, kill, tp, gun...) ต้องตรงกับคำเต็มแบบ camel/snake (หรือพหูพจน์)
---   "bank"/"skill"/"http" จึงไม่ match อีก; keyword ยาวกว่านั้น match แบบ substring
--- ============================================================
-local HIDDEN_RULES = {
-    { "⚠️ PUNISHMENT", { "admin", "kick", "ban", "punish", "kill" } },
-    { "💰 ECONOMY", { "give", "reward", "money", "coin", "cash", "gold" } },
-    { "🌀 TELEPORT", { "teleport", "tp" } },
-    { "⚔️ ITEM", { "weapon", "gun", "sword", "item" } },
-    { "💾 DATA", { "data", "save", "load" } },
+-- UI
+local settings = {
+	target = { "All" }, detail = "Everything", scripts = decompile ~= nil,
+	nilInst = true, hiddenUi = true, actors = true, single = false, runtime = true, gcTables = false,
+	speed = "Normal",
 }
 
-local function classifyRemote(name)
-    local lower = name:lower()
-    local words = {}
-    for w in name:gsub("(%l)(%u)", "%1 %2"):gsub("(%u)(%u%l)", "%1 %2"):gsub("[^%a]", " "):lower():gmatch("%a+") do words[w] = true end
-    for _, rule in _ipairs(HIDDEN_RULES) do
-        for _, kw in _ipairs(rule[2]) do
-            if (#kw <= 4 and (words[kw] or words[kw .. "s"])) or (#kw > 4 and lower:find(kw, 1, true)) then return rule[1] end
-        end
-    end
+local function saveGame()
+	getRunDir()
+	setStatus(mapStatus, "🔄 saveinstance...")
+	local ok, err = pcall(saveinstance, game, { FileName = outPath("game") })
+	setStatus(mapStatus, ok and "✅ saveinstance เสร็จ (ดูในโฟลเดอร์ workspace)" or ("❌ " .. tostring(err):sub(1, 150)))
 end
-
-local function findHiddenRemotes()
-    setStatusOf(HiddenStatus, "🔄 กำลังค้นหา...")
-    local L, n = { "# HIDDEN/SUSPICIOUS REMOTES", "" }, 0
-    local function scan(list)
-        for i, obj in _ipairs(list) do
-            if i % 3000 == 0 then task.wait() end
-            local ok = _pcall(function()
-                if isRemote(obj) then
-                    local tag = classifyRemote(obj.Name)
-                    if tag then n = n + 1; _tinsert(L, tag .. ": " .. getCleanPath(obj)) end
-                end
-            end)
-            if not ok then _tinsert(L, "-- (error reading one instance)") end
-        end
-    end
-    scan(game:GetDescendants())
-    if getnilinstances then _tinsert(L, "\n# NIL instances:"); scan(safe(getnilinstances, {})) end
-    local saved = safeWrite(outDir() .. "/hidden_remotes.txt", _tconcat(L, "\n"))
-    setStatusOf(HiddenStatus, saved and ("✅ " .. n .. " รายการ → " .. outDir() .. "/hidden_remotes.txt") or "❌ writefile ล้มเหลว")
-    notify("Remote Finder", "✅ เสร็จสมบูรณ์")
-end
-
--- ตั้งค่า UI (SpectreUI ผ่านเน็ต; ถ้าโหลดไม่ได้ให้รันแบบไม่มี UI)
-local UI_URL = "https://raw.githubusercontent.com/tigergenz/SpectreMain/refs/heads/main/Library/SpectreUI.lua"
-local function loadUI()
-    local okh, body = _pcall(function() return game:HttpGet(UI_URL) end)
-    local okl, fn = _pcall(loadstring, okh and type(body) == "string" and body or "")
-    local okr, lib = false, nil
-    if okl and fn then okr, lib = _pcall(fn) end
-    if okr and type(lib) == "table" and lib.SpectreUI then return lib end
-end
-
-local opts = { target = { "All" }, detail = "Useful only", scripts = decompile ~= nil, nilInst = true, deobf = true, keepRaw = true }
-local function pick(v) return type(v) == "table" and v[1] or v end -- dropdown อาจส่งกลับมาเป็น table
 
 local function stopAll()
-    _mapCancel, spyActive = true, false
-    stopInbound()
+	mapCancelled = true
+	pcall(spyStop)
+	stopInbound()
 end
 
-if _g then
-    _g.AI_DUMPER = { opts = opts, mapDump = function() task.spawn(once, "map", startMapDump, nil, opts) end, mapStop = function() _mapCancel = true end,
-        spyStart = spyStart, spyStop = spyStop, player = dumpPlayerData, deep = runDeepAnalysis, hidden = findHiddenRemotes }
-    _g.__AI_DUMPER_CLEANUP = function()
-        stopAll()
-        local old = Window
-        Window = nil
-        if old then task.spawn(_pcall, function() old:Destroy() end) end -- แยก thread กัน Destroy ค้างแล้วรันซ้ำไม่ได้
-    end
+local function stopMapDump()
+	if not busy.map then return notify("ไม่มีงานที่รันอยู่", "ยังไม่ได้เริ่มดัมพ์", "Warning") end
+	mapCancelled = true
+	setStatus(mapStatus, "🔄 กำลังหยุด... (เซฟเท่าที่ได้)")
 end
 
-UI = loadUI()
-if not UI then
-    warn("[dumper] โหลด SpectreUI ไม่ได้ (ไม่มีเน็ต / โดนบล็อก) -> ดัมพ์แมพแบบไม่มี UI ด้วยค่าเริ่มต้น "
-        .. "เครื่องมืออื่น: getgenv().AI_DUMPER.spyStart() / .player() / .deep() / .hidden()")
-    task.spawn(once, "map", startMapDump, nil, opts)
-    return
+env.MapDumper = {
+	settings = settings,
+	mapDump = function() task.spawn(runOnce, "map", startMapDump, nil, settings) end,
+	mapStop = stopMapDump,
+	spyStart = spyStart,
+	spyStop = spyStop,
+	player = dumpPlayerData,
+}
+env.__MAPDUMPER_CLEANUP = function()
+	stopAll()
+	local old = window
+	window = nil
+	if old then task.spawn(pcall, function() old:Destroy() end) end
 end
-if UI.OnUnload then _pcall(UI.OnUnload, stopAll) end -- UI ถูกถอน -> หยุดงานที่ค้างอยู่
 
-local Library = UI.SpectreUI
-Window = Library:CreateWindow({
-    Brand = { Title = "AI", Accent = "DUMPER", Subtitle = "v3.5", Icon = "zap" },
-    Theme = "Midnight",
-    ToggleKey = Enum.KeyCode.RightControl,
+local function loadUI()
+	local body = httpGet(UI_URL)
+	local chunk = body and loadstring(body)
+	if not chunk then return end
+	local ok, lib = pcall(chunk)
+	if ok and type(lib) == "table" and lib.SpectreUI then return lib end
+end
+
+local ui = loadUI()
+if not ui then
+	warn("[dumper] โหลด SpectreUI ไม่ได้ -> ดัมพ์แมพแบบไม่มี UI (ใช้ getgenv().MapDumper ได้)")
+	return task.spawn(runOnce, "map", startMapDump, nil, settings)
+end
+if ui.OnUnload then pcall(ui.OnUnload, stopAll) end
+
+window = ui.SpectreUI:CreateWindow({
+	Brand = { Title = "MAP", Accent = "DUMPER", Subtitle = "v" .. VERSION, Icon = "zap" },
+	Theme = "Midnight",
+	ToggleKey = Enum.KeyCode.RightControl,
 })
 
-local function newTab(name, icon, secName)
-    return Window:CreateTab({ Name = name, Icon = icon }):CreateSection({ Name = secName })
-end
-local function newStatus(sec, text)
-    return sec:CreateParagraph({ Title = "สถานะ", Content = text })
-end
-local function runBtn(sec, name, icon, key, fn, getStatus)
-    sec:CreateButton({ Name = name, Icon = icon, Callback = function() task.spawn(once, key, fn, getStatus) end })
+local function newStatus(section, text)
+	local paragraph = section:CreateParagraph({ Title = "สถานะ", Content = (splitState(text)) })
+	setStatus(paragraph, text)
+	return paragraph
 end
 
--- แท็บ 1: ดัมพ์แมพ
-local MSec = newTab("Map Dumper", "package", "ตั้งค่า")
-Status = newStatus(MSec, "🟢 ว่าง")
-MSec:CreateDropdown({
-    Name = "Target (เลือกได้หลายอัน | ไม่เลือกเฉพาะ = All)",
-    Options = { "All", "NIL", table.unpack(ALL_SERVICES) }, Default = { "All" }, Multi = true,
-    Callback = function(v) opts.target = (type(v) == "table") and v or { v } end,
-})
-MSec:CreateDropdown({
-    Name = "Detail (Everything = ทุก part/model, ช้า+ไฟล์ใหญ่)",
-    Options = { "Useful only", "Everything" }, Default = "Useful only",
-    Callback = function(v) opts.detail = pick(v) end,
-})
-MSec:CreateToggle({ Name = "ดีคอมไพล์สคริปต์", Default = decompile ~= nil, Callback = function(on) opts.scripts = on end })
-MSec:CreateToggle({ Name = "Deobfuscate สคริปต์อัตโนมัติ (ตรวจจับ + ล้าง)", Default = true, Callback = function(on) opts.deobf = on end })
-MSec:CreateToggle({ Name = "เก็บต้นฉบับของสคริปต์ที่ deobf แล้ว (scripts-original_*)", Default = true, Callback = function(on) opts.keepRaw = on end })
-MSec:CreateToggle({ Name = "รวม nil instances (ตอนเลือก All)", Default = true, Callback = function(on) opts.nilInst = on end })
-MSec:CreateToggle({ Name = "Single file (รวมทุกอย่างเป็น dump_all.txt)", Default = false, Callback = function(on) opts.single = on end })
-MSec:CreateButton({
-    Name = "เริ่มดัมพ์ทั้งหมด", Icon = "download",
-    Callback = function() task.spawn(once, "map", startMapDump, function() return Status end, opts) end,
-})
-MSec:CreateButton({ Name = "หยุดดัมพ์ (เซฟเท่าที่ได้)", Icon = "square", Callback = function() _mapCancel = true end })
+local function getMapStatus() return mapStatus end
 
--- แท็บ 2-5
-local PSec = newTab("Player Dumper", "user", "ข้อมูลผู้เล่น")
-PlayerStatus = newStatus(PSec, "🟢 ว่าง")
-runBtn(PSec, "ดัมพ์ข้อมูลผู้เล่น", "scan-face", "player", dumpPlayerData, function() return PlayerStatus end)
+local mapTab = window:CreateTab({ Name = "Map Dumper", Icon = "package" })
+local mapSection = mapTab:CreateSection({ Name = "ดัมพ์แมพ" })
+mapStatus = newStatus(mapSection, "🟢 พร้อม")
 
-local SSec = newTab("Remote Spy", "radar", "ตรวจจับ Remotes")
-SpyStatus = newStatus(SSec, "🔴 ว่าง")
-SSec:CreateToggle({
-    Name = "เปิดใช้งาน Spy", Default = false,
-    Callback = function(on)
-        if on then task.spawn(once, "spy", spyStart, function() return SpyStatus end) else task.spawn(spyStop) end
-    end,
+for _, b in ipairs({
+	{ "เริ่มดัมพ์", "download", function() task.spawn(runOnce, "map", startMapDump, getMapStatus, settings) end },
+	{ "หยุด (เซฟเท่าที่ได้)", "square", stopMapDump },
+	{ "saveinstance (.rbxl)", "save", function() task.spawn(runOnce, "save", saveGame, getMapStatus) end },
+	{ "ดัมพ์ข้อมูลผู้เล่น", "scan-face", function() task.spawn(runOnce, "player", dumpPlayerData, getMapStatus) end },
+}) do
+	mapSection:CreateButton({ Name = b[1], Icon = b[2], Callback = b[3] })
+end
+
+local okSection, optionSection = pcall(mapTab.CreateSection, mapTab, { Name = "ตัวเลือก" })
+optionSection = okSection and optionSection or mapSection
+
+optionSection:CreateDropdown({
+	Name = "Target (เลือกได้หลายอัน | ไม่เลือกเฉพาะ = All)",
+	Options = { "All", "NIL", "HUI", "ACTORS", "CLIENT", "RUNTIME", table.unpack(ALL_SERVICES) },
+	Default = { "All" },
+	Multi = true,
+	Callback = function(v) settings.target = type(v) == "table" and v or { v } end,
+})
+optionSection:CreateDropdown({
+	Name = "ความละเอียด (Quick=สำคัญ | Full=ทุกอย่าง | Actionable=ยิง/เรียกสคริปได้เท่านั้น)",
+	Options = { "Quick", "Full", "Actionable" },
+	Default = "Full",
+	Callback = function(v)
+		v = type(v) == "table" and v[1] or v
+		settings.detail = v == "Full" and "Everything" or (v == "Actionable" and "Actionable" or "Useful only")
+	end,
+})
+optionSection:CreateDropdown({
+	Name = "ความเร็วดัมพ์ (Safe=เบาเฟรม | Normal | Fast | Turbo=ไม่ yield เลย เสี่ยงเฟรมกระตุก)",
+	Options = { "Safe", "Normal", "Fast", "Turbo" },
+	Default = settings.speed,
+	Callback = function(v)
+		v = type(v) == "table" and v[1] or v
+		settings.speed = SPEED_PRESETS[v] and v or "Normal"
+	end,
+})
+for _, s in ipairs({
+	{ "ดีคอมไพล์สคริปต์", "scripts" },
+	{ "รวม nil instances (ตอนเลือก All)", "nilInst" },
+	{ "รวม gethui() (ตอนเลือก All)", "hiddenUi" },
+	{ "รวม Actor ที่ถูกลบ + foreign state (ตอนเลือก All)", "actors" },
+	{ "Runtime dump: modules / remotes / getgc (ตอนเลือก All)", "runtime" },
+	{ "รวม getgc tables (หนักมาก)", "gcTables" },
+	{ "Single file (รวมเป็นไฟล์เดียว)", "single" },
+}) do
+	optionSection:CreateToggle({ Name = s[1], Default = settings[s[2]], Callback = function(on) settings[s[2]] = on end })
+end
+
+local spySection = window:CreateTab({ Name = "Remote Spy", Icon = "radar" }):CreateSection({ Name = "ตรวจจับ Remotes" })
+spyStatus = newStatus(spySection, "🟢 ปิดอยู่ (เปิดสวิตช์ข้างล่างเพื่อเริ่มจับ)")
+spyToggle = spySection:CreateToggle({
+	Name = "เปิดใช้งาน Spy",
+	Default = false,
+	Callback = function(on)
+		if on then
+			task.spawn(runOnce, "spy", spyStart, function() return spyStatus end)
+		else
+			task.spawn(spyStop)
+		end
+	end,
 })
 
-local DSec = newTab("Deep Scan", "skull", "เจาะลึก GC + upvalues")
-DeepStatus = newStatus(DSec, "🟢 ว่าง")
-runBtn(DSec, "เริ่มวิเคราะห์เชิงลึก", "zap", "deep", runDeepAnalysis, function() return DeepStatus end)
-
-local HSec = newTab("Remote Finder", "search", "หา remote ที่น่าสนใจ")
-HiddenStatus = newStatus(HSec, "🟢 ว่าง")
-runBtn(HSec, "ค้นหา Remote ที่น่าสงสัย", "crosshair", "hidden", findHiddenRemotes, function() return HiddenStatus end)
+local aboutSection = window:CreateTab({ Name = "เกี่ยวกับ", Icon = "info" }):CreateSection({ Name = "MapDumper v" .. VERSION })
+aboutSection:CreateParagraph({
+	Title = "วิธีใช้",
+	Content = "กด RightControl เพื่อซ่อน/แสดงเมนู\nผลลัพธ์เซฟที่ dump.map/<ชื่อแมพ>",
+})
+aboutSection:CreateButton({ Name = "ปิด Dumper", Icon = "power", Callback = env.__MAPDUMPER_CLEANUP })
