@@ -1,201 +1,278 @@
-# SpectreUI v3.22 beta — คู่มือย่อ
+# SpectreUI — API Reference
 
-ไลบรารี UI สำหรับสคริปต์ Roblox (Lua): หน้าต่าง แท็บ control ครบ ระบบธีม Config และ Command Palette (`Ctrl+K`)
-แท็บ **SETTINGS** เป็นของสำเร็จรูป (ธีม ฟอนต์ เอฟเฟกต์ ปุ่มลัด Config Undo) เรียกบรรทัดเดียวจบ
+ไลบรารี UI สำหรับ Roblox (Lua) · เอกสารนี้มีเฉพาะ API
+
+## สารบัญ
+
+1. [Entry](#1-entry)
+2. [CreateWindow](#2-createwindow)
+3. [Window](#3-window)
+4. [Tab / Section](#4-tab--section)
+5. [Controls](#5-controls)
+6. [Flags](#6-flags)
+7. [Notify / Dialog / Loading](#7-notify--dialog--loading)
+8. [Config / Undo](#8-config--undo)
+9. [Theme / Font](#9-theme--font)
+10. [SETTINGS Tab](#10-settings-tab)
+11. [Command Palette / Hotkey / HUD](#11-command-palette--hotkey--hud)
+12. [Staged Loading / Splash](#12-staged-loading--splash)
+13. [Tab Password Lock](#13-tab-password-lock)
+14. [Load API](#14-load-api)
+15. [Audit / Icons](#15-audit--icons)
+16. [Library Utilities](#16-library-utilities)
+17. [Language](#17-language)
+18. [AutoUpdate](#18-autoupdate)
+19. [Undocumented](#19-undocumented)
 
 ---
 
-## 1. สิ่งที่ต้องมี
-
-- executor ที่รองรับ `loadstring`, `game:HttpGet`, `readfile` / `writefile` (ใช้เซฟ Config + ธีม)
-- ต้องต่ออินเทอร์เน็ต: สคริปต์โหลด `SpectreUI.lua` จาก GitHub ทุกครั้งที่รัน
-- ปุ่ม "คัดลอก Config" ต้องมีคลิปบอร์ด (ไม่มี = UI แจ้งว่าใช้ไม่ได้)
-
----
-
-## 2. เริ่มต้นเร็ว
+## 1. Entry
 
 ```lua
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/refs/heads/main/Ui/SpectreUI.lua"))()
-
-local Window = Library:CreateWindow({
-    Title     = "SpectreWare | ชื่อเกม",
-    ToggleKey = Enum.KeyCode.RightShift,
-})
-
-Window:CreateTab({ Name = "MAIN", Icon = "lucide:home", Build = function(tab)
-    local sec = tab:CreateSection({ Name = "ทั่วไป" })
-    sec:CreateToggle({ Name = "เปิดฟีเจอร์", Default = false, Flag = "feature_on",
-        Callback = function(on) print("feature", on) end })
-    sec:CreateSlider({ Name = "ความเร็ว", Min = 16, Max = 200, Default = 16, Flag = "speed" })
-end })
-
-Window:CreateSettingsTab()   -- เรียกท้ายสุด จะได้อยู่ล่างแถบด้านข้าง
-
-Window:OnLoaded(function()
-    Library:AutoloadConfig("auto", true)   -- ต้องรอ UI สร้างเสร็จก่อน
-end)
+local Window  = Library:CreateWindow({ Title = "SpectreWare | Game", ToggleKey = Enum.KeyCode.RightShift })
 ```
 
-ลำดับ: **Window → Tab → Section → Control** (control ต้องอยู่ใน section, section ต้องอยู่ในแท็บ)
+ลำดับ: **Window → Tab → Section → Control**
 
 ---
 
-## 3. แนวคิดหลัก
+## 2. CreateWindow
 
-ตัวเลือกที่ control ส่วนใหญ่ใช้ร่วมกัน:
+`Library:CreateWindow(cfg)`
 
 | ตัวเลือก | ความหมาย |
 |---|---|
-| `Name` | ชื่อที่แสดง |
-| `Default` | ค่าเริ่มต้น |
-| `Flag` | ชื่อประจำ control อ่านผ่าน `Library.Flags["ชื่อ"]` และให้ Config จำค่า (**ไม่มี Flag = ไม่ถูกบันทึก**) |
-| `Callback` | เรียกเมื่อค่าเปลี่ยน |
-| `Tooltip` | ข้อความตอนชี้ |
-
-```lua
-if Library.Flags["aim_on"] then ... end      -- อ่านค่า
-Library:SetFlag("aim_on", true)              -- ตั้งค่า (ตัวที่ 3 = true ไม่เรียก Callback)
-local ctl = Library:GetControl("aim_on")     -- ctl:Set / ctl:Get
-Library:Watch("aim_fov", function(v, prev) end)
-Library:GetFlag("aim_fov", 120)              -- อ่านพร้อมค่า fallback ถ้ายังไม่มี Flag
-```
-
-ผู้ใช้คลิกขวา (มือถือ: กดค้าง) ที่ control เพื่อ รีเซ็ต / คัดลอก / ล็อก ค่า
-มือถือกระตุก: `Library.Perf.LowPower = true`
+| `Title` | `"แบรนด์ \| ย่อย"` |
+| `Logo` `Width` `Height` | โลโก้ (asset id) / ขนาด |
+| `ToggleKey` | ปุ่มเปิด/ปิดเมนู |
+| `HideOpenButtonOnPC = true` | ซ่อนปุ่มเปิด UI บน PC (มือถือยังเห็น) · ตั้งทั้งไลบรารี: `Library.HideOpenButtonOnPC` |
+| `Theme` `Font` `FX` | ธีม / ฟอนต์ / เอฟเฟกต์ (`petals` `orbs` `grid` `embers` `rain`) · ใส่ `Theme` = บังคับธีมทุกครั้ง |
+| `Background = false` | ปิดพื้นหลัง |
+| `Resizable = false` | ห้ามปรับขนาด |
+| `TwoColumn` / `Compact` | บังคับ 2 คอลัมน์ / โหมดแคบ (มือถือ: `TwoColumn` ต้องใส่ `true` เอง และเนื้อหากว้าง ≥ 520px) |
+| `Splash` / `StagedLoad` / `AutoCheck` | ดูหัวข้อ 12 / 12 / 15 |
 
 ---
 
-## 4. โหลดเป็นขั้น (Staged Loading) + Splash
+## 3. Window
 
-เปิดอยู่เป็นค่าเริ่มต้น ไม่ต้องเขียนเพิ่ม: แท็บโผล่ทีละอัน แล้วค่อยรัน `Build` ของแต่ละแท็บ
-
-ใส่ control ผ่าน `Build` ได้ 3 แบบ:
-
-```lua
-Window:CreateTab({ Name = "Main", Build = function(tab) ... end })
-Window:CreateTab({ Name = "Misc" }, function(tab) ... end)
-Main:Load(function(tab) ... end)      -- Tab:Build ตัวเดียวกัน
-```
-
-> ⚠️ `Library:AutoloadConfig` **ไม่รอ** โหลดครบ ถ้า control อยู่ใน `Build` ให้เรียกใน `Window:OnLoaded(...)`
-
-| API | ทำอะไร |
+| เมธอด | ทำอะไร |
 |---|---|
-| `Window:OnLoaded(fn)` / `IsLoaded()` / `WaitLoaded()` | รอ/เช็กว่าโหลดครบ |
-| `Window:StartLoad()` | เริ่มเอง (เมื่อ `StagedLoad = { Auto = false }`) |
+| `CreateTab(cfg [, build])` | สร้างแท็บ (`Name` `Icon` `Build` `Locked` `LockReason` `Password`) |
+| `AddTab(name, icon?, build?)` | ทางลัดของ `CreateTab` |
+| `GetTab` / `SetTab` / `SelectTab` / `ListTabs` | อ่าน / สลับ / รายชื่อแท็บ |
+| `RemoveTab` / `RenameTab` | ลบ / เปลี่ยนชื่อแท็บ |
+| `LockTab(tab, reason)` / `UnlockTab(tab)` / `IsTabLocked(tab)` | ล็อก / ปลด (จากโค้ด ไม่ต้องใช้รหัส) / เช็ก |
+| `Open` / `Close` / `Toggle` / `IsOpen` | เปิด/ปิดเมนู |
+| `SetToggleKey(key)` / `GetToggleKey()` | ปุ่มเมนู |
+| `SetHideOpenButtonOnPC(bool)` | ซ่อน/แสดงปุ่มเปิดบน PC |
+| `SetTitle` `Center` `Resize` `SetSize(w, h)` `SetMaximized` `IsMaximized` `Flash` | หน้าตา / ขนาดหน้าต่าง |
+| `SetTwoColumn(bool)` / `SetCompact(bool)` | 2 คอลัมน์ / โหมดแคบ |
+| `SetUIScale(0.6–1.6)` / `GetUIScale()` | ขนาด UI ทั้งหมด |
+| `SetAnimSpeed(0.25–3)` | ความเร็วอนิเมชัน (= `Library:SetAnimSpeed`) |
+| `AddFloatingButton(cfg)` | ปุ่มลอยบนจอ (`Name` `Text` `Toggle` `Default` `Flag` `Position` `Size` `Callback`) · `:Set` `:Get` `:SetText` `:SetVisible` `:Destroy` |
+| `Goto(obj \| "flag" \| "ชื่อ")` | กระโดดไป control |
+| `OnResize(fn)` / `CloseDropdowns()` | ดักปรับขนาด / ปิด dropdown ที่เปิด |
+| `SetBackground("orbs" \| false \| nil)` | เอฟเฟกต์พื้นหลัง (`nil` = ตามธีม) |
+| `SetNotifyTheme("Cyber" \| tbl \| nil)` | ธีมสีเฉพาะแจ้งเตือน/Dialog |
+| `OpenPalette(initial)` / `ClosePalette()` | Command Palette จากโค้ด |
+| `Tooltip(target, text \| fn)` | ผูก tooltip กับ GuiObject (ซ่อนบนมือถือ) |
+| `Destroy()` | ทำลายหน้าต่าง · `Library:Unload()` ทำลายทั้งหมด |
 
-ปรับ/ปิด:
+---
 
-```lua
-Library:CreateWindow({ StagedLoad = false })                 -- ปิดเฉพาะหน้าต่างนี้
-Library.StagedLoad.TabDelay = 0.2                            -- ค่ากลาง (BuildDelay ด้วย)
-Library:CreateWindow({ Splash = false })                     -- ปิด Splash
-Library:CreateWindow({ Splash = { Duration = 2.5, Skippable = true, Async = false } })
-```
+## 4. Tab / Section
 
-- ค่าเริ่มต้น `CreateWindow` จะรอ Splash จบก่อนคืนหน้าต่าง (`Async = true` = ไม่รอ)
-- ถ้าตรวจจังหวะ "สร้างเสร็จ" ไม่แม่น ใช้ `Window:HoldLoading()` / `ReleaseLoading()` / `FinishLoading()`
+### Tab
+
+| เมธอด | ทำอะไร |
+|---|---|
+| `tab:CreateSection({ Name, Column = 1 \| 2, Collapsible, Collapsed, Icon })` | สร้าง section |
+| `tab:AddSection(name, column?)` | ทางลัดของ `CreateSection` |
+| `tab:Build(fn)` / `tab:Load(fn)` | ใส่ control แบบโหลดเป็นขั้น |
+| `tab:SetBadge("NEW")` | ป้ายที่แท็บ |
+| `tab:ResetAll()` | รีเซ็ตค่าทั้งแท็บ |
+| `tab:SetLocked(bool, reason)` / `IsLocked()` / `SetLockReason(text)` | ล็อกแท็บ |
+| `tab:SetPassword(pw \| fn, reason)` / `ClearPassword()` / `HasPassword()` / `CheckPassword(x)` | รหัสของแท็บ (ตั้งแล้วล็อกทันที) |
+| `tab:TryUnlock(pw)` / `PromptUnlock()` / `Relock()` | ลองปลด / กล่องใส่รหัส / ล็อกกลับ |
+
+### Section
+
+| เมธอด | ทำอะไร |
+|---|---|
+| `section:SetCollapsed(bool)` | พับ/กาง |
+| `section:ResetAll()` | รีเซ็ตค่าทั้ง section |
+| `section:CreateSeparator(cfg)` | เส้นคั่น (คู่กับ `CreateDivider`) |
+| `section:CreateThemeManager({ Name, Flag, Remember, Random, Delete })` | UI จัดการธีม |
+| `section:CreateFontPicker({ Name, Flag, Remember })` | dropdown เลือกฟอนต์ |
 
 ---
 
 ## 5. Controls
 
-ทุกตัวสร้างจาก section รับ table ตัวเลือก คืน control กลับมา
+ทุกตัวสร้างจาก section รับ table ตัวเลือก และคืน control กลับมา
 
-| อยากทำ | ใช้ | ตัวเลือก / หมายเหตุสำคัญ |
-|---|---|---|
-| สวิตช์ | `CreateToggle` | `Default` `Flag` `Callback(on)` |
-| ตัวเลข | `CreateSlider` | `Min` `Max` `Increment` `Suffix` |
-| | `CreateRangeSlider` | `Default = {lo, hi}` `MinGap` · Callback(lo, hi) |
-| | `CreateStepper` | `Step` `Wrap` |
-| เลือกจากรายการ | `CreateDropdown` | `Options` `Multi = true` (Default/Callback เป็น list) · `:Refresh(options)` |
-| | `CreateSegmented` | `Options` `:SetOptions` |
-| | `CreateRadio` | ตัวเลือกวงกลมเรียงแนวตั้ง `Options` `Default` `AllowNone` (กดซ้ำเพื่อยกเลิก) · `:Set` `:Get` `:SetOptions(list, keep)` · ทางลัด `sec:Radio(name, options, default, cb, flag)` |
-| | `CreateListBox` | `Items` `Search` `Multi` · `:Add` `:Remove` |
-| เลือกสี | `CreateColorPicker` | `Default = Color3` |
-| ผูกปุ่ม | `CreateKeybind` | `Mode = "Press"/"Hold"/"Toggle"` · `Esc` ยกเลิก, `Backspace` ลบ |
-| | `CreateKeybindToggle` | `Key` + สวิตช์ในตัวเดียว |
-| พิมพ์ข้อความ | `CreateTextbox` | `Numeric` `Min` `Max` `Live` `EnterOnly` |
-| | `CreateInputButton` | ช่องพิมพ์ + ปุ่มส่ง (`Button`, `ClearOnSubmit`) |
-| | `CreateTagInput` | พิมพ์ + Enter เพิ่มแท็ก (`Lower`, `Max`) |
-| ปุ่ม | `CreateButton` | `Color` `Gradient` `Bold` `Icon` `:SetText` |
-| | `CreateButtonRow` | `Buttons = { {Name, Callback}, ... }` |
-| | `CreateHoldButton` | `Duration` กดค้างเพื่อยืนยัน |
-| ข้อความ / สถานะ | `CreateLabel` `CreateParagraph` `CreateBadge` `CreateDivider` | `:Set` |
-| | `CreateProgress` | `Min` `Max` · `:Set(v)` |
-| | `CreateRating` | ดาวให้คะแนน `Max` (5) `Default` `Color` `AllowZero` (กดดาวเดิมซ้ำ = 0, ปิดด้วย `false`) · `:Set` `:Get` · ทางลัด `sec:Rating(name, max, default, cb, flag)` |
-| | `CreateStat` | `Get = fn` `Interval` `Delta = true` (ไม่เซฟ Config) |
-| | `CreateKeyValue` | `Value` `Copyable` |
-| | `CreateCountdown` | `Target` (epoch) หรือ `Seconds` · `WarnAt` `OnDone` |
-| | `CreateGraph` | `Points` `Height` · `:Push(n)` |
-| ตาราง / รูป | `CreateTable` | `Columns` `Rows` `OnRowClick` · `:AddRow` `:SetRows` |
-| | `CreateItemGrid` | `Items = {{Name, Amount, Image}}` · `:SetAmount` |
-| | `CreateImage` | `Image` `Height` `Fit` |
-| | `CreateStatusCard` | รูป + ชื่อ + ป้าย + แถบค่า (สูงสุด 4) · `:SetBar(i, v, text, color)` `:SetBadge` `:SetEmpty` |
-| โค้ด / log | `CreateConsole` | `:Info` `:Warn` `:Error` `:Print` |
-| | `CreateCodeBlock` | `Text` `Copy` · `:Append` |
-| อื่นๆ | `CreateDiscord` | `Invite` `Button` `Refresh` · `:GetInfo()` |
-| | `CreateConfigManager` | Save / Load / Delete หลาย Config ในชุดเดียว · คืน `{ Name, List, Refresh }` |
-| | `CreateChips` | ชิปเลือกหลายตัว (`Options` `Default` `Multi` `Max` `AllowNone`) · `:Set` `:Get` `:Refresh(options)` |
-| | `CreatePlayerPicker` | เลือกผู้เล่นในเซิร์ฟ (`Display = "DisplayName"` `IncludeSelf` `Placeholder`) · `:Get` `:GetName` `:Set(player)` `:Refresh` |
-| | `CreatePerformance` | โชว์ FPS / Ping / Memory สด (`Interval` ต่ำสุด 0.2) · `:Get()` → `{ Fps, Ping, Memory }` |
-| ตัวเลข (ทรงหลอดส้ม) | `CreateTubeSlider` | หลอดบาง ปุ่มกลมขอบส้ม ชื่ออยู่ซ้าย ค่าอยู่ขวา · `Min` `Max` `Increment` `Suffix` `NameWidth` `Color` `Color2` · Callback(v)
-| มุม (วงหัวคน) | `CreateArcDial` | วงจุด + หัวคน + จุดจับ L/R ลากได้ · ค่า = ครึ่งมุม `Min` `Max` (0–180) `Default` `Color` `Color2` `ShowInfo` `Format = fn(half) -> main, sub` `Top` `Bottom` `Front` · Callback(half) |
+### ตัวเลือกร่วม
 
-ตัวอย่างที่ใช้บ่อย:
+| ตัวเลือก | ความหมาย |
+|---|---|
+| `Name` | ชื่อที่แสดง |
+| `Default` | ค่าเริ่มต้น |
+| `Flag` | ชื่อประจำ control · อ่านผ่าน `Library.Flags["ชื่อ"]` · Config จำค่า (**ไม่มี Flag = ไม่บันทึก**) |
+| `Callback` | เรียกเมื่อค่าเปลี่ยน |
+| `Tooltip` | ข้อความตอนชี้ |
+| `NoMenu = true` | ปิดเมนูคลิกขวา |
+| `ContextMenu = {{ Name, Callback(obj) }}` | เพิ่มรายการเมนูคลิกขวา |
 
-```lua
-sec:CreateDropdown({ Name = "เป้าหมาย", Options = { "Head", "Torso" }, Default = "Head", Flag = "aim_part" })
-sec:CreateKeybind({ Name = "Aimbot", Default = Enum.KeyCode.E, Mode = "Hold", Flag = "aim_key",
-    Callback = function(down) print(down) end })
-sec:CreateSlider({ Name = "FOV", Min = 10, Max = 360, Default = 120, Flag = "aim_fov" })
-    :ShowIf("aim_on", true)       -- โชว์เมื่อ aim_on เปิด
-```
-
-### เมธอดที่ทุก control มี
+### เมธอดร่วม
 
 | เมธอด | ทำอะไร |
 |---|---|
 | `:Set(v)` / `:Get()` | ตั้ง/อ่านค่า |
-| `:SetVisible(b)` / `:ShowIf(flag, value\|fn)` | ซ่อน/แสดง |
+| `:SetVisible(b)` / `:ShowIf(flag, value \| fn)` | ซ่อน/แสดง |
 | `:SetEnabled(b)` / `:Lock()` / `:Unlock()` | ทำให้จาง + กันการกด |
 | `:OnChange(fn(v, prev))` | ดักการเปลี่ยนค่า (ต้องมี `Flag`) |
 | `:Reset()` / `:IsModified()` | กลับค่าเริ่มต้น / เช็กว่าถูกแก้ |
 | `:Destroy()` | ลบ control |
 
-ตอนสร้าง: `NoMenu = true` ปิดเมนูคลิกขวา · `ContextMenu = {{ Name, Callback(obj) }}` เพิ่มรายการเอง
+### สวิตช์ / ตัวเลข
+
+| ใช้ | ตัวเลือก / หมายเหตุ |
+|---|---|
+| `CreateToggle` | `Default` `Flag` `Callback(on)` |
+| `CreateSlider` | `Min` `Max` `Increment` `Suffix` |
+| `CreateRangeSlider` | `Default = {lo, hi}` `MinGap` · Callback(lo, hi) |
+| `CreateStepper` | `Step` `Wrap` |
+| `CreateTubeSlider` | หลอดบาง ปุ่มกลมขอบส้ม · `Min` `Max` `Increment` `Suffix` `NameWidth` `Color` `Color2` · Callback(v) |
+| `CreateArcDial` | วงจุด + หัวคน + จุดจับ L/R · ค่า = ครึ่งมุม · `Min` `Max` (0–180) `Default` `Color` `Color2` `ShowInfo` `Format = fn(half) -> main, sub` `Top` `Bottom` `Front` · Callback(half) |
+
+### เลือกจากรายการ
+
+| ใช้ | ตัวเลือก / หมายเหตุ |
+|---|---|
+| `CreateDropdown` | `Options` `Multi = true` (Default/Callback เป็น list) · `:Refresh(options)` |
+| `CreateSegmented` | `Options` · `:SetOptions` |
+| `CreateRadio` | `Options` `Default` `AllowNone` · `:Set` `:Get` `:SetOptions(list, keep)` · ทางลัด `sec:Radio(name, options, default, cb, flag)` |
+| `CreateListBox` | `Items` `Search` `Multi` · `:Add` `:Remove` |
+| `CreateChips` | `Options` `Default` `Multi` `Max` `AllowNone` · `:Set` `:Get` `:Refresh(options)` |
+| `CreatePlayerPicker` | `Display = "DisplayName"` `IncludeSelf` `Placeholder` · `:Get` `:GetName` `:Set(player)` `:Refresh` |
+
+### สี / ปุ่มลัด
+
+| ใช้ | ตัวเลือก / หมายเหตุ |
+|---|---|
+| `CreateColorPicker` | `Default = Color3` |
+| `CreateKeybind` | `Mode = "Press" \| "Hold" \| "Toggle"` · `Esc` ยกเลิก · `Backspace` ลบ |
+| `CreateKeybindToggle` | `Key` + สวิตช์ในตัวเดียว |
+
+### ข้อความ / ปุ่ม
+
+| ใช้ | ตัวเลือก / หมายเหตุ |
+|---|---|
+| `CreateTextbox` | `Numeric` `Min` `Max` `Live` `EnterOnly` |
+| `CreateInputButton` | `Button` `ClearOnSubmit` |
+| `CreateTagInput` | `Lower` `Max` |
+| `CreateButton` | `Color` `Gradient` `Bold` `Icon` · `:SetText` |
+| `CreateButtonRow` | `Buttons = { {Name, Callback}, ... }` |
+| `CreateHoldButton` | `Duration` |
+
+### แสดงผล
+
+| ใช้ | ตัวเลือก / หมายเหตุ |
+|---|---|
+| `CreateLabel` `CreateParagraph` `CreateBadge` `CreateDivider` | `:Set` |
+| `CreateProgress` | `Min` `Max` · `:Set(v)` |
+| `CreateRating` | `Max` (5) `Default` `Color` `AllowZero` · `:Set` `:Get` · ทางลัด `sec:Rating(name, max, default, cb, flag)` |
+| `CreateStat` | `Get = fn` `Interval` `Delta = true` (ไม่เซฟ Config) |
+| `CreateKeyValue` | `Value` `Copyable` |
+| `CreateCountdown` | `Target` (epoch) หรือ `Seconds` · `WarnAt` `OnDone` |
+| `CreateGraph` | `Points` `Height` · `:Push(n)` |
+| `CreatePerformance` | `Interval` (ต่ำสุด 0.2) · `:Get()` → `{ Fps, Ping, Memory }` |
+| `CreateStatusCard` | แถบค่าสูงสุด 4 · `:SetBar(i, v, text, color)` `:SetBadge` `:SetEmpty` |
+
+### ตาราง / รูป
+
+| ใช้ | ตัวเลือก / หมายเหตุ |
+|---|---|
+| `CreateTable` | `Columns` `Rows` `OnRowClick` · `:AddRow` `:SetRows` |
+| `CreateItemGrid` | `Items = {{Name, Amount, Image}}` · `:SetAmount` |
+| `CreateImage` | `Image` `Height` `Fit` |
+
+### โค้ด / Log / อื่น ๆ
+
+| ใช้ | ตัวเลือก / หมายเหตุ |
+|---|---|
+| `CreateConsole` | `:Info` `:Warn` `:Error` `:Print` |
+| `CreateCodeBlock` | `Text` `Copy` · `:Append` |
+| `CreateDiscord` | `Invite` `Button` `Refresh` · `:GetInfo()` |
+| `CreateConfigManager` | Save / Load / Delete หลาย Config · คืน `{ Name, List, Refresh }` |
 
 ---
 
-## 6. แจ้งเตือน / Dialog / Loading
+## 6. Flags
+
+### อ่าน / ตั้งค่า
+
+```lua
+Library.Flags["aim_on"]                       -- อ่านค่า
+Library:SetFlag("aim_on", true)               -- ตั้งค่า (arg ที่ 3 = true → ไม่เรียก Callback)
+Library:GetControl("aim_on")                  -- control → :Set / :Get
+Library:Watch("aim_fov", function(v, prev) end)
+Library:GetFlag("aim_fov", 120)               -- อ่านพร้อม fallback
+```
+
+### Library
+
+| API | ทำอะไร |
+|---|---|
+| `GetFlags()` / `HasFlag(flag)` | อ่านทุก Flag / เช็กว่ามี |
+| `ToggleFlag(flag)` | สลับค่า |
+| `CycleFlag(flag, options, step)` | หมุนค่าไปตัวถัดไป (`step` ติดลบ = ย้อน) คืนค่าใหม่ · ไม่อัปเดต UI เอง → ต่อด้วย `Library:GetControl(flag):Set(v, true)` |
+| `OnFlag(fn(flag, v, prev))` | ดักทุก Flag |
+| `Bind(flag, fn(v, prev))` | เหมือน `Watch` แต่ยิงทันที 1 ครั้งถ้ามีค่าอยู่แล้ว |
+| `WaitFlag(flag, want = true, timeout)` | ยีลด์รอจน Flag ได้ค่า · คืน `false` ถ้าหมดเวลา |
+
+---
+
+## 7. Notify / Dialog / Loading
 
 ใช้ได้ทั้ง `Window:` และ `Library:` (ยกเว้น `AskAmount`)
 
 | API | ทำอะไร |
 |---|---|
-| `Window:Notify({ Title, Content, Kind, Duration, Progress, Key })` | การ์ดแจ้งเตือน (`Kind` = Success/Warning/Error/Info · `Duration = 0` ค้างจนปิด · `Key` เดียวกัน = อัปเดตการ์ดเดิม) |
-| `Window:Success / Warning / Error / Info(title, content, dur)` | ทางลัด |
-| `Window:Toast("ข้อความ", "Success" \| 3)` | แถบเล็กกลางล่าง |
-| `Window:Confirm({ Title, Content, OnYes, OnNo, Danger })` | ถามยืนยัน |
-| `Window:Prompt({ Title, Placeholder, OnSubmit })` | กล่องพิมพ์ข้อความ |
-| `Window:AskAmount({ Title, Max, Default })` | ถามจำนวน → คืนเลข/`nil` (เรียกใน `task.spawn`) |
-| `Window:Dialog(cfg)` | กล่องโต้ตอบเต็มรูปแบบ (`:Wait()` รอผล) |
+| `Notify({ Title, Content, Kind, Duration, Progress, Key })` | การ์ดแจ้งเตือน · `Kind` = Success / Warning / Error / Info · `Duration = 0` ค้างจนปิด · `Key` เดียวกัน = อัปเดตการ์ดเดิม |
+| `Success` / `Warning` / `Error` / `Info(title, content, dur)` | ทางลัด |
+| `Toast("ข้อความ", "Success" \| 3)` | แถบเล็กกลางล่าง |
+| `Confirm({ Title, Content, OnYes, OnNo, Danger })` | ถามยืนยัน |
+| `Prompt({ Title, Placeholder, OnSubmit, Password, EnterSubmits })` | กล่องพิมพ์ข้อความ |
+| `AskAmount({ Title, Max, Default })` | ถามจำนวน → เลข / `nil` (เรียกใน `task.spawn`) · `Window:` เท่านั้น |
+| `Dialog(cfg)` | กล่องโต้ตอบเต็มรูปแบบ · `:Wait()` รอผล |
 | `Library:Copy(text, title)` | คัดลอก + การ์ด "Copied" |
-| `Window:DismissAll()` | ปิดการแจ้งเตือนทั้งหมด |
+| `DismissAll()` | ปิดแจ้งเตือนทั้งหมด |
+| `Library:Alert(title, content)` | แจ้งปุ่มเดียว |
+| `Library:Banner({ Title, Content, Duration, Color })` | แถบบน (ใช้ได้ตอนเมนูปิด) |
+
+### Loading
 
 ```lua
 local l = Window:Loading({ Title = "กำลังโหลด", Text = "เริ่ม...", Progress = 0 })
-l:Set(0.5, "ครึ่งทางแล้ว")      -- 0..1 (Set(false) = วนไม่รู้ความคืบหน้า)
-l:Complete("เสร็จแล้ว", 2.5)    -- หรือ l:Fail(...) / l:Close()
+l:Set(0.5, "ครึ่งทาง")      -- 0..1 · Set(false) = วนไม่รู้ความคืบหน้า
+l:Complete("เสร็จ", 2.5)    -- หรือ l:Fail(...) / l:Close()
 ```
 
 Loading **ไม่ปิดเอง** จนกว่าจะเรียก `Complete` / `Fail` / `Close`
-ปิดเสียง: `Library.Sound.Enabled = false`
+
+### ตั้งค่า
+
+| API | ทำอะไร |
+|---|---|
+| `Library.Sound.Enabled = false` | ปิดเสียง |
+| `Library.NotifyConfig` | `Position` `MaxVisible` `Duration` `Gap` `Margin` `Width` `Merge` `PauseOnHover` `Animate` |
 
 ---
 
-## 7. Config และ Undo
+## 8. Config / Undo
 
 ไฟล์เก็บที่ `SpectreUI/configs/` · เก็บเฉพาะ control ที่มี `Flag`
 
@@ -208,63 +285,79 @@ Library:SaveAuto("auto")        Library:AutoloadConfig("auto", true)
 Window:OnLoaded(function() Library:AutoloadConfig("auto", true) end)
 ```
 
-โหลดอัตโนมัติ: ผู้ใช้กด "บันทึกเป็น auto" ในแท็บ SETTINGS ก่อน แล้วค่อยเรียก `AutoloadConfig` **หลังสร้าง control ครบ**
+> `AutoloadConfig` **ไม่รอ** โหลดครบ → control ที่อยู่ใน `Build` ต้องเรียกใน `Window:OnLoaded`
 
 | API | ทำอะไร |
 |---|---|
-| `Library:Undo()` / `Redo()` | ย้อน/ทำซ้ำ (`Ctrl+Z` / `Ctrl+Y`) |
-| `Library:Transaction("ชื่อ", fn)` / `SetFlags({...})` | หลายค่า = Undo ขั้นเดียว |
-| `Library:Snapshot("a")` / `Restore("a")` | โปรไฟล์ในหน่วยความจำ |
-| `Library:GetModified()` / `ResetAll()` | ค่าที่ถูกแก้ / รีเซ็ตทั้งหมด |
+| `Undo()` / `Redo()` | ย้อน/ทำซ้ำ (`Ctrl+Z` / `Ctrl+Y`) |
+| `CanUndo()` / `CanRedo()` | เช็ก |
+| `Transaction("ชื่อ", fn)` / `SetFlags({...})` | หลายค่า = Undo ขั้นเดียว |
+| `Snapshot("a")` / `Restore("a")` / `Diff("a", "b")` | โปรไฟล์ในหน่วยความจำ / เทียบ |
+| `GetHistory()` / `ClearHistory()` | ประวัติ (`Library.History.Max` = จำนวนสูงสุด) |
+| `GetModified()` / `ResetAll()` | ค่าที่ถูกแก้ / รีเซ็ตทั้งหมด |
 
 ---
 
-## 8. ธีมและฟอนต์
+## 9. Theme / Font
 
-ธีม: Rose (เริ่มต้น), Violet, Cyber, Crimson, Matrix, Aurora, Dracula, Nord, TokyoNight, Mocha, Synthwave, Jade, Gold, Lavender, Candy, Peach, Midnight, Ocean, Sunset, Mono
+**ธีมในตัว:** Rose (เริ่มต้น) · Violet · Cyber · Crimson · Matrix · Aurora · Dracula · Nord · TokyoNight · Mocha · Synthwave · Jade · Gold · Lavender · Candy · Peach · Midnight · Ocean · Sunset · Mono
 
-ธีมที่ผู้ใช้เลือกถูกจำใน `themes.json` — **ถ้าใส่ `Theme = "..."` ใน `CreateWindow` จะบังคับธีมนั้นทุกครั้ง** (ลบออกถ้าอยากให้จำของผู้ใช้)
+ธีมที่ผู้ใช้เลือกถูกจำใน `themes.json` · `Theme = "..."` ใน `CreateWindow` = บังคับธีมทุกครั้ง
+
+### Window
 
 | API | ทำอะไร |
 |---|---|
-| `Window:SetTheme(name\|tbl, remember)` | เปลี่ยนธีมสด |
-| `Window:CycleTheme(dir)` / `RandomTheme()` | ถัดไป / สุ่ม |
-| `Library:RegisterTheme(name, tbl)` / `CloneTheme(src, new, overrides)` | เพิ่ม / ทำสำเนา |
-| `Window:ExportTheme()` / `ImportTheme(code, name)` | แชร์ธีมเป็นข้อความ `SPT1:{...}` |
-| `Window:SetFont(font, remember)` / `Library:RegisterFont(...)` | ฟอนต์ |
-| `Window:SetTextScale(1.15, true)` | ขนาดตัวอักษร (0.7–1.4) เรียกหลังสร้าง UI |
+| `SetTheme(name \| tbl, remember)` | เปลี่ยนธีมสด |
+| `CycleTheme(dir)` / `RandomTheme()` | ถัดไป / สุ่ม |
+| `ExportTheme()` / `ImportTheme(code, name)` | แชร์ธีมเป็น `SPT1:{...}` |
+| `GetThemeName()` / `RenameTheme("ใหม่")` / `DeleteTheme(name?)` | จัดการธีมของหน้าต่าง |
+| `SetFont(font, remember)` / `CycleFont(dir)` / `GetFontName()` | ฟอนต์ |
+| `SetTextScale(0.7–1.4, remember)` / `GetTextScale()` | ขนาดตัวอักษร (เรียกหลังสร้าง UI) |
+| `Window.Theme.Accent` / `.Accent2` | สีหลัก/รองปัจจุบัน |
 
-`Window.Theme.Accent` / `Accent2` = สีหลัก/รองปัจจุบัน (ใช้ทำ Gradient)
-ฟอนต์ Roblox รองรับเฉพาะละติน ภาษาไทยใช้ฟอนต์สำรองของระบบเสมอ
+### Library
+
+| API | ทำอะไร |
+|---|---|
+| `RegisterTheme(name, tbl)` / `CloneTheme(src, new, overrides)` | เพิ่ม / ทำสำเนา |
+| `GetTheme(name?)` / `ListThemes()` / `RenameTheme(old, new)` / `DeleteTheme(name)` | จัดการธีม |
+| `OnThemeChange(fn(event, a, b))` | ดักธีมเปลี่ยน |
+| `SaveThemes()` / `LoadThemes()` | เซฟ/โหลด `themes.json` |
+| `SetStatusColors({ Success = c, ... })` / `GetStatusColor(kind)` | สี Success / Warning / Error / Info |
+| `RegisterFont(...)` / `ListFonts()` | ฟอนต์ |
+| `OnAccent(Window.Theme)` | สีตัวอักษรอ่านง่ายบนสีธีม |
+
+> ฟอนต์ Roblox รองรับเฉพาะละติน · ภาษาไทยใช้ฟอนต์สำรองของระบบเสมอ
 
 ---
 
-## 9. แท็บ SETTINGS สำเร็จรูป
+## 10. SETTINGS Tab
 
 ```lua
 local tab, parts = Window:CreateSettingsTab()      -- หรือ Window:CreateDefaultTabs({...})
-local mine = tab:CreateSection({ Name = "ของฉัน", Column = 1 })   -- เพิ่มของเราเองได้
+local mine = tab:CreateSection({ Name = "ของฉัน", Column = 1 })
 ```
 
-มี: ธีมสี · Font/Text size · สร้างธีม · พื้นหลัง/เอฟเฟกต์ · ปุ่มลัด · Interface (FPS/Ping, Keybind list, ตำแหน่งแจ้งเตือน) · Config · Undo/Snapshot · Window (Unload)
+**มี:** ธีมสี · Font/Text size · สร้างธีม · พื้นหลัง/เอฟเฟกต์ · ปุ่มลัด · Interface · Config · Undo/Snapshot · Window (Unload)
 
 | ตัวเลือก | ความหมาย |
 |---|---|
-| `Sections` | `{ Theme/Hotkeys/Interface/Config/Window/History = false }` ซ่อนทีละส่วน |
+| `Sections` | `{ Theme / Hotkeys / Interface / Config / Window / History = false }` ซ่อนทีละส่วน |
 | `Maker` / `Effects` / `Fonts` | `false` = ซ่อนส่วนสร้างธีม / เอฟเฟกต์ / ฟอนต์ |
 | `Keys` | F6/F5 เปลี่ยนธีม · `false` = ปิด · `{ Next, Prev }` ตั้งเอง |
 | `DefaultConfig` / `AutoName` | ชื่อเริ่มต้นของ Config / ไฟล์ auto |
-| `WatermarkText` | ข้อความหน้า Watermark |
-| `Text` | แปลข้อความ ใส่เฉพาะคีย์ที่อยากเปลี่ยน |
+| `WatermarkText` | ข้อความ Watermark |
+| `Text` | แปลข้อความ (ใส่เฉพาะคีย์ที่จะเปลี่ยน) |
 | `Icons` | เปลี่ยนไอคอน (`false` = ไม่มี) |
 
-Flag ของระบบมีคำนำหน้า `ui_` (`ui_menu_key`, `ui_bg_fx`, `ui_quality`, `ui_theme_next`, `ui_theme_prev`, `ui_watermark`, `ui_keybind_list`, `ui_notify_pos`, `ui_notify_dur`)
+**Flag ของระบบ** (คำนำหน้า `ui_`): `ui_menu_key` `ui_bg_fx` `ui_quality` `ui_theme_next` `ui_theme_prev` `ui_watermark` `ui_keybind_list` `ui_notify_pos` `ui_notify_dur`
 
-แท็บ THEME แยกไม่ต้องเรียกแล้ว (รวมใน SETTINGS) ถ้าอยากได้ ใช้ `Window:CreateThemeTab(cfg)` หรือ `CreateDefaultTabs({ Theme = true })`
+`Window:CreateThemeTab(cfg)` / `CreateDefaultTabs({ Theme = true })` = แท็บ THEME แยก
 
 ---
 
-## 10. Command Palette, ปุ่มลัด, HUD
+## 11. Command Palette / Hotkey / HUD
 
 ```lua
 Library:AddCommand({ Name = "ไปหน้า Config", Keywords = "config save",
@@ -277,21 +370,94 @@ Window:KeybindList({ Title = "Keybinds", Position = "LeftCenter" })
 Window:Tour({ { Tab = "MAIN", Title = "ยินดีต้อนรับ", Content = "..." }, { Target = "aim_on", Title = "...", Content = "..." } })
 ```
 
-| ปุ่ม | ทำอะไร |
+| ปุ่มเริ่มต้น | ทำอะไร |
 |---|---|
-| `RightShift` (ตั้งที่ `ToggleKey` / SETTINGS) | เปิด/ปิดเมนู |
-| `Ctrl + K` | Command Palette |
+| `RightShift` (ตั้งที่ `ToggleKey`) | เปิด/ปิดเมนู |
+| `Ctrl + K` (`Library.PaletteKey`) | Command Palette |
 | `F6` / `F5` | ธีมถัดไป / ก่อนหน้า |
 | `Ctrl + Z` / `Ctrl + Y` | Undo / Redo |
 
-Watermark `Fields`: `"FPS"` `"Ping"` `"Time"` `"Date"` `"Players"` หรือ `{ Name, Get = fn }`
-ตำแหน่ง: `TopLeft/TopCenter/TopRight/LeftCenter/RightCenter/BottomLeft/BottomCenter/BottomRight` หรือ `UDim2`
+**Watermark `Fields`:** `"FPS"` `"Ping"` `"Time"` `"Date"` `"Players"` หรือ `{ Name, Get = fn }`
+**Position:** `TopLeft` `TopCenter` `TopRight` `LeftCenter` `RightCenter` `BottomLeft` `BottomCenter` `BottomRight` หรือ `UDim2`
+
+| API | ทำอะไร |
+|---|---|
+| `Library:ListHotkeys()` | รายชื่อ hotkey |
+| `Library:ShowMenu(items, anchorFrame)` / `CloseMenu()` | เมนูคลิกขวาของเรา (`Library.ContextMenu = false` = ปิดทั้งระบบ) |
 
 ---
 
-## 11. Load API
+## 12. Staged Loading / Splash
 
-โหลดสคริปต์จาก URL / ไฟล์ / โค้ดดิบ / ฟังก์ชัน พร้อมการ์ด Loading คืน `ok, result`
+เปิดเป็นค่าเริ่มต้น: แท็บโผล่ทีละอัน แล้วรัน `Build` ของแต่ละแท็บ
+
+```lua
+Window:CreateTab({ Name = "Main", Build = function(tab) ... end })
+Window:CreateTab({ Name = "Misc" }, function(tab) ... end)
+Main:Load(function(tab) ... end)      -- = Tab:Build
+```
+
+| API | ทำอะไร |
+|---|---|
+| `Window:OnLoaded(fn)` / `IsLoaded()` / `WaitLoaded()` | รอ / เช็กว่าโหลดครบ |
+| `Window:StartLoad()` | เริ่มเอง (เมื่อ `StagedLoad = { Auto = false }`) |
+| `Window:HoldLoading()` / `ReleaseLoading()` / `FinishLoading()` | คุมจังหวะ "สร้างเสร็จ" เอง |
+
+```lua
+Library:CreateWindow({ StagedLoad = false })                  -- ปิดเฉพาะหน้าต่างนี้
+Library.StagedLoad.TabDelay = 0.2                             -- ค่ากลาง (`BuildDelay` ด้วย)
+Library:CreateWindow({ Splash = false })                      -- ปิด Splash
+Library:CreateWindow({ Splash = { Duration = 2.5, Skippable = true, Async = false } })
+```
+
+`CreateWindow` รอ Splash จบก่อนคืนหน้าต่าง (`Async = true` = ไม่รอ)
+
+---
+
+## 13. Tab Password Lock
+
+### Window
+
+| API | ทำอะไร |
+|---|---|
+| `LockTabWithPassword(tab, password, reason)` | ล็อกแท็บ + ต้องใส่รหัสถึงจะปลด |
+| `TryUnlockTab(tab, password)` | → `ok, why, secs` (`why` = `"wrong"` \| `"lockout"` \| `"nopassword"`) |
+| `PromptUnlockTab(tab)` | เปิดกล่องใส่รหัส |
+| `HasTabPassword(tab)` | เช็กว่ามีรหัส |
+| `UnlockTab(tab)` | ปลดจากโค้ดทันที ไม่ใช้รหัส |
+
+```lua
+Window:CreateTab({ Name = "VIP", Icon = "lucide:crown", Password = "1234",
+    MaxAttempts = 3, LockoutTime = 30,
+    OnUnlock = function(tab) end,
+    OnWrongPassword = function(tab, tries) end,
+    Build = function(tab) ... end })
+
+Window:LockTabWithPassword("VIP", "1234", "ต้องมีรหัสเข้า")
+local ok, why, secs = Window:TryUnlockTab("VIP", "1234")
+Window:PromptUnlockTab("VIP")
+Window:GetTab("VIP"):Relock()
+```
+
+### ตัวเลือกใน `CreateTab`
+
+| ตัวเลือก | ความหมาย |
+|---|---|
+| `Password` | สตริง หรือ **ฟังก์ชัน** `function(input) return true/false end` |
+| `MaxAttempts` / `LockoutTime` | จำกัดครั้งที่ผิด / เวลารอ (วินาที, ค่าเริ่มต้น 30) |
+| `RetryPrompt = false` | ผิดแล้วไม่ถามซ้ำ แค่แจ้งเตือน |
+| `OnUnlock(tab)` / `OnWrongPassword(tab, tries)` | callback |
+| `PasswordTitle` `PasswordContent` `PasswordPlaceholder` | ข้อความในกล่องรหัสของแท็บนั้น |
+
+- แปลข้อความที่ `Library.LockText`: `Title` `Content` `Placeholder` `Unlock` `Cancel` `Reason` `Wrong` `WrongLeft` `LockedOut` `Unlocked` `UnlockedText` `CoverTitle` `CoverSub` `Default` `ToastTitle` (`%s` / `%d` = ชื่อแท็บ / ตัวเลข)
+- `Password` เป็นสตริง = รหัสอยู่ในสคริปต์ ใครอ่านก็เห็น → ต้องการความปลอดภัยจริง ให้ส่ง **ฟังก์ชัน** ตรวจกับเซิร์ฟเวอร์
+- กล่องรหัสใช้ทั่วไปได้: `Window:Prompt({ ..., Password = true, EnterSubmits = true })`
+
+---
+
+## 14. Load API
+
+โหลดสคริปต์จาก URL / ไฟล์ / โค้ดดิบ / ฟังก์ชัน พร้อมการ์ด Loading · คืน `ok, result`
 
 ```lua
 Window:Load("https://example.com/script.lua", { Name = "MyScript" })
@@ -299,171 +465,98 @@ Library:Load("myscript.lua")
 Window:LoadMany({ "https://example.com/a.lua", { Source = "https://example.com/b.lua", Args = { Library } } })
 ```
 
-ตัวเลือก: `Name` `Args` `Retries` `Silent` `Async` `OnDone(ok, res)` `Cache`
-ใช้ `game:HttpGet` ก่อน ถ้าไม่ได้ลอง `request` / `syn.request` / `http_request` เอง
+**ตัวเลือก:** `Name` `Args` `Retries` `Silent` `Async` `OnDone(ok, res)` `Cache`
+
+ใช้ `game:HttpGet` ก่อน ถ้าไม่ได้ลอง `request` / `syn.request` / `http_request`
 
 ---
 
-## 12. ตรวจ UI อัตโนมัติ + ไอคอน
+## 15. Audit / Icons
 
-ตรวจเองหลังสร้างหน้าต่าง/สลับแท็บ/ปรับขนาด แจ้งเฉพาะปัญหาใหม่ (UI ปกติจะเงียบ)
+### Audit
 
 ```lua
 local issues = Window:Audit({ Print = true, Notify = true, Fix = true })
-Library.AutoCheck.Notify = false                       -- ไม่เด้งการ์ด (ยัง warn)
+Library.AutoCheck.Notify = false                        -- ไม่เด้งการ์ด (ยัง warn)
 Library:CreateWindow({ Title = "X", AutoCheck = false })
 ```
 
-ปัญหาที่เจอบ่อย: `DupFlag` (Flag ซ้ำ), `BadCallback`, `BadRange` (Min ≥ Max), `BadDefault`, `EmptyTab`, `LowContrast`, `Offscreen`
+**รหัสปัญหา:** `DupFlag` `BadCallback` `BadRange` `BadDefault` `EmptyTab` `LowContrast` `Offscreen` · คำอธิบายทั้งหมด: `Library.AuditCodes`
 
-ไอคอน: `Icon = "lucide:swords"` (แพ็ก `lucide` เริ่มต้น / `solar` / `craft` / `geist` / `sfsymbols` / `gravity`) หรือ asset id · เพิ่มแพ็กเอง `Library:AddIcons("mine", { home = 123456 })` · ดาวน์โหลดล่วงหน้า `Library:PreloadIcons()`
+### Icons
+
+| API | ทำอะไร |
+|---|---|
+| `Icon = "lucide:swords"` | ใช้ไอคอน (แพ็ก `lucide` เริ่มต้น / `solar` / `craft` / `geist` / `sfsymbols` / `gravity`) หรือ asset id |
+| `Library:AddIcons("mine", { home = 123456 })` | เพิ่มแพ็กเอง |
+| `Library:PreloadIcons()` | ดาวน์โหลดล่วงหน้า |
+| `IsIconName` / `ResolveIcon` / `MakeIcon(desc, color)` / `SetIconModule(mod)` | ตัวช่วยระดับล่าง |
+| `Library.IconLib.Default` / `.Url` | แพ็กเริ่มต้น / ที่อยู่ `Main-v2.lua` |
+| `Library.KindIcons` | ไอคอนของ control แต่ละชนิดในผลค้นหา (เช่น `.Toggle = "lucide:power"`) |
 
 ---
 
-## 13. API หลัก
+## 16. Library Utilities
 
-### CreateWindow(cfg)
+| API | ทำอะไร |
+|---|---|
+| `SetQuality("low" \| "high" \| "auto")` | ทางลัดของ `Perf.LowPower` (`Library.Perf.LowPower = true` ลดอาการกระตุกมือถือ) |
+| `SetAnimSpeed(n)` / `Library.Anim.Speed` | ความเร็วอนิเมชัน (1.25 = ช้าลง 25%) |
+| `Track(x)` | เก็บ Connection/Instance/ฟังก์ชันไว้เคลียร์ตอน `Unload()` |
+| `OnUnload(fn)` | ลงทะเบียนฟังก์ชันให้รันตอน `Unload()` |
+| `Connect(signal, fn)` | เหมือน `signal:Connect` + pcall + track |
+| `Cooldown(key, seconds)` | `if Library:Cooldown("k", 3) then ... end` รันได้ 1 ครั้งต่อช่วงเวลา |
+| `Try(fn, ...)` | `pcall` ที่ `warn` error → `ok, ...` |
+| `Loop(flag?, interval, fn(handle))` | ลูป task · `flag` = รันเฉพาะตอน Flag เปิด · handle: `:Start` `:Stop` `:IsRunning` `:SetInterval` `:Destroy` |
+| `Http(o)` | `{ Url, Method, Headers, Body, Json, Retries }` → `ok, res` (`res.Data` = JSON decode แล้วถ้า `Json = true`) |
+| `HttpGet(url, json?)` / `HttpPost(url, body, json?)` | ทางลัดของ `Http` → `ok, body \| decoded` |
+| `Webhook(url, text \| { Content, Username, Avatar, Embeds }, { Retries, Async })` | ส่ง Discord webhook (ไม่ ping ใคร) → `ok, err?` |
+| `Embed(cfg)` | `{ Title, Description, Url, Color, Fields = {{Name,Value,Inline}}, Footer, Image, Thumbnail, Timestamp = true }` ใช้คู่ `Webhook` |
+| `SaveData(key, value)` / `LoadData(key, default)` / `DeleteData(key)` | เก็บค่าถาวรแยกจาก Config (number/string/boolean/table) ที่ `SpectreUI/data/` |
+| `Character(timeout = 10)` | ยีลด์รอ `char, humanoid, rootPart` · `nil` ถ้าหมดเวลา |
+| `OnRespawn(fn(char, humanoid, root))` | รันทันทีถ้ามีตัวละคร แล้วรันซ้ำทุก respawn |
+| `Library.Util` | `Round` `FormatNumber` `FormatTime` `Debounce` `Throttle` `Lighten` `Darken` `ToHex` ... |
+| `Library.Anim` | `Tween` `Show` `Hide` `Pulse` |
+| `Library.Responsive` | `IsTouch` `Breakpoint` `Scale` |
+
+---
+
+## 17. Language
+
+| API | ทำอะไร |
+|---|---|
+| `Library:AddLanguage(code, strings, meta)` | เพิ่ม/ต่อภาษา · `strings = { ["English"] = "แปล" }` · `meta = { Name, Native }` → `ok, err?` |
+| `Library:LoadLanguage(code, urlOrJson, meta?)` | โหลดภาษาจาก URL / JSON (`{ strings, Name, Native }` หรือ table ตรง ๆ) |
+| `Library:SetLanguage(code, save)` / `Window:SetLanguage(code, save)` | เปลี่ยนภาษา (`save = true` จำค่า) → `ok, code \| err` |
+| `Library:GetLanguage()` | โค้ดภาษาปัจจุบัน |
+| `Library:ListLanguages()` | → `{ { Code, Name, Native }, ... }` |
+| `Library:Translate(key, ...)` / `Library.T(key, ...)` | แปลคีย์ (มี `...` = `string.format`) |
+| `Library:OnLanguageChange(fn(code, old))` | ดักเปลี่ยนภาษา → `{ Disconnect }` |
+
+---
+
+## 18. AutoUpdate
+
+```lua
+local h = Library:AutoUpdate({ Url = "https://host/hub.lua", Interval = 30 })
+h.Check()   h.Stop()
+```
 
 | ตัวเลือก | ความหมาย |
 |---|---|
-| `Title` | `"แบรนด์ \| ย่อย"` |
-| `Logo` `Width` `Height` | โลโก้ (asset id) / ขนาด |
-| `ToggleKey` | ปุ่มเปิด/ปิดเมนู |
-| `HideOpenButtonOnPC = true` | ซ่อนปุ่มเปิด UI บน PC (มือถือยังเห็น) · ตั้งทั้งไลบรารีได้ด้วย `Library.HideOpenButtonOnPC = true` · ใช้คู่กับ `ToggleKey` |
-| `Theme` `Font` `FX` | ธีม / ฟอนต์ / เอฟเฟกต์ (`petals/orbs/grid/embers/rain`) |
-| `Background = false` / `Resizable = false` | ปิดพื้นหลัง / ห้ามปรับขนาด |
-| `TwoColumn` / `Compact` | บังคับ 2 คอลัมน์ / โหมดแคบ · บนมือถือ `TwoColumn` ต้องใส่ `true` เอง และพื้นที่เนื้อหาต้องกว้าง ≥ 520px |
-| `Splash` / `StagedLoad` / `AutoCheck` | หัวข้อ 4 / 4 / 12 |
+| `Url` | สคริปต์หลักที่สร้าง UI (รันซ้ำเมื่อมีการเปลี่ยน) · ใส่สตริงตรง ๆ ได้ · ค่าเริ่มต้น `Library.SourceUrl` |
+| `Watch` | ลิสต์ URL ที่ต้องเฝ้า (เช่น `{ hubUrl, libUrl }`) · ค่าเริ่มต้น `{ Url }` |
+| `Run` | URL ที่ใช้รันเมื่ออัปเดต |
+| `VersionUrl` | endpoint เล็ก (ข้อความ/JSON) ใช้เช็กแทนการโหลดต้นฉบับ |
+| `Interval` | วินาทีระหว่างเช็ก (ต่ำสุด 10 · ค่าเริ่มต้น 120) |
+| `CacheBust` | ค่าเริ่มต้น `true` |
+| `Delay` | หน่วงก่อนรีโหลด (ค่าเริ่มต้น 1.2) |
+| `OnUpdate(newSource)` | คืน `false` = ข้ามอัปเดตนี้ |
 
-### Window
-
-| เมธอด | ทำอะไร |
-|---|---|
-| `CreateTab(cfg [, build])` | `Name` `Icon` `Build` `Locked` `LockReason` |
-| `GetTab` / `SetTab` / `ListTabs` / `RemoveTab` / `RenameTab` | จัดการแท็บ |
-| `LockTab(tab, reason)` / `UnlockTab(tab)` | ล็อกแท็บ VIP |
-| `Open` / `Close` / `Toggle` / `IsOpen` | เปิด/ปิดเมนู |
-| `SetToggleKey(key)` | เปลี่ยนปุ่มเมนู |
-| `SetHideOpenButtonOnPC(bool)` | ซ่อน/แสดงปุ่มเปิด UI บน PC · มือถือไม่ได้รับผล |
-| `SetTitle` `Center` `Resize` `SetMaximized` `Flash` | หน้าตาหน้าต่าง |
-| `SetTwoColumn(bool)` / `SetCompact(bool)` | สลับ 2 คอลัมน์ / โหมดแคบ |
-| `SetUIScale(0.6–1.6)` / `GetUIScale()` | ขนาด UI ทั้งหมด |
-| `SetAnimSpeed(0.25–3)` | ความเร็วอนิเมชัน (= `Library:SetAnimSpeed`) |
-| `AddFloatingButton({ Name, Text, Toggle, Default, Flag, Position, Size, Callback })` | ปุ่มลอยบนจอ · ใส่ `Flag` ของ toggle เดิมเพื่อสลับค่านั้น · `:Set` `:Get` `:SetText` `:SetVisible` `:Destroy` |
-| `Goto(obj\|"flag"\|"ชื่อ")` | กระโดดไป control |
-| `Destroy()` | ทำลายหน้าต่าง · `Library:Unload()` ทำลายทั้งหมด |
-
-### Tab / Section
-
-| เมธอด | ทำอะไร |
-|---|---|
-| `tab:CreateSection({ Name, Column = 1\|2, Collapsible, Collapsed, Icon })` | สร้าง section |
-| `tab:AddSection(name, column?)` | ทางลัดของ `CreateSection` แบบ positional args |
-| `tab:SetBadge("NEW")` | ป้ายที่แท็บ |
-| `tab:ResetAll()` / `section:ResetAll()` | รีเซ็ตค่า |
-| `section:SetCollapsed(bool)` | พับ/กาง |
-
-### API เพิ่มเติม (อ้างอิงเร็ว)
-
-**Library**
-
-| API | ทำอะไร |
-|---|---|
-| `GetFlags()` / `ToggleFlag(flag)` / `OnFlag(fn(flag, v, prev))` | อ่านทุก Flag / สลับ / ดักทุก Flag |
-| `GetFlag(flag, default)` / `HasFlag(flag)` | อ่าน Flag เดียวพร้อม fallback / เช็กว่ามี Flag นี้ |
-| `CycleFlag(flag, options, step)` | หมุนค่า Flag ไปตัวถัดไปใน `options` (`step` ติดลบ = ย้อนกลับ) คืนค่าใหม่ · ไม่อัปเดตหน้าตา control เอง ถ้าจะให้ UI ขยับ เรียก `Library:GetControl(flag):Set(v, true)` ต่อ |
-| `CanUndo()` / `CanRedo()` / `GetHistory()` / `ClearHistory()` / `Diff("a","b")` | ประวัติ Undo + เทียบ Snapshot (`Library.History.Max` = จำนวนสูงสุด) |
-| `Alert(title, content)` / `Banner({ Title, Content, Duration, Color })` | แจ้งปุ่มเดียว / แถบบน (ใช้ได้ตอนเมนูปิด) |
-| `ShowMenu(items, anchorFrame)` / `CloseMenu()` | เมนูคลิกขวาของเราเอง (`Library.ContextMenu = false` = ปิดทั้งระบบ) |
-| `SetQuality("low"\|"high"\|"auto")` | ทางลัดของ `Perf.LowPower` |
-| `GetTheme(name?)` / `ListThemes()` / `RenameTheme(old, new)` / `DeleteTheme(name)` | จัดการธีม |
-| `OnThemeChange(fn(event, a, b))` / `SaveThemes()` / `LoadThemes()` | ดักธีมเปลี่ยน / เซฟ-โหลด `themes.json` |
-| `SetStatusColors({ Success = c, ... })` / `GetStatusColor(kind)` | สี Success/Warning/Error/Info |
-| `ListFonts()` / `ListHotkeys()` | รายชื่อฟอนต์ / hotkey |
-| `OnAccent(Window.Theme)` | สีตัวอักษรที่อ่านง่ายบนสีธีม (ไลบรารีใช้เองอัตโนมัติ) |
-| `IsIconName` / `ResolveIcon` / `MakeIcon(desc, color)` / `SetIconModule(mod)` | ตัวช่วยไอคอนระดับล่าง |
-| `Library.IconLib.Default` / `.Url` | แพ็กไอคอนเริ่มต้น / ที่อยู่ `Main-v2.lua` |
-| `Library.KindIcons` | ไอคอนของ control แต่ละชนิดในผลค้นหา (เช่น `Library.KindIcons.Toggle = "lucide:power"`) · control ที่ตั้ง `Icon` เอง (เช่น Button) ใช้ไอคอนนั้น · ไอคอนแท็บมาจาก `Icon` ของ `CreateTab` |
-| `Library.PaletteKey` | ปุ่มคู่กับ Ctrl เปิด Palette (ค่าเริ่มต้น `K`) |
-| `Library.NotifyConfig` | `Position` `MaxVisible` `Duration` `Gap` `Margin` `Width` `Merge` `PauseOnHover` `Animate` |
-| `Library.Anim.Speed` | ความเร็วอนิเมชัน (1.25 = ช้าลง 25%) |
-| `Library.Util` / `Library.Anim` / `Library.Responsive` | helper (`Round` `FormatNumber` `FormatTime` `Debounce` `Throttle` `Lighten` `Darken` `ToHex` ... / `Tween` `Show` `Hide` `Pulse` / `IsTouch` `Breakpoint` `Scale`) |
-| `Library.AuditCodes` | คำอธิบายกฎตรวจ UI ทั้งหมด |
-| `Track(x)` / `OnUnload(fn)` | เก็บ Connection/Instance/ฟังก์ชันไว้เคลียร์อัตโนมัติตอน `Unload()` / ลงทะเบียนฟังก์ชันให้รันตอน `Unload()` |
-| `Connect(signal, fn)` | เหมือน `signal:Connect` แต่ครอบ pcall + track ให้เอง |
-| `Bind(flag, fn(v, prev))` | เหมือน `Watch` แต่ยิงทันที 1 ครั้งถ้า Flag มีค่าอยู่แล้ว |
-| `WaitFlag(flag, want=true, timeout)` | ยีลด์รอจน Flag ได้ค่าที่ต้องการ คืน `false` ถ้าหมดเวลา |
-| `Cooldown(key, seconds)` | `if Library:Cooldown("k", 3) then ... end` ให้โค้ดรันได้สูงสุด 1 ครั้งต่อช่วงเวลา |
-| `Try(fn, ...)` | `pcall` ที่ `warn` error แทนที่จะเงียบ คืน `ok, ...` |
-| `Loop(flag?, interval, fn(handle))` | ลูป task เอง มี `flag` = รันเฉพาะตอน Flag นั้นเปิด · คืน handle มี `:Start` `:Stop` `:IsRunning` `:SetInterval` `:Destroy` |
-| `Http(o)` | ขอ HTTP เอง `{ Url, Method, Headers, Body, Json, Retries }` → `ok, res` (`res.Data` = JSON ที่ decode แล้วถ้า `Json = true`) |
-| `HttpGet(url, json?)` / `HttpPost(url, body, json?)` | ทางลัดของ `Http` → `ok, body\|decoded` |
-| `Webhook(url, text\|{ Content, Username, Avatar, Embeds }, { Retries, Async })` | ส่ง Discord webhook (ไม่ ping ใคร) → `ok, err?` |
-| `Embed(cfg)` | สร้าง embed object เดียว `{ Title, Description, Url, Color, Fields = {{Name,Value,Inline}}, Footer, Image, Thumbnail, Timestamp = true }` ใช้คู่กับ `Webhook` |
-| `SaveData(key, value)` / `LoadData(key, default)` / `DeleteData(key)` | เก็บค่าถาวรแยกจาก Config UI (เลข/string/boolean/table ธรรมดา) ที่ `SpectreUI/data/` |
-| `Character(timeout=10)` | ยีลด์รอ `char, humanoid, rootPart` ครบ คืน `nil` ถ้าหมดเวลา |
-| `OnRespawn(fn(char, humanoid, root))` | รันทันทีถ้ามีตัวละครอยู่แล้ว แล้วรันซ้ำทุกครั้งที่ respawn |
-
-**Window**
-
-| API | ทำอะไร |
-|---|---|
-| `SelectTab(nameOrTab)` | สลับแท็บ (เหมือน `SetTab`) |
-| `IsTabLocked(tab)` | เช็กว่าแท็บล็อก |
-| `IsMaximized()` / `SetSize(w, h)` | เช็กขยายเต็มจอ / ตั้งขนาด |
-| `OnResize(fn)` / `CloseDropdowns()` | ดักปรับขนาด / ปิด dropdown ที่เปิดอยู่ |
-| `SetBackground("orbs"\|false\|nil)` | เปลี่ยนเอฟเฟกต์พื้นหลัง (`nil` = ตามธีม) |
-| `SetNotifyTheme("Cyber"\|tbl\|nil)` | ธีมสีเฉพาะการแจ้งเตือน/Dialog |
-| `GetThemeName()` / `GetFontName()` / `CycleFont(dir)` / `GetTextScale()` / `GetToggleKey()` | อ่านค่าปัจจุบัน / ฟอนต์ถัดไป |
-| `RenameTheme("ใหม่")` / `DeleteTheme(name?)` | จัดการธีมของหน้าต่าง |
-| `OpenPalette(initial)` / `ClosePalette()` | เปิด/ปิด Command Palette จากโค้ด |
-| `AddTab(name, icon?, build?)` | ทางลัดของ `CreateTab` แบบ positional args |
-| `Tooltip(target, text\|fn)` | ผูก tooltip เองกับ GuiObject ใดก็ได้ (`target`) · ซ่อนบนมือถือ |
-
-**Tab / Section**
-
-| API | ทำอะไร |
-|---|---|
-| `tab:SetLocked(bool, reason)` / `IsLocked()` / `SetLockReason(text)` | ล็อกแท็บ |
-| `section:CreateSeparator(cfg)` | เส้นคั่น (คู่กับ `CreateDivider`) |
-| `section:CreateThemeManager({ Name, Flag, Remember, Random, Delete })` | UI จัดการธีมสำเร็จรูป |
-| `section:CreateFontPicker({ Name, Flag, Remember })` | dropdown เลือกฟอนต์ |
-
-**มีในโค้ดแต่ไม่เคยอยู่ในคู่มือ (ยังไม่ทราบพฤติกรรมแน่ชัด):** `Window:FitText` `Glitch` `PlayCascade` `Scramble` `SetAurora` `SetRainbow` `SetShaded` `SetSpotlight` `Shake` · `Tab:SetScrollEnabled`
+คอมไพล์เวอร์ชันใหม่ก่อนเสมอ ไฟล์ที่พังจะไม่ทำให้ UI เดิมล่ม · คืน handle `{ Check(), Stop() }`
 
 ---
 
-## 14. ปัญหาที่พบบ่อย
+## 19. Undocumented
 
-| อาการ | วิธีแก้ |
-|---|---|
-| เมนูไม่ขึ้น | เช็กว่า executor รองรับ `game:HttpGet` + ต่อเน็ตอยู่ แล้วลองกดปุ่มเปิด/ปิด (`RightShift`) |
-| เมนูว่าง / แท็บไม่ครบ | โหลดเป็นขั้นตามปกติ รอการ์ด Loading ขึ้น "Ready" (หรือตั้ง `StagedLoad = false`) |
-| Config ไม่โหลดตอนเริ่ม | ต้องมีไฟล์ `auto.json` (กด "บันทึกเป็น auto" ก่อน) และเรียก `AutoloadConfig` ใน `Window:OnLoaded` |
-| ธีมที่เลือกไม่ถูกจำ | ลบ `Theme = "..."` ออกจาก `CreateWindow` |
-| มือถือกระตุก | `Library.Perf.LowPower = true` หรือเลือกคุณภาพ `low` ใน SETTINGS |
-| "คัดลอก Config" ไม่ได้ | executor ไม่รองรับคลิปบอร์ด ใช้บันทึกเป็นไฟล์แทน |
-| ตัวหนังสือมองไม่เห็นในธีมสว่าง | ลบ `TextColor` ที่ตั้งเองออก ไลบรารีเลือกสีให้ |
-| UI ไม่ตรงคู่มือ | ไฟล์ GitHub ยังไม่อัปเดต หรือ executor แคชเก่า รันใหม่แล้วเช็ก `print(Library.Splash, Library.StagedLoad)` (ต้องเป็น `table`) |
-| Splash มี error | ดู console หา `[SpectreUI] splash error: ...` UI ยังสร้างตามปกติ |
-
----
-
-## 15. บันทึกการเปลี่ยนแปลง (ย่อ)
-
-สถานะ **beta**: `Library.Version = "3.17"`, `Library.Stage = "beta"` (ตั้ง `Stage = nil` ตอนปล่อยเสถียร)
-
-- **ล่าสุด:** `HideOpenButtonOnPC` ซ่อนปุ่มเปิดเฉพาะ PC (แก้บั๊กที่เคยซ่อนบนมือถือด้วย) · สเกลอัตโนมัติจำกัดไม่เกิน 1x (`AutoScaleMax = 1`, `AutoScaleRef = 720`) และขนาดหน้าต่างเริ่มต้นสูงสุด 640×420 · ปรับได้ด้วย `Width`/`Height` ใน `CreateWindow`
-- **ก่อนหน้า:** เพิ่ม `CreateRadio`, `CreateRating` · `Library:GetFlag` / `HasFlag` / `CycleFlag`
-- **ก่อนหน้า:** เพิ่ม `CreateStatusCard` · รวมแท็บ THEME เข้า SETTINGS · เพิ่มส่วน Interface ใน SETTINGS
-- **v3.17:** โหลดเป็นขั้น (`Build`, `OnLoaded`, `StagedLoad`)
-- **v3.16:** Splash แบบเรียบ (ค่าเริ่มต้นสั้นลง)
-- **v3.15:** เพิ่ม Splash
-- **v3.14:** Controls ใหม่ (ButtonRow, InputButton, KeyValue, CodeBlock, Countdown, ListBox, Table, Image, ItemGrid) · `AskAmount` · `RemoveTab`/`RenameTab` · `SetToggleKey` · `Library:Copy`
-- **v3.13:** ฟอนต์ + `SetTextScale` · Flag helper · `Library:Hotkey` · แชร์ธีม
-- **v3.12:** `CreateStepper`, `CreateStat`
-- **v3.11:** `Watermark`, `KeybindList`, `Tour`
-- **v3.10:** ตรวจ UI อัตโนมัติ
-- **v3.9:** Load API
-- **v3.8:** ระบบไอคอน
-- **v3.7:** แท็บสำเร็จรูป · **Flag ธีมเปลี่ยนชื่อ** เป็นคำนำหน้า `ui_` (`bg_fx`→`ui_bg_fx`, `quality`→`ui_quality`, `theme_next_key`→`ui_theme_next`, `theme_prev_key`→`ui_theme_prev`, `menu_key`→`ui_menu_key`) Config เก่าไม่ผูกกับค่าเหล่านี้ ตั้งใหม่แล้วบันทึกทับครั้งเดียว
+มีในโค้ด แต่ยังไม่ทราบพฤติกรรมแน่ชัด: `Window:FitText` `Glitch` `PlayCascade` `Scramble` `SetAurora` `SetRainbow` `SetShaded` `SetSpotlight` `Shake` · `Tab:SetScrollEnabled`

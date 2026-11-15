@@ -5,11 +5,14 @@ local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
-local Library = { Flags = {}, Objects = {}, Windows = {}, ConfigFolder = "SpectreUI/configs", Version = "3.27", _flagCbs = {} }
+local Library = { Flags = {}, Objects = {}, Windows = {}, ConfigFolder = "SpectreUI/configs", Version = "3.28", _flagCbs = {} }
 Library.DiskWrites = false
 -- shared design tokens: one status palette + one mono font for the whole library
 Library.Status = { Success = Color3.fromRGB(52, 211, 153), Warn = Color3.fromRGB(251, 191, 36), Danger = Color3.fromRGB(248, 113, 113) }
 Library.FontMono = Enum.Font.Code
+-- Clean mode (default): flat surfaces, no glow / gradients / sheen / animated backdrops, one accent colour.
+-- Set Library.CleanMode = false before CreateWindow to bring the old decorative look back.
+Library.CleanMode = true
 Library.__index = Library
 do
 local jobs, hb = {}, nil
@@ -1036,167 +1039,69 @@ end
 genv.__SpectreUI_Lib = Library
 end
 local function rgb(r, g, b) return Color3.fromRGB(r, g, b) end
+Library.PaletteVersion = "navy-mono-2"   -- print(Library.PaletteVersion) to check you are running this build
 Library.Themes = {
+-- Default theme (used whenever no theme is passed): neutral dark surfaces + a coral primary.
+-- Change the colour in one place: Accent / Accent2 (solid), AccentSoft (dark tint ~14% of Accent over Panel), Sheen (Accent lightened ~75%).
+Spectre = {
+Background = rgb(11, 14, 22),  Panel = rgb(16, 20, 31),   Card = rgb(21, 26, 39),   Control = rgb(30, 36, 53),
+Border = rgb(44, 52, 74),      Accent = rgb(228, 231, 240), Accent2 = rgb(228, 231, 240), AccentSoft = rgb(34, 41, 60),
+Sheen = rgb(248, 249, 253),    Text = rgb(240, 243, 250), SubText = rgb(142, 152, 176),
+FX = false, Glow = false, Clean = true,
+},
 Clean = {
 Background = rgb(13, 13, 16),  Panel = rgb(18, 18, 22),   Card = rgb(23, 23, 27),   Control = rgb(32, 32, 38),
 Border = rgb(38, 38, 46),      Accent = rgb(94, 140, 240), Accent2 = rgb(94, 140, 240), AccentSoft = rgb(27, 36, 58),
 Sheen = rgb(214, 226, 250),    Text = rgb(236, 237, 242), SubText = rgb(142, 144, 156),
 FX = false, Glow = false, Clean = true,
 },
-Nova = {
-Background = rgb(10, 12, 14),  Panel = rgb(15, 18, 21),   Card = rgb(21, 25, 29),   Control = rgb(31, 36, 42),
-Border = rgb(42, 50, 58),      Accent = rgb(45, 212, 170), Accent2 = rgb(94, 234, 212), AccentSoft = rgb(13, 50, 44),
-Sheen = rgb(204, 251, 241),    Text = rgb(240, 246, 245), SubText = rgb(138, 153, 160),
-FX = false,
+Obsidian = {
+Background = rgb(16, 16, 23),  Panel = rgb(22, 21, 30),  Card = rgb(27, 27, 37),  Control = rgb(37, 36, 49),
+Border = rgb(48, 47, 65),  Accent = rgb(139, 124, 246),  Accent2 = rgb(139, 124, 246),  AccentSoft = rgb(38, 35, 63),
+Sheen = rgb(223, 218, 252),  Text = rgb(234, 234, 244),  SubText = rgb(144, 144, 167),
+FX = false, Glow = false, Clean = true,
 },
-Rose = {
-Background = rgb(13, 9, 12),   Panel = rgb(20, 14, 18),   Card = rgb(26, 19, 24),   Control = rgb(37, 27, 34),
-Border = rgb(74, 46, 62),      Accent = rgb(244, 114, 182), Accent2 = rgb(251, 146, 190), AccentSoft = rgb(70, 28, 52),
-Sheen = rgb(255, 208, 226),    Text = rgb(253, 242, 248), SubText = rgb(196, 152, 174),
-FX = "petals",
+Sapphire = {
+Background = rgb(14, 17, 23),  Panel = rgb(19, 23, 30),  Card = rgb(24, 28, 37),  Control = rgb(32, 38, 50),
+Border = rgb(41, 50, 65),  Accent = rgb(56, 160, 248),  Accent2 = rgb(56, 160, 248),  AccentSoft = rgb(22, 43, 64),
+Sheen = rgb(199, 228, 253),  Text = rgb(231, 236, 244),  SubText = rgb(135, 147, 167),
+FX = false, Glow = false, Clean = true,
 },
-Violet = {
-Background = rgb(8, 7, 14),    Panel = rgb(14, 12, 23),   Card = rgb(18, 16, 29),   Control = rgb(24, 21, 38),
-Border = rgb(52, 42, 94),      Accent = rgb(139, 92, 246), Accent2 = rgb(217, 70, 239), AccentSoft = rgb(40, 26, 78),
-Sheen = rgb(190, 170, 255),    Text = rgb(240, 238, 250), SubText = rgb(152, 148, 180),
-FX = "orbs",
+Emerald = {
+Background = rgb(13, 19, 20),  Panel = rgb(18, 25, 26),  Card = rgb(23, 31, 33),  Control = rgb(32, 41, 44),
+Border = rgb(41, 54, 57),  Accent = rgb(52, 211, 153),  Accent2 = rgb(52, 211, 153),  AccentSoft = rgb(20, 54, 44),
+Sheen = rgb(198, 243, 226),  Text = rgb(231, 238, 240),  SubText = rgb(135, 152, 158),
+FX = false, Glow = false, Clean = true,
 },
-Cyber = {
-Background = rgb(6, 10, 16),   Panel = rgb(10, 17, 27),   Card = rgb(13, 22, 35),   Control = rgb(19, 31, 48),
-Border = rgb(30, 78, 110),     Accent = rgb(34, 211, 238), Accent2 = rgb(59, 130, 246), AccentSoft = rgb(10, 46, 70),
-Sheen = rgb(165, 243, 252),    Text = rgb(236, 248, 255), SubText = rgb(140, 170, 190),
-FX = "grid",
+Teal = {
+Background = rgb(13, 19, 21),  Panel = rgb(18, 24, 28),  Card = rgb(23, 30, 35),  Control = rgb(32, 40, 47),
+Border = rgb(40, 53, 61),  Accent = rgb(45, 200, 200),  Accent2 = rgb(45, 200, 200),  AccentSoft = rgb(19, 52, 53),
+Sheen = rgb(196, 240, 240),  Text = rgb(230, 237, 242),  SubText = rgb(134, 151, 162),
+FX = false, Glow = false, Clean = true,
 },
-Crimson = {
-Background = rgb(12, 6, 7),    Panel = rgb(20, 10, 12),   Card = rgb(26, 13, 16),   Control = rgb(36, 20, 24),
-Border = rgb(100, 36, 44),     Accent = rgb(239, 68, 68), Accent2 = rgb(249, 115, 22), AccentSoft = rgb(70, 20, 24),
-Sheen = rgb(254, 202, 202),    Text = rgb(254, 242, 242), SubText = rgb(190, 150, 150),
-FX = "embers",
+Rosewood = {
+Background = rgb(20, 16, 19),  Panel = rgb(26, 21, 26),  Card = rgb(32, 26, 32),  Control = rgb(43, 36, 44),
+Border = rgb(56, 46, 56),  Accent = rgb(244, 114, 140),  Accent2 = rgb(244, 114, 140),  AccentSoft = rgb(60, 34, 41),
+Sheen = rgb(252, 216, 223),  Text = rgb(238, 234, 240),  SubText = rgb(154, 143, 156),
+FX = false, Glow = false, Clean = true,
 },
-Matrix = {
-Background = rgb(5, 10, 7),    Panel = rgb(9, 18, 12),    Card = rgb(12, 24, 16),   Control = rgb(18, 34, 24),
-Border = rgb(30, 92, 56),      Accent = rgb(34, 197, 94), Accent2 = rgb(132, 204, 22), AccentSoft = rgb(12, 52, 30),
-Sheen = rgb(187, 247, 208),    Text = rgb(240, 253, 244), SubText = rgb(140, 180, 155),
-FX = "rain",
+Amethyst = {
+Background = rgb(18, 16, 23),  Panel = rgb(24, 22, 30),  Card = rgb(30, 27, 37),  Control = rgb(40, 37, 50),
+Border = rgb(52, 47, 65),  Accent = rgb(192, 132, 252),  Accent2 = rgb(192, 132, 252),  AccentSoft = rgb(49, 37, 64),
+Sheen = rgb(237, 221, 254),  Text = rgb(236, 235, 244),  SubText = rgb(149, 145, 167),
+FX = false, Glow = false, Clean = true,
 },
-Midnight = {
-Background = rgb(7, 9, 18),    Panel = rgb(12, 15, 28),   Card = rgb(16, 20, 36),   Control = rgb(24, 29, 50),
-Border = rgb(44, 54, 96),      Accent = rgb(99, 102, 241), Accent2 = rgb(56, 189, 248), AccentSoft = rgb(30, 34, 84),
-Sheen = rgb(199, 210, 254),    Text = rgb(238, 242, 255), SubText = rgb(148, 158, 196),
-FX = "orbs",
+Amber = {
+Background = rgb(20, 18, 16),  Panel = rgb(26, 23, 22),  Card = rgb(32, 29, 28),  Control = rgb(43, 39, 39),
+Border = rgb(56, 51, 49),  Accent = rgb(245, 176, 52),  Accent2 = rgb(245, 176, 52),  AccentSoft = rgb(60, 46, 22),
+Sheen = rgb(252, 233, 198),  Text = rgb(238, 236, 236),  SubText = rgb(154, 149, 147),
+FX = false, Glow = false, Clean = true,
 },
-Ocean = {
-Background = rgb(5, 12, 16),   Panel = rgb(9, 20, 26),   Card = rgb(12, 27, 34),   Control = rgb(18, 40, 50),
-Border = rgb(28, 74, 90),      Accent = rgb(45, 212, 191), Accent2 = rgb(56, 189, 248), AccentSoft = rgb(10, 52, 60),
-Sheen = rgb(153, 246, 228),    Text = rgb(236, 254, 255), SubText = rgb(136, 178, 188),
-FX = "grid",
-},
-Sunset = {
-Background = rgb(15, 9, 8),    Panel = rgb(24, 14, 12),   Card = rgb(31, 19, 16),   Control = rgb(44, 28, 23),
-Border = rgb(94, 54, 40),      Accent = rgb(251, 146, 60), Accent2 = rgb(244, 63, 94), AccentSoft = rgb(78, 36, 24),
-Sheen = rgb(254, 215, 170),    Text = rgb(255, 247, 237), SubText = rgb(196, 160, 140),
-FX = "embers",
-},
-Mono = {
-Background = rgb(10, 10, 12),  Panel = rgb(17, 17, 20),   Card = rgb(22, 22, 26),   Control = rgb(32, 32, 38),
-Border = rgb(58, 58, 68),      Accent = rgb(228, 228, 237), Accent2 = rgb(161, 161, 178), AccentSoft = rgb(44, 44, 54),
-Sheen = rgb(255, 255, 255),    Text = rgb(244, 244, 248), SubText = rgb(150, 150, 164),
-FX = "orbs",
-},
-Minimal = {
-Background = rgb(15, 16, 19),  Panel = rgb(21, 22, 26),   Card = rgb(27, 28, 33),   Control = rgb(35, 37, 43),
-Border = rgb(54, 57, 66),      Accent = rgb(126, 150, 196), Accent2 = rgb(150, 171, 210), AccentSoft = rgb(36, 42, 56),
-Sheen = rgb(222, 229, 244),    Text = rgb(230, 233, 240), SubText = rgb(138, 144, 158),
-},
-Aurora = {
-Background = rgb(7, 11, 18),   Panel = rgb(12, 18, 28),   Card = rgb(16, 24, 37),   Control = rgb(24, 34, 52),
-Border = rgb(42, 66, 98),      Accent = rgb(110, 231, 183), Accent2 = rgb(167, 139, 250), AccentSoft = rgb(22, 56, 70),
-Sheen = rgb(209, 250, 229),    Text = rgb(240, 253, 250), SubText = rgb(146, 174, 188),
-FX = "orbs",
-},
-Dracula = {
-Background = rgb(20, 21, 30),  Panel = rgb(27, 28, 40),   Card = rgb(33, 34, 49),   Control = rgb(44, 46, 66),
-Border = rgb(70, 73, 104),     Accent = rgb(189, 147, 249), Accent2 = rgb(255, 121, 198), AccentSoft = rgb(58, 44, 94),
-Sheen = rgb(233, 220, 255),    Text = rgb(248, 248, 242), SubText = rgb(160, 164, 198),
-FX = "orbs",
-},
-Nord = {
-Background = rgb(20, 24, 32),  Panel = rgb(27, 32, 43),   Card = rgb(33, 39, 52),   Control = rgb(44, 52, 68),
-Border = rgb(67, 80, 102),     Accent = rgb(136, 192, 208), Accent2 = rgb(129, 161, 193), AccentSoft = rgb(34, 54, 68),
-Sheen = rgb(216, 236, 244),    Text = rgb(236, 239, 244), SubText = rgb(150, 166, 188),
-FX = "grid",
-},
-TokyoNight = {
-Background = rgb(15, 16, 26),  Panel = rgb(22, 24, 38),   Card = rgb(26, 28, 46),   Control = rgb(36, 40, 64),
-Border = rgb(60, 68, 102),     Accent = rgb(122, 162, 247), Accent2 = rgb(187, 154, 247), AccentSoft = rgb(36, 46, 86),
-Sheen = rgb(196, 213, 255),    Text = rgb(214, 222, 255), SubText = rgb(132, 142, 184),
-FX = "orbs",
-},
-Mocha = {
-Background = rgb(17, 17, 27),  Panel = rgb(24, 24, 37),   Card = rgb(30, 30, 46),   Control = rgb(42, 43, 62),
-Border = rgb(69, 71, 92),      Accent = rgb(203, 166, 247), Accent2 = rgb(245, 194, 231), AccentSoft = rgb(56, 44, 86),
-Sheen = rgb(240, 220, 255),    Text = rgb(205, 214, 244), SubText = rgb(147, 153, 180),
-FX = "petals",
-},
-Synthwave = {
-Background = rgb(13, 7, 22),   Panel = rgb(22, 11, 36),   Card = rgb(29, 15, 47),   Control = rgb(42, 22, 68),
-Border = rgb(98, 40, 124),     Accent = rgb(255, 64, 200), Accent2 = rgb(0, 229, 255), AccentSoft = rgb(76, 18, 88),
-Sheen = rgb(255, 190, 240),    Text = rgb(255, 240, 252), SubText = rgb(188, 150, 202),
-FX = "grid",
-},
-Gold = {
-Background = rgb(12, 10, 7),   Panel = rgb(21, 17, 11),   Card = rgb(28, 23, 15),   Control = rgb(41, 34, 22),
-Border = rgb(98, 80, 36),      Accent = rgb(250, 204, 21), Accent2 = rgb(245, 158, 11), AccentSoft = rgb(76, 58, 16),
-Sheen = rgb(254, 240, 170),    Text = rgb(254, 252, 232), SubText = rgb(196, 182, 142),
-FX = "embers",
-},
-Lavender = {
-Background = rgb(12, 10, 18),  Panel = rgb(19, 16, 28),   Card = rgb(25, 21, 38),   Control = rgb(36, 31, 56),
-Border = rgb(76, 64, 114),     Accent = rgb(196, 167, 255), Accent2 = rgb(244, 170, 255), AccentSoft = rgb(54, 42, 90),
-Sheen = rgb(232, 220, 255),    Text = rgb(248, 244, 255), SubText = rgb(172, 162, 202),
-FX = "petals",
-},
-Candy = {
-Background = rgb(11, 12, 20),  Panel = rgb(17, 19, 31),   Card = rgb(22, 24, 40),   Control = rgb(32, 35, 58),
-Border = rgb(66, 74, 114),     Accent = rgb(125, 211, 252), Accent2 = rgb(249, 168, 212), AccentSoft = rgb(34, 50, 86),
-Sheen = rgb(224, 242, 254),    Text = rgb(244, 248, 255), SubText = rgb(158, 168, 198),
-FX = "petals",
-},
-Peach = {
-Background = rgb(16, 10, 11),  Panel = rgb(26, 16, 17),   Card = rgb(33, 21, 22),   Control = rgb(47, 31, 32),
-Border = rgb(102, 62, 58),     Accent = rgb(253, 164, 175), Accent2 = rgb(253, 186, 116), AccentSoft = rgb(80, 36, 40),
-Sheen = rgb(255, 228, 220),    Text = rgb(255, 245, 242), SubText = rgb(204, 166, 160),
-FX = "petals",
-},
-Ember = {
-Background = rgb(14, 10, 8),   Panel = rgb(22, 16, 12),   Card = rgb(29, 21, 16),   Control = rgb(42, 30, 23),
-Border = rgb(96, 62, 40),      Accent = rgb(255, 154, 72), Accent2 = rgb(255, 98, 82), AccentSoft = rgb(74, 38, 20),
-Sheen = rgb(255, 224, 196),    Text = rgb(255, 244, 234), SubText = rgb(206, 170, 144),
-FX = "embers",
-},
-Glacier = {
-Background = rgb(9, 13, 19),   Panel = rgb(14, 20, 29),   Card = rgb(19, 27, 38),   Control = rgb(28, 40, 56),
-Border = rgb(52, 76, 104),     Accent = rgb(140, 214, 255), Accent2 = rgb(176, 196, 255), AccentSoft = rgb(24, 46, 72),
-Sheen = rgb(224, 244, 255),    Text = rgb(240, 248, 255), SubText = rgb(150, 172, 198),
-FX = "orbs",
-},
-Jade = {
-Background = rgb(8, 14, 12),   Panel = rgb(13, 22, 19),   Card = rgb(18, 30, 26),   Control = rgb(26, 44, 38),
-Border = rgb(40, 86, 72),      Accent = rgb(82, 232, 176), Accent2 = rgb(150, 240, 120), AccentSoft = rgb(16, 62, 48),
-Sheen = rgb(206, 255, 232),    Text = rgb(238, 252, 246), SubText = rgb(140, 176, 162),
-FX = "orbs",
-},
-Orchid = {
-Background = rgb(14, 9, 17),   Panel = rgb(22, 14, 27),   Card = rgb(30, 19, 36),   Control = rgb(44, 29, 53),
-Border = rgb(94, 56, 112),     Accent = rgb(232, 130, 255), Accent2 = rgb(255, 140, 190), AccentSoft = rgb(66, 32, 82),
-Sheen = rgb(246, 214, 255),    Text = rgb(252, 242, 255), SubText = rgb(192, 160, 204),
-FX = "petals",
-},
-Royal = {
-Background = rgb(9, 10, 18),   Panel = rgb(14, 16, 28),   Card = rgb(19, 22, 38),   Control = rgb(29, 33, 56),
-Border = rgb(86, 78, 52),      Accent = rgb(244, 200, 96), Accent2 = rgb(255, 168, 84), AccentSoft = rgb(66, 54, 22),
-Sheen = rgb(255, 238, 196),    Text = rgb(250, 247, 238), SubText = rgb(178, 174, 156),
-FX = false,
+Graphite = {
+Background = rgb(16, 16, 20),  Panel = rgb(22, 22, 26),  Card = rgb(27, 28, 33),  Control = rgb(37, 37, 45),
+Border = rgb(49, 49, 58),  Accent = rgb(224, 226, 236),  Accent2 = rgb(224, 226, 236),  AccentSoft = rgb(53, 54, 59),
+Sheen = rgb(246, 247, 250),  Text = rgb(238, 239, 244),  SubText = rgb(149, 151, 163),
+FX = false, Glow = false, Clean = true,
 },
 }
 -- Relative luminance (WCAG), shared by the theme builder and OnAccent.
@@ -1204,19 +1109,27 @@ local function luminance(c)
 local function f(v) return v <= 0.03928 and v / 12.92 or ((v + 0.055) / 1.055) ^ 2.4 end
 return 0.2126 * f(c.R) + 0.7152 * f(c.G) + 0.0722 * f(c.B)
 end
-local THEME_COMMON = { Font = Enum.Font.GothamMedium, FontBold = Enum.Font.GothamBold, Glow = true, Animate = true, Success = Library.Status.Success, Warn = Library.Status.Warn, Danger = Library.Status.Danger, FontMono = Library.FontMono }
+local THEME_COMMON = { Font = Enum.Font.GothamMedium, FontBold = Enum.Font.GothamBold, Glow = false, Animate = true, Success = Library.Status.Success, Warn = Library.Status.Warn, Danger = Library.Status.Danger, FontMono = Library.FontMono }
+local function applyClean(T)
+if Library.CleanMode == false then return T end
+T.Clean, T.Glow, T.FX = true, false, false
+T.Accent2 = T.Accent
+T.Top = T.Panel
+T.Wash = T.AccentSoft
+return T
+end
 local function buildTheme(src)
 local T = table.clone(THEME_COMMON)
-for k, v in pairs(Library.Themes.Rose) do T[k] = v end
+for k, v in pairs(Library.Themes.Clean) do T[k] = v end
 T.Clean = nil
 for k, v in pairs(src or {}) do T[k] = v end
 if src and src.FX == nil then T.FX = "orbs" end
 local white = Color3.new(1, 1, 1)
-T.Text = T.Text:Lerp(white, 0.15)
-T.SubText = T.SubText:Lerp(T.Text, 0.35)
-T.Border = T.Border:Lerp(T.Accent, 0.08):Lerp(white, 0.04)
-T.Control = T.Control:Lerp(white, 0.035)
-T.Card = T.Card:Lerp(white, 0.012)
+T.Text = T.Text:Lerp(white, 0.3)
+T.SubText = T.SubText:Lerp(T.Text, 0.55)
+T.Border = T.Border:Lerp(T.Accent, 0.04):Lerp(white, 0.06)
+T.Control = T.Control:Lerp(white, 0.05)
+T.Card = T.Card:Lerp(white, 0.02)
 local lum = luminance
 local function worst(fg, bgs)
 local lf, w = lum(fg), 21
@@ -1236,9 +1149,9 @@ fg = fg:Lerp(toward, 0.1)
 end
 return fg
 end
-T.Text = legible(T.Text, 9)
-T.SubText = legible(T.SubText, 5)
-return T
+T.Text = legible(T.Text, 12)
+T.SubText = legible(T.SubText, 7)
+return applyClean(T)
 end
 local function deriveTheme(T)
 local black, white = Color3.new(0, 0, 0), Color3.new(1, 1, 1)
@@ -1247,9 +1160,9 @@ T.Deep = T.Deep or T.Background:Lerp(black, 0.4)
 T.Lift = T.Lift or T.Control:Lerp(T.Accent, 0.12)
 T.Wash = T.Wash or T.AccentSoft:Lerp(T.Accent2, 0.15)
 T.Knob = T.Knob or white:Lerp(T.Accent, 0.04)
-return T
+return applyClean(T)
 end
-Library.Theme = buildTheme(Library.Themes.Clean)
+Library.Theme = buildTheme(Library.Themes.Spectre)
 function Library.OnAccent(a, b)
 if type(a) == "table" then a, b = a.Accent, a.Accent2 end
 a = a or Color3.new(1, 1, 1)
@@ -1814,7 +1727,7 @@ local seq
 if typeof(a) == "ColorSequence" then
 seq, rot = a, b or 0
 else
-seq = ColorSequence.new(a, b)
+seq = ColorSequence.new(a, Library.CleanMode ~= false and a or b)
 rot = rot or 0
 end
 return new("UIGradient", { Color = seq, Rotation = rot })
@@ -1826,7 +1739,7 @@ return ColorSequence.new(pts)
 end
 local function wash(seq, rot)
 local g = gradient(seq, rot)
-if lowPower() then g.Enabled = false end
+if lowPower() or Library.CleanMode ~= false then g.Enabled = false end
 return g
 end
 local function fadeSeq(peak)
@@ -2178,7 +2091,7 @@ state.Center = c
 if state.Direct then
 target.Position = UDim2.fromOffset(math.round(c.X), math.round(c.Y))
 elseif (touch or lowPower()) and not state.Smooth then
-target.Position = UDim2.fromOffset(c.X, c.Y)
+target.Position = UDim2.fromOffset(math.round(c.X), math.round(c.Y))
 else
 follow()
 end
@@ -2399,7 +2312,7 @@ BackgroundTransparency = 1, BorderSizePixel = 0, Active = false, Parent = layer,
 }, {
 new("UICorner", { CornerRadius = UDim.new(0, math.max(radius - 1, 0)) }),
 new("UIStroke", {
-Color = T.Border, Thickness = 1, Transparency = 0.35, ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+Color = T.Border, Thickness = 1, Transparency = 0.1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 }),
 })
 end
@@ -2407,6 +2320,7 @@ function Window:SetBackground(kind, quiet)
 local fx = self.FX
 if not fx then return end
 if kind == nil then kind = self.Theme.FX end
+if Library.CleanMode ~= false then kind = false end
 for _, tw in ipairs(fx.Tweens) do pcall(function() tw:Cancel() end) end
 table.clear(fx.Tweens)
 fx.Paused = false
@@ -2667,7 +2581,7 @@ local nBtns = canResize and 3 or 2
 local btnArea = closeW * nBtns + 4 * (nBtns - 1)
 new("Frame", {
 Name = "Hairline", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 12, 1, 0), Size = UDim2.new(1, -24, 0, 1),
-BackgroundColor3 = T.Accent, BorderSizePixel = 0, Active = false, Parent = hcard,
+BackgroundColor3 = T.Accent, BorderSizePixel = 0, Active = false, Visible = Library.CleanMode == false, Parent = hcard,
 }, {
 new("UIGradient", { Transparency = NumberSequence.new({
 NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(0.45, 0.85), NumberSequenceKeypoint.new(1, 1),
@@ -2934,6 +2848,10 @@ end
 win._drag.Top = function() return win:_Top() end
 win._drag.Side = function() return win:_Sides() end
 win._drag.Free = false
+-- Smooth drag: the window used to snap to every raw touch event on mobile / low power, which looks steppy
+-- whenever the event rate dips below the frame rate. Smooth = true routes it through the per-frame follow loop.
+win._drag.Smooth = true
+win._drag.FollowRate = IS_MOBILE and 42 or 34
 makeDraggable(gui, dragZone, main, win._drag)
 local body = new("Frame", {
 Name = "Body", Position = UDim2.fromOffset(0, HEADER_H), Size = UDim2.new(1, 0, 1, -HEADER_H),
@@ -3509,7 +3427,17 @@ if i.KeyCode ~= resolveToggleKey() then return end
 if UserInputService:GetFocusedTextBox() then return end
 win:SetVisible(not win.Visible)
 end))
-table.insert(win.Conns, gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() win:_Fit() end))
+do
+local fitQueued = false
+table.insert(win.Conns, gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+if fitQueued then return end
+fitQueued = true
+task.defer(function()
+fitQueued = false
+if not win._destroyed then win:_Fit() end
+end)
+end))
+end
 win:_Fit()
 table.insert(win.Conns, UserInputService.WindowFocusReleased:Connect(function()
 win._blurred = true
@@ -3549,59 +3477,6 @@ local tw = TweenService:Create(ring, info, { Size = UDim2.fromOffset(72, 72) })
 tw.Completed:Connect(function() rings = rings - 1; ring:Destroy() end)
 tw:Play()
 end))
-local topBtn = new("TextButton", {
-Name = "ToTop", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -20, 1, -2), Size = UDim2.fromOffset(38, 38),
-BackgroundColor3 = T.Accent, BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Visible = false, ZIndex = 24,
-Parent = win.Pages,
-}, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }), stroke(T.Border, 1, 0.3) })
-local legs = {}
-for _, d in ipairs({ { -4, -45 }, { 4, 45 } }) do
-table.insert(legs, new("Frame", {
-AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, d[1], 0.5, 0), Size = UDim2.fromOffset(12, 3), Rotation = d[2],
-BackgroundColor3 = Library.OnAccent(T), BorderSizePixel = 0, Active = false, ZIndex = 25, Parent = topBtn,
-}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }) }))
-end
-local shown = false
-local function setShown(v)
-shown = v
-local info = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-if v then
-topBtn.Position = UDim2.new(1, -20, 1, 10)
-topBtn.Visible = true
-TweenService:Create(topBtn, info, { Position = UDim2.new(1, -20, 1, -2), BackgroundTransparency = 0.12 }):Play()
-for _, l in ipairs(legs) do TweenService:Create(l, info, { BackgroundTransparency = 0 }):Play() end
-else
-local tw = TweenService:Create(topBtn, info, { Position = UDim2.new(1, -20, 1, 10), BackgroundTransparency = 1 })
-tw.Completed:Connect(function() if not shown then topBtn.Visible = false end end)
-tw:Play()
-for _, l in ipairs(legs) do TweenService:Create(l, info, { BackgroundTransparency = 1 }):Play() end
-end
-end
-topBtn.MouseButton1Click:Connect(function()
-local t = win.Active
-if not (t and t.Cols) then return end
-for _, c in ipairs(t.Cols) do
-TweenService:Create(c, TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { CanvasPosition = Vector2.zero }):Play()
-end
-end)
-task.spawn(function()
-while not win._destroyed do
-task.wait(0.25)
-local t = win.Active
-local show = false
-if win.Visible and t and t.Cols and t.Page and t.Page.Visible then
-for _, c in ipairs(t.Cols) do
-if c.CanvasPosition.Y > 240 then show = true end
-end
-end
-if show ~= shown then setShown(show) end
-if shown then
-local th = win.Theme or T
-topBtn.BackgroundColor3 = th.Accent
-for _, l in ipairs(legs) do l.BackgroundColor3 = Library.OnAccent(th) end
-end
-end
-end)
 end
 win:_StartGovernor()
 table.insert(self.Windows, win)
@@ -4146,12 +4021,12 @@ function Library._AreaGraph(parent, o)
 	local dot = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(7, 7), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Visible = false, ZIndex = z + 3, Parent = area }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(Color3.new(1, 1, 1), 1, 0.4) })
 
 	local topLbl = new("TextLabel", {
-		Position = UDim2.fromOffset(6, 2), Size = UDim2.fromOffset(60, 12), BackgroundTransparency = 1, Text = "", Font = T.Font, TextSize = 11,
-		TextColor3 = T.SubText, TextTransparency = 0.35, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = z + 4, Parent = area,
+		Position = UDim2.fromOffset(6, 2), Size = UDim2.fromOffset(60, 12), BackgroundTransparency = 1, Text = "", Font = T.Font, TextSize = 12,
+		TextColor3 = T.SubText, TextTransparency = 0.15, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = z + 4, Parent = area,
 	})
 	new("TextLabel", {
-		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 6, 1, -2), Size = UDim2.fromOffset(30, 12), BackgroundTransparency = 1, Text = "0", Font = T.Font, TextSize = 11,
-		TextColor3 = T.SubText, TextTransparency = 0.5, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = z + 4, Parent = area,
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 6, 1, -2), Size = UDim2.fromOffset(30, 12), BackgroundTransparency = 1, Text = "0", Font = T.Font, TextSize = 12,
+		TextColor3 = T.SubText, TextTransparency = 0.25, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = z + 4, Parent = area,
 	})
 
 	local g = { Area = area }
@@ -4375,7 +4250,7 @@ function Window:_BuildProfile()
 			BackgroundColor3 = T.Control, BackgroundTransparency = 0.45, BorderSizePixel = 0, ZIndex = 57, Parent = tiles,
 		}, { corner(14), stroke(T.Border, 1, 0.6) })
 		tileVal[cap] = label({ Position = UDim2.fromOffset(0, 14), Size = UDim2.new(1, 0, 0, 30), Text = "-", Font = T.FontBold, TextSize = 24, TextXAlignment = Enum.TextXAlignment.Center, Parent = t })
-		tileSub[cap] = label({ Position = UDim2.fromOffset(0, 46), Size = UDim2.new(1, 0, 0, 16), Text = cap, TextSize = 11, TextColor3 = T.SubText, TextXAlignment = Enum.TextXAlignment.Center, Parent = t })
+		tileSub[cap] = label({ Position = UDim2.fromOffset(0, 46), Size = UDim2.new(1, 0, 0, 16), Text = cap, TextSize = 12, TextColor3 = T.SubText, TextXAlignment = Enum.TextXAlignment.Center, Parent = t })
 	end
 
 	-- History graphs: smooth gradient area + line + glowing end dot, scrolls continuously between samples.
@@ -4386,7 +4261,7 @@ function Window:_BuildProfile()
 	local function makeGraph(title, stops, minHi, hiStep, fmt, ref)
 		local box = new("Frame", { Size = UDim2.new(1, 0, 0, 24 + GH), BackgroundTransparency = 1, ZIndex = 57, LayoutOrder = nextOrder(), Parent = scroll })
 		label({ Size = UDim2.new(0.4, 0, 0, 16), Text = title, Font = T.FontBold, TextSize = 13, TextColor3 = T.SubText, Parent = box })
-		local stat = label({ Position = UDim2.fromScale(0.4, 0), Size = UDim2.new(0.6, 0, 0, 16), Text = "", TextSize = 11, TextColor3 = T.SubText, TextXAlignment = RIGHT, Parent = box })
+		local stat = label({ Position = UDim2.fromScale(0.4, 0), Size = UDim2.new(0.6, 0, 0, 16), Text = "", TextSize = 12, TextColor3 = T.SubText, TextXAlignment = RIGHT, Parent = box })
 		local g = Library._AreaGraph(box, {
 			Theme = T, Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, GH), Height = GH, Points = GN, Interval = SAMPLE_T,
 			Stops = stops, MinHi = minHi, HiStep = hiStep, Format = fmt, Ref = ref, ZIndex = 57,
@@ -5402,7 +5277,7 @@ ui.MaxText = ui.Content:FindFirstChildOfClass("UISizeConstraint")
 else
 local cs = touch and 32 or 24
 ui.Rail = new("Frame", { Name = "Hairline", Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -24, 0, 1),
-BackgroundColor3 = T.Accent, BorderSizePixel = 0, ZIndex = 3, Parent = card },
+BackgroundColor3 = T.Accent, BorderSizePixel = 0, ZIndex = 3, Visible = Library.CleanMode == false, Parent = card },
 { new("UIGradient", { Transparency = NumberSequence.new({
 NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(0.45, 0.85), NumberSequenceKeypoint.new(1, 1),
 }) }) })
@@ -5866,7 +5741,7 @@ AutomaticSize = AY, BackgroundTransparency = 1, Active = true, ZIndex = 2, Visib
 new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Panel, BackgroundTransparency = 0.02, BorderSizePixel = 0, ZIndex = 1, Parent = card },
 { wash(cseq({ 0, T.Top }, { 1, T.Deep }), 90) })
 local dlgTint = new("Frame", { Name = "Tint", Size = UDim2.new(1, 0, 0, 96), BackgroundColor3 = accent, BackgroundTransparency = 0,
-BorderSizePixel = 0, ZIndex = 2, Visible = not lowPower(), Parent = card },
+BorderSizePixel = 0, ZIndex = 2, Visible = not lowPower() and Library.CleanMode == false, Parent = card },
 { new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(0.84, 1) }) })
 local dlgRim = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 2, Parent = card }, { corner(12), stroke(accent, 2, 0.45) })
 local dlgStroke = dlgRim:FindFirstChildOfClass("UIStroke")
@@ -5900,14 +5775,31 @@ Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = tostring(ic.Def
 PlaceholderColor3 = T.SubText, TextColor3 = T.Text, Font = T.Font, TextSize = 14, TextXAlignment = LEFT, ClearTextOnFocus = false, ZIndex = 4, Parent = fr,
 })
 local maxLen = type(ic.MaxLength) == "number" and math.floor(ic.MaxLength) or 200
+if ic.Password then
+local real, mask = "", "•"
+dlg.getText = function() return real end
+bag:Add(box:GetPropertyChangedSignal("Text"):Connect(function()
+local t = box.Text
+local keepN = select(2, t:gsub(mask, ""))
+local typed = t:gsub(mask, "")
+local rl = utf8.len(real) or #real
+if keepN > rl then keepN = rl end
+local cut = (utf8.offset(real, keepN + 1) or (#real + 1)) - 1
+real = real:sub(1, cut) .. typed
+if utf8.len(real) and utf8.len(real) > maxLen then real = Util.Truncate(real, maxLen, "") end
+local shown = string.rep(mask, utf8.len(real) or #real)
+if shown ~= box.Text then box.Text = shown end
+end))
+else
 bag:Add(box:GetPropertyChangedSignal("Text"):Connect(function()
 local t = box.Text
 if ic.Numeric then t = t:gsub("[^%d%.%-]", "") end
 if utf8.len(t) and utf8.len(t) > maxLen then t = Util.Truncate(t, maxLen, "") end
 if t ~= box.Text then box.Text = t end
 end))
+end
 bag:Add(box.Focused:Connect(function() tween(fr:FindFirstChildOfClass("UIStroke"), 0.15, { Color = accent, Transparency = 0.05 }) end))
-bag:Add(box.FocusLost:Connect(function() tween(fr:FindFirstChildOfClass("UIStroke"), 0.2, { Color = T.Border, Transparency = 0.3 }) end))
+bag:Add(box.FocusLost:Connect(function() tween(fr:FindFirstChildOfClass("UIStroke"), 0.2, { Color = T.Border, Transparency = 0.1 }) end))
 dlg.box = box
 end
 local custom
@@ -5945,7 +5837,7 @@ for _, co in ipairs(waiters) do task.spawn(co, value, input) end
 waiters = {}
 end
 dlg.destroy = function() dlg.instant = true finish(nil, nil, "destroyed") end
-local function currentInput() return box and box.Text or nil end
+local function currentInput() return box and (dlg.getText and dlg.getText() or box.Text) or nil end
 local defaultBtn
 for i = 1, n do
 local b = buttons[i]
@@ -5960,7 +5852,7 @@ Size = vertical and UDim2.new(1, 0, 0, btnH) or UDim2.new(1 / n, -math.ceil(10 *
 }, { corner(12) })
 if style == "Secondary" then
 btn.BackgroundColor3 = T.Control
-new("UIStroke", { Color = T.Border, Thickness = 1, Transparency = 0.15, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = btn })
+new("UIStroke", { Color = T.Border, Thickness = 1, Transparency = 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = btn })
 feedback(btn, btn, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft)
 else
 local c1 = style == "Danger" and Library.Kinds.Error.Color or accent
@@ -5975,7 +5867,7 @@ if style ~= "Danger" then table.insert(accentGrads, g) end
 feedback(btn, btn, "BackgroundColor3", fill, Color3.new(1, 1, 1):Lerp(T.Background, 0.08), Color3.new(1, 1, 1):Lerp(T.Background, 0.22))
 new("UIStroke", { Color = style == "Danger" and Util.Lighten(c1, 0.45) or Util.Lighten(accent, 0.45), Thickness = 1, Transparency = 0.45, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = btn })
 new("Frame", {
-Name = "Gloss", Size = UDim2.fromScale(1, 0.5), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Active = false, ZIndex = 3, Parent = btn,
+Name = "Gloss", Size = UDim2.fromScale(1, 0.5), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Active = false, ZIndex = 3, Visible = Library.CleanMode == false, Parent = btn,
 }, { corner(12), new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(0.8, 1) }) })
 end
 local pressScale = new("UIScale", { Scale = 1, Parent = btn })
@@ -6059,6 +5951,11 @@ bag:Add(outside.MouseButton1Click:Connect(function() dismiss("overlay") end))
 bag:Add(UserInputService.InputBegan:Connect(function(i)
 if i.KeyCode == Enum.KeyCode.Escape and self.Dialogs[#self.Dialogs] == dlg then dismiss("escape") end
 end))
+if box and type(cfg.Input) == "table" and cfg.Input.EnterSubmits then
+bag:Add(box.FocusLost:Connect(function(enter)
+if enter and dlg.open then finish(true, currentInput(), "enter") end
+end))
+end
 handle.Close = method(handle, function(value) finish(value, currentInput(), "api") return true end)
 handle.IsOpen = method(handle, function() return dlg.open end)
 handle.IsAlive = handle.IsOpen
@@ -6139,8 +6036,8 @@ end
 function NM:Prompt(cfg)
 if type(cfg) ~= "table" then cfg = {} end
 return self:Dialog({
-Title = cfg.Title or "Input", Content = cfg.Content, Kind = cfg.Kind, Icon = cfg.Icon, Width = cfg.Width, Dismissable = cfg.Dismissable,
-Input = { Placeholder = cfg.Placeholder, Default = cfg.Default, MaxLength = cfg.MaxLength, Numeric = cfg.Numeric, AutoFocus = cfg.AutoFocus },
+Title = cfg.Title or "Input", Content = cfg.Content, Kind = cfg.Kind, Icon = cfg.Icon, Width = cfg.Width, Dismissable = cfg.Dismissable, Build = cfg.Build,
+Input = { Placeholder = cfg.Placeholder, Default = cfg.Default, MaxLength = cfg.MaxLength, Numeric = cfg.Numeric, AutoFocus = cfg.AutoFocus, Password = cfg.Password, EnterSubmits = cfg.EnterSubmits },
 Buttons = {
 { Text = cfg.No or "Cancel", Style = "Secondary", Value = false },
 { Text = cfg.Yes or "OK", Style = "Primary", Value = true },
@@ -6481,7 +6378,9 @@ if tab.Cfg and tab.Cfg.LockedNotify == false then return end
 if (tab._lockToast or 0) + 1.5 > now then return end
 tab._lockToast = now
 pcall(function()
-self:Warning(tab.Name .. " is locked", tab.LockReason or "This tab is locked.", 2.5)
+local LTx = Library.LockText or {}
+local okT, ttl = pcall(string.format, LTx.ToastTitle or "%s is locked", tostring(tab.Name))
+self:Warning(okT and ttl or (tab.Name .. " is locked"), tab.LockReason or LTx.Default or "This tab is locked.", 2.5)
 end)
 end
 local function findTab(win, nameOrTab)
@@ -6853,7 +6752,7 @@ BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Active = false, ZIn
 }, { new("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.86), NumberSequenceKeypoint.new(1, 1) }) }) })
 local sweeping = false
 local function playSheen()
-if sweeping then return end
+if sweeping or Library.CleanMode ~= false then return end
 sweeping = true
 sheen.Position = UDim2.new(-0.25, 0, 0.5, 0)
 sheen.Visible = true
@@ -7024,27 +6923,29 @@ local min, max, inc = cfg.Min or 0, cfg.Max or 100, cfg.Increment or 1
 local value = snap(cfg.Default or min, min, max, inc)
 local suffix = cfg.Suffix or ""
 local touch = Library.SizeTouch
-local total = touch and 50 or 42
-local knobS, knobBig = touch and 16 or 12, touch and 20 or 15
+local total = touch and 46 or 38
+local knobS, knobBig = touch and 14 or 12, touch and 20 or 18
+local trackS, trackBig = touch and 5 or 4, touch and 8 or 7
 local frame = new("Frame", { Size = UDim2.new(1, 0, 0, total), BackgroundTransparency = 1, Parent = self.Body })
 new("TextLabel", {
-Size = UDim2.new(1, -70, 0, 18), BackgroundTransparency = 1, Text = cfg.Name or "Slider", Font = T.Font, TextSize = 14,
+Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -86, 0, 18), BackgroundTransparency = 1, Text = cfg.Name or "Slider", Font = T.Font, TextSize = 14,
 TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
 })
 local valLabel
 local hit = new("TextButton", {
-Position = UDim2.fromOffset(0, 20), Size = UDim2.new(1, 0, 1, -20), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Parent = frame,
+Position = UDim2.fromOffset(0, 18), Size = UDim2.new(1, 0, 1, -18), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Parent = frame,
 })
+-- flat pill track, same language as the Toggle: full radius, hairline border, solid accent fill, 10px inset so the knob never overhangs the row
 local track = new("Frame", {
-AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.new(1, 0, 0, 4),
+AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0), Size = UDim2.new(1, -20, 0, trackS),
 BackgroundColor3 = T.Control, BorderSizePixel = 0, Parent = hit,
-}, { corner(2) })
+}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(T.Border, 1, 0.7) })
 local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = track },
-{ corner(2), gradient(T.Accent, T.Accent2, 0) })
+{ new("UICorner", { CornerRadius = UDim.new(1, 0) }), gradient(T.Accent, T.Accent2, 0) })
 local knob = new("Frame", {
 AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(knobS, knobS),
 BackgroundColor3 = T.Knob, BorderSizePixel = 0, ZIndex = 2, Parent = track,
-}, { corner(8), stroke(T.Accent, 2, 0) })
+}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(T.Accent, 2, 1.15) })
 local obj = {}
 local pendingX, pumpC, dragging
 local tgtA, visA, lastPut
@@ -7070,7 +6971,7 @@ if changed and not silent then safe(cfg.Callback, v) end
 end
 function obj:Get() return value end
 valLabel = Library._numBox(T, {
-AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(72, 20), Parent = frame,
+AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 0), Size = UDim2.fromOffset(72, 20), Parent = frame,
 }, suffix, function() return tostring(value) end, function(n)
 if n == nil then render(value, false) else obj:Set(n) end
 end)
@@ -7132,6 +7033,8 @@ dragging = false
 pump(1 / 60)
 tab:SetScrollEnabled(true)
 tween(knob, 0.16, { Size = UDim2.fromOffset(knobS, knobS) })
+tween(knob:FindFirstChildOfClass("UIStroke"), 0.16, { Transparency = 1 })
+tween(track, 0.16, { Size = UDim2.new(1, -20, 0, trackS) })
 end
 hit.InputBegan:Connect(function(i)
 if not isPress(i) then return end
@@ -7142,6 +7045,8 @@ dragging = true
 pumpC = RunService.RenderStepped:Connect(pump)
 tab:SetScrollEnabled(false)
 tween(knob, 0.12, { Size = UDim2.fromOffset(knobBig, knobBig) })
+tween(knob:FindFirstChildOfClass("UIStroke"), 0.12, { Transparency = 0 })
+tween(track, 0.12, { Size = UDim2.new(1, -20, 0, trackBig) })
 fromX(i.Position.X)
 end)
 self:_Register(frame, cfg.Name, total)
@@ -7293,7 +7198,7 @@ BackgroundColor3 = T.AccentSoft, BackgroundTransparency = 1, BorderSizePixel = 0
 }, { rc(4) })
 local arrow = new("TextLabel", {
 AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(22, 22),
-BackgroundTransparency = 1, Text = "▼", Font = T.FontBold, TextSize = 9, TextColor3 = T.SubText, Parent = chip,
+BackgroundTransparency = 1, Text = "▼", Font = T.FontBold, TextSize = 10, TextColor3 = T.SubText, Parent = chip,
 })
 local dd = { IsOpen = false }
 btn.MouseEnter:Connect(function()
@@ -7455,8 +7360,7 @@ if not popup then return end
 local top, bot = chrome()
 local n = visibleCount()
 emptyLbl.Visible = n == 0
-local rowsH = (n == 0 and (optH + GAP) or rowsHeight()) + PAD
-local ph = math.clamp(top + bot + rowsH, math.min(top + bot + optH + PAD, maxH), maxH)
+local ph = maxH
 if opening then
 popup.Size = UDim2.fromOffset(popW, math.max(math.floor(ph * 0.5), 1))
 tween(popup, 0.28, { Size = UDim2.fromOffset(popW, ph) }, QUINT, OUT)
@@ -7630,7 +7534,7 @@ searchBox = new("TextBox", {
 Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.Control, Text = "", PlaceholderText = "Search…",
 PlaceholderColor3 = T.SubText, TextColor3 = T.Text, Font = T.Font, TextSize = touch and 14 or 13, TextXAlignment = LEFT,
 ClearTextOnFocus = false, Parent = searchHolder,
-}, { rc(6), new("UIStroke", { Color = T.Border, Thickness = 1, Transparency = 0.2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }), padding(36, 0, 32, 0) })
+}, { rc(6), new("UIStroke", { Color = T.Border, Thickness = 1, Transparency = 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }), padding(36, 0, 32, 0) })
 searchDiv = new("Frame", {
 Position = UDim2.new(0, 12, 0, searchH - 1), Size = UDim2.new(1, -24, 0, 1), BackgroundColor3 = T.Border,
 BackgroundTransparency = 0.6, BorderSizePixel = 0, Parent = popup,
@@ -7651,7 +7555,7 @@ end
 end
 clearBtn = new("TextButton", {
 AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(20, 20), ZIndex = 3,
-BackgroundColor3 = T.Control, BackgroundTransparency = 0.2, AutoButtonColor = false, Text = "✕", Font = T.FontBold, TextSize = 11,
+BackgroundColor3 = T.Control, BackgroundTransparency = 0.2, AutoButtonColor = false, Text = "✕", Font = T.FontBold, TextSize = 12,
 TextColor3 = T.SubText, Visible = false, Parent = searchHolder,
 }, { rc(10) })
 clearBtn.MouseButton1Click:Connect(function() searchBox.Text = "" end)
@@ -7756,8 +7660,8 @@ popScale.Scale = k
 local pos, size = btn.AbsolutePosition, btn.AbsoluteSize
 local bmin, bmax = Library._visibleRect(win.Gui)
 local vp = (bmax - bmin) / k
-local cap = touch and 300 or 260
 local minH = top + bot + optH + PAD
+local cap = math.max(minH, vp.Y - 16)
 popW = math.min(math.max(size.X / k, 190, math.min(desiredWidth(), touch and 340 or 320)), vp.X - 12)
 layoutRows()
 local want = math.min(top + bot + math.max(rowsHeight(), optH + GAP) + PAD, cap)
@@ -8588,7 +8492,7 @@ if corner then
 badge.AnchorPoint = Vector2.new(1, 0)
 badge.Position = UDim2.new(1, -5, 0, 1)
 badge.Size = UDim2.fromOffset(14, 12)
-if self.BadgeLabel then self.BadgeLabel.TextSize = 9 end
+if self.BadgeLabel then self.BadgeLabel.TextSize = 10 end
 else
 badge.AnchorPoint = Vector2.new(1, 0.5)
 badge.Position = UDim2.new(1, -8, 0.5, 0)
@@ -9449,11 +9353,11 @@ Font = T.FontBold, TextSize = 13, TextColor3 = T.Text, TextXAlignment = LEFT, Te
 })
 new("TextLabel", {
 Position = UDim2.fromOffset(subX, 17 + PADY), Size = UDim2.new(1, -(subX + 74), 0, 12), BackgroundTransparency = 1, Text = it.sub or "",
-Font = T.Font, TextSize = 11, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
+Font = T.Font, TextSize = 12, TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 })
 local chip = new("TextLabel", {
 Name = "Chip", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0), Size = UDim2.fromOffset(60, 16),
-BackgroundColor3 = T.AccentSoft, BorderSizePixel = 0, Text = it.chip or "", Font = T.FontBold, TextSize = 10,
+BackgroundColor3 = T.AccentSoft, BorderSizePixel = 0, Text = it.chip or "", Font = T.FontBold, TextSize = 11,
 TextColor3 = T.Accent, TextTruncate = Enum.TextTruncate.AtEnd, Parent = btn,
 }, { corner(8), padding(4, 0, 4, 0) })
 btn.MouseButton1Click:Connect(function() it.run(chip) end)
@@ -9630,28 +9534,30 @@ local d = cfg.Default or { min, max }
 local lo, hi = snap(d[1] or min, min, max, inc), snap(d[2] or max, min, max, inc)
 if lo > hi then lo, hi = hi, lo end
 local touch = Library.SizeTouch
-local total = touch and 50 or 42
-local knobS, knobBig = touch and 16 or 12, touch and 20 or 15
+local total = touch and 46 or 38
+local knobS, knobBig = touch and 14 or 12, touch and 20 or 18
+local trackS, trackBig = touch and 5 or 4, touch and 8 or 7
 local frame = new("Frame", { Size = UDim2.new(1, 0, 0, total), BackgroundTransparency = 1, Parent = self.Body })
 new("TextLabel", {
-Size = UDim2.new(1, -112, 0, 18), BackgroundTransparency = 1, Text = cfg.Name or "Range", Font = T.Font, TextSize = 14,
+Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -128, 0, 18), BackgroundTransparency = 1, Text = cfg.Name or "Range", Font = T.Font, TextSize = 14,
 TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = Enum.TextTruncate.AtEnd, Parent = frame,
 })
 local loBox, hiBox
 local hit = new("TextButton", {
-Position = UDim2.fromOffset(0, 20), Size = UDim2.new(1, 0, 1, -20), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Parent = frame,
+Position = UDim2.fromOffset(0, 18), Size = UDim2.new(1, 0, 1, -18), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Parent = frame,
 })
+-- flat pill track, same language as the Toggle: full radius, hairline border, solid accent fill, 10px inset so the knob never overhangs the row
 local track = new("Frame", {
-AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.new(1, 0, 0, 4),
+AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0), Size = UDim2.new(1, -20, 0, trackS),
 BackgroundColor3 = T.Control, BorderSizePixel = 0, Parent = hit,
-}, { corner(2) })
+}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(T.Border, 1, 0.7) })
 local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = track },
-{ corner(2), gradient(T.Accent, T.Accent2, 0) })
+{ new("UICorner", { CornerRadius = UDim.new(1, 0) }), gradient(T.Accent, T.Accent2, 0) })
 local function mkKnob()
 return new("Frame", {
 AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(knobS, knobS),
 BackgroundColor3 = T.Knob, BorderSizePixel = 0, ZIndex = 2, Parent = track,
-}, { corner(8), stroke(T.Accent, 2, 0) })
+}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(T.Accent, 2, 1.15) })
 end
 local knobLo, knobHi = mkKnob(), mkKnob()
 local function frac(v) return (max == min) and 0 or (v - min) / (max - min) end
@@ -9682,16 +9588,16 @@ if changed and not silent then safe(cfg.Callback, lo, hi) end
 end
 function obj:Get() return { lo, hi } end
 loBox = Library._numBox(T, {
-AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -64, 0, 0), Size = UDim2.fromOffset(48, 20), Parent = frame,
+AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -72, 0, 0), Size = UDim2.fromOffset(48, 20), Parent = frame,
 }, "", function() return fmtVal(lo) end, function(n)
 if n == nil then render(false) else obj:Set({ math.max(math.min(n, hi - gap), min), hi }) end
 end)
 new("TextLabel", {
-AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -56, 0, 0), Size = UDim2.fromOffset(8, 20), BackgroundTransparency = 1,
+AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -64, 0, 0), Size = UDim2.fromOffset(8, 20), BackgroundTransparency = 1,
 Text = "-", Font = T.FontBold, TextSize = 14, TextColor3 = T.SubText, Parent = frame,
 })
 hiBox = Library._numBox(T, {
-AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(56, 20), Parent = frame,
+AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 0), Size = UDim2.fromOffset(56, 20), Parent = frame,
 }, suffix, function() return fmtVal(hi) end, function(n)
 if n == nil then render(false) else obj:Set({ lo, math.min(math.max(n, lo + gap), max) }) end
 end)
@@ -9715,8 +9621,10 @@ local function release()
 tab:SetScrollEnabled(true)
 if grabbed then
 tween(grabbed, 0.16, { Size = UDim2.fromOffset(knobS, knobS) })
+tween(grabbed:FindFirstChildOfClass("UIStroke"), 0.16, { Transparency = 1 })
 grabbed = nil
 end
+tween(track, 0.16, { Size = UDim2.new(1, -20, 0, trackS) })
 end
 hit.InputBegan:Connect(function(i)
 if not isPress(i) then return end
@@ -9733,6 +9641,8 @@ Library._drag(i, function(m) fromX(m.Position.X, which) end, release)
 tab:SetScrollEnabled(false)
 grabbed = (which == "lo") and knobLo or knobHi
 tween(grabbed, 0.12, { Size = UDim2.fromOffset(knobBig, knobBig) })
+tween(grabbed:FindFirstChildOfClass("UIStroke"), 0.12, { Transparency = 0 })
+tween(track, 0.12, { Size = UDim2.new(1, -20, 0, trackBig) })
 fromX(x, which)
 end)
 self:_Register(frame, cfg.Name, total)
@@ -10308,7 +10218,7 @@ local DERIVED = { "Top", "Deep", "Lift", "Wash", "Knob" }
 local PRIORITY = { "Accent", "Accent2", "Border", "Background", "Panel", "Card", "Control", "AccentSoft", "Sheen", "SubText", "Text", "Top", "Deep", "Lift", "Wash", "Knob" }
 local SAVE_KEYS = { "Background", "Panel", "Card", "Control", "Border", "Accent", "Accent2", "AccentSoft", "Sheen", "Text", "SubText" }
 local WHITE = Color3.new(1, 1, 1)
-Library.ThemeName = "Clean"
+Library.ThemeName = "Spectre"
 Library._builtin, Library._alias, Library._themeSubs = {}, {}, {}
 for k in pairs(Library.Themes) do Library._builtin[k] = true end
 local function q255(x) return math.floor(x * 255 + 0.5) end
@@ -10393,7 +10303,7 @@ end
 if (force or not self._userSetTheme) and type(data.current) == "string" and self.Themes[data.current] then
 self.Theme = buildTheme(self.Themes[data.current])
 self.ThemeName = data.current
-if data.current ~= "Clean" then self._themeFromSave = true end
+if data.current ~= "Spectre" then self._themeFromSave = true end
 end
 if not quiet then fire("list") end
 return true
@@ -11168,7 +11078,7 @@ function Library:Load(source, opts) return _load(self, { source }, opts) end
 function Library:LoadMany(list, opts) return _load(self, list or {}, opts) end
 function Window:Load(source, opts) return _load(self, { source }, opts) end
 function Window:LoadMany(list, opts) return _load(self, list or {}, opts) end
-Library.AutoCheck = { Enabled = true, Delay = 1.5, Notify = false, Print = false, Visual = true, Fix = true, Skip = {} }
+Library.AutoCheck = { Enabled = true, Delay = 3, Notify = false, Print = false, Visual = true, Fix = true, Skip = {} }
 Library.AuditCodes = {
 DupFlag      = "two controls share one Flag (the later one overwrites the earlier)",
 BadFlag      = "Flag is not a string",
@@ -11226,16 +11136,21 @@ local visual = o.Visual ~= false and win.Visible and not win._destroyed and win.
 local mp, ms
 if visual then mp, ms = win.Main.AbsolutePosition, win.Main.AbsoluteSize end
 local seenFlag = {}
-local sliceT, sliceN = os.clock(), 0
-for _, e in ipairs(win._index or {}) do
-if o.Slice then
-sliceN += 1
-if sliceN % 8 == 0 and os.clock() - sliceT > 0.006 then
-task.wait()
-if win._destroyed then return issues end
+local sliceT = os.clock()
+-- frame budget (same one the staged loader uses); returns false when the window died while we waited
+local function pace()
+if not o.Slice then return true end
+local P = Library.Perf
+local busy = os.clock() - (win._lastTouch or 0) < 0.4
+if os.clock() - sliceT > (busy and (P.SliceBudgetBusy or 0.0015) or (P.SliceBudget or 0.004)) then
+if busy then task.wait(0.05) else task.wait() end
+if win._destroyed then return false end
 sliceT = os.clock()
 end
+return true
 end
+for _, e in ipairs(win._index or {}) do
+if not pace() then return issues end
 local cfg = e.Cfg or {}
 local frame = e.Frame
 if e.Flag ~= nil then
@@ -11288,6 +11203,7 @@ add("warn", "Overflow", ("sticks out %d px on the right"):format(math.floor(fp.X
 end
 for _, d in ipairs(frame:GetDescendants()) do
 if (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) and d.Visible and d.AbsoluteSize.X > 0 and d.Text ~= "" then
+if not pace() then return issues end
 local gst
 if o.Fix ~= false and Library.TextGuard and Library.TextGuard.Enabled ~= false then
 local okg, r = pcall(Library._fitOne, win, d)
@@ -11565,8 +11481,9 @@ local cfg = self._autoCheck
 if not cfg or self._destroyed or cfg.Enabled == false then return end
 self._checkSeq = (self._checkSeq or 0) + 1
 local seq = self._checkSeq
-task.delay(delay or cfg.Delay or 1.5, function()
+task.delay(delay or cfg.Delay or 3, function()
 if self._destroyed or seq ~= self._checkSeq or cfg.Enabled == false then return end
+if self._loadHeld or (self._sl and self._sl.running) then self:_QueueCheck(1.5) return end
 local ok, issues = pcall(_audit, self, setmetatable({ Slice = true }, { __index = cfg }))
 if ok then _emit(self, issues, cfg, true) end
 end)
@@ -11583,7 +11500,7 @@ local own = type(over) == "table" and over or {}
 if over == false then own = { Enabled = false } end
 win._autoCheck = setmetatable(own, { __index = function(_, k) return Library.AutoCheck[k] end })
 if win.Gui then
-local c = win.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() win:_QueueCheck(1.5) end)
+local c = win.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() win:_QueueCheck(3) end)
 table.insert(win.Conns, c)
 end
 win:_QueueCheck()
@@ -12912,7 +12829,7 @@ if type(t) ~= "table" then return nil, "unknown theme" end
 local data = { v = 1, name = name or tname, FX = t.FX }
 for _, k in ipairs(SHARE_KEYS) do
 local c = t[k]
-if typeof(c) ~= "Color3" then c = (self.Themes.Rose or {})[k] end
+if typeof(c) ~= "Color3" then c = (self.Themes.Clean or {})[k] end
 if typeof(c) == "Color3" then data[k] = toHexC(c) end
 end
 return "SPT1:" .. HttpService:JSONEncode(data)
@@ -13851,52 +13768,65 @@ Color3.fromRGB(88, 166, 255), Color3.fromRGB(255, 176, 64), Color3.fromRGB(74, 2
 function Section:CreateStatusCard(cfg)
 if type(cfg) == "string" then cfg = { Name = cfg } end
 cfg = cfg or {}
-local T = self.Window.Theme
-local H, PAD = 72, 10
-local TILE = H - PAD * 2
+local win = self.Window
+local T = win.Theme
+local BASE_H, PAD = 72, 10
+local TILE = BASE_H - PAD * 2
+local ROW_H, ROW_GAP, COL_GAP = 28, 6, 10
+local MIN_CELL = tonumber(cfg.MinBarWidth) or 104
 local accent = cfg.Color or T.Accent
 local WHITE = Color3.new(1, 1, 1)
 local RIGHT = Enum.TextXAlignment.Right
 local ATEND = Enum.TextTruncate.AtEnd
+local function uiScale()
+local s = (win.Scale and win.Scale.Scale) or 1
+if s <= 0.01 then s = 1 end
+return s
+end
 local card = new("Frame", {
-Size = UDim2.new(1, 0, 0, H), BackgroundColor3 = T.Control, BackgroundTransparency = 0.2, BorderSizePixel = 0, Parent = self.Body,
+Size = UDim2.new(1, 0, 0, BASE_H), BackgroundColor3 = T.Control, BackgroundTransparency = 0.2, BorderSizePixel = 0, Parent = self.Body,
 }, { corner(10), stroke(T.Border, 1, 0.4) })
 local tile = new("Frame", {
-Position = UDim2.fromOffset(PAD, PAD), Size = UDim2.fromOffset(TILE, TILE), BackgroundColor3 = accent, BackgroundTransparency = 0.86,
-BorderSizePixel = 0, ClipsDescendants = true, Parent = card,
+AnchorPoint = V2(0, 0.5), Position = UDim2.new(0, PAD, 0.5, 0), Size = UDim2.fromOffset(TILE, TILE), BackgroundColor3 = accent,
+BackgroundTransparency = 0.86, BorderSizePixel = 0, ClipsDescendants = true, Parent = card,
 }, { corner(10), stroke(accent, 1, 0.6) })
 local bx = PAD * 2 + TILE
 local body = new("Frame", {
 Position = UDim2.fromOffset(bx, 0), Size = UDim2.new(1, -(bx + PAD), 1, 0), BackgroundTransparency = 1, Parent = card,
 })
 local title = new("TextLabel", {
-Position = UDim2.fromOffset(0, PAD), Size = UDim2.new(0.62, 0, 0, 20), BackgroundTransparency = 1, Text = tostring(cfg.Name or "Item"),
-Font = T.FontBold, TextSize = 16, TextColor3 = T.Text, TextXAlignment = LEFT, TextTruncate = ATEND, Parent = body,
+Position = UDim2.fromOffset(0, PAD), Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Text = tostring(cfg.Name or "Item"),
+Font = T.FontBold, TextSize = 16, TextColor3 = T.Text, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = ATEND,
+TextWrapped = false, Parent = body,
 })
+local pillLimit = new("UISizeConstraint", { MaxSize = Vector2.new(140, 20) })
 local pill = new("TextLabel", {
 AnchorPoint = V2(1, 0), Position = UDim2.new(1, 0, 0, PAD), Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X,
 BackgroundColor3 = T.SubText, BackgroundTransparency = 0.8, BorderSizePixel = 0, Text = "", Font = T.FontBold, TextSize = 13,
-TextColor3 = T.SubText, Visible = false, Parent = body,
-}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }) })
+TextColor3 = T.SubText, TextWrapped = false, TextTruncate = ATEND, Visible = false, Parent = body,
+}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }), pillLimit })
 local bars = type(cfg.Bars) == "table" and cfg.Bars or {}
 local n = math.clamp(#bars, 1, 4)
 local cols = new("Frame", {
-Position = UDim2.fromOffset(0, PAD + 20 + 4), Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1, Parent = body,
-}, { new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }) })
+Position = UDim2.fromOffset(0, PAD + 20 + 4), Size = UDim2.new(1, 0, 0, ROW_H), BackgroundTransparency = 1, Parent = body,
+})
+local grid = new("UIGridLayout", {
+CellSize = UDim2.new(1 / n, -math.ceil(COL_GAP * (n - 1) / n), 0, ROW_H), CellPadding = UDim2.fromOffset(COL_GAP, ROW_GAP),
+FillDirection = Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder, Parent = cols,
+})
 local cells = {}
 for i = 1, n do
 local b = bars[i] or {}
 local col = b.Color or cfg.Color or (n == 1 and accent or STATUS_PALETTE[i])
-local cell = new("Frame", {
-LayoutOrder = i, Size = UDim2.new(1 / n, -math.floor(10 * (n - 1) / n), 1, 0), BackgroundTransparency = 1, Parent = cols,
-})
-new("TextLabel", {
-Size = UDim2.new(0.5, 0, 0, 16), BackgroundTransparency = 1, Text = tostring(b.Label or ""), Font = T.Font, TextSize = 13,
-TextColor3 = T.SubText, TextXAlignment = LEFT, TextTruncate = ATEND, Parent = cell,
+local cell = new("Frame", { LayoutOrder = i, BackgroundTransparency = 1, Parent = cols })
+local lab = new("TextLabel", {
+Size = UDim2.new(1, -36, 0, 16), BackgroundTransparency = 1, Text = tostring(b.Label or ""), Font = T.Font, TextSize = 13,
+TextColor3 = T.SubText, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = ATEND, TextWrapped = false, Parent = cell,
 })
 local val = new("TextLabel", {
-AnchorPoint = V2(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0.5, 0, 0, 16), BackgroundTransparency = 1, Text = "--",
-Font = T.FontBold, TextSize = n == 1 and 15 or 14, TextColor3 = col, TextXAlignment = RIGHT, TextTruncate = ATEND, Parent = cell,
+AnchorPoint = V2(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(0, 16), AutomaticSize = Enum.AutomaticSize.X,
+BackgroundTransparency = 1, Text = "--", Font = T.FontBold, TextSize = n == 1 and 15 or 14, TextColor3 = col,
+TextXAlignment = RIGHT, TextWrapped = false, Parent = cell,
 })
 local track = new("Frame", {
 Position = UDim2.fromOffset(0, 21), Size = UDim2.new(1, 0, 0, 6), BackgroundColor3 = T.Background, BackgroundTransparency = 0.1,
@@ -13905,11 +13835,42 @@ BorderSizePixel = 0, Parent = cell,
 local fill = new("Frame", {
 Size = UDim2.fromScale(0, 1), BackgroundColor3 = WHITE, BorderSizePixel = 0, Parent = track,
 }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), gradient(col, col:Lerp(WHITE, 0.25), 0) })
+-- label takes whatever the value does not need, so the value is never the thing that gets clipped
+local function fitLabel()
+lab.Size = UDim2.new(1, -(math.ceil(val.AbsoluteSize.X / uiScale()) + 6), 0, 16)
+end
+val:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitLabel)
 cells[i] = {
 val = val, fill = fill, default = col, max = tonumber(b.Max) or 100,
 showMax = b.ShowMax == true, percent = b.Percent == true, suffix = b.Suffix,
 }
 end
+local lastCols
+local function layoutTitle()
+local sc = uiScale()
+local pw = pill.Visible and (math.ceil(pill.AbsoluteSize.X / sc) + 8) or 0
+title.Size = UDim2.new(1, -pw, 0, 20)
+end
+local function relayout()
+local bw = body.AbsoluteSize.X / uiScale()
+if bw <= 0 then return end
+pillLimit.MaxSize = Vector2.new(math.max(48, math.floor(bw * 0.55)), 20)
+local c = math.clamp(math.floor((bw + COL_GAP) / (MIN_CELL + COL_GAP)), 1, n)
+while c > 1 and n % c ~= 0 do c -= 1 end
+if c ~= lastCols then
+lastCols = c
+local rows = math.ceil(n / c)
+local colsH = rows * ROW_H + (rows - 1) * ROW_GAP
+grid.CellSize = UDim2.new(1 / c, -math.ceil(COL_GAP * (c - 1) / c), 0, ROW_H)
+cols.Size = UDim2.new(1, 0, 0, colsH)
+card.Size = UDim2.new(1, 0, 0, math.max(BASE_H, PAD + 20 + 4 + colsH + PAD))
+end
+layoutTitle()
+end
+body:GetPropertyChangedSignal("AbsoluteSize"):Connect(relayout)
+pill:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutTitle)
+pill:GetPropertyChangedSignal("Visible"):Connect(layoutTitle)
+task.defer(relayout)
 local empty, shown, picValue = false, nil, cfg.Image
 local function applyEmpty()
 card.BackgroundTransparency = empty and 0.6 or 0.2
@@ -13976,13 +13937,14 @@ for i = 1, n do
 local b = bars[i] or {}
 paintBar(i, b.Value or 0, b.Value == nil and "--" or b.Text, nil)
 end
-self:_Register(card, cfg.Name or "card", H)
+self:_Register(card, cfg.Name or "card", BASE_H)
 local obj = { Frame = card }
 function obj:SetTitle(t) title.Text = tostring(t) end
 function obj:SetImage(img) picValue = img showPic(img) end
 function obj:SetBadge(text, color) setBadge(text, color) end
 function obj:SetBar(i, v, text, color) paintBar(i, v, text, color) end
 function obj:SetEmpty(on, text) setEmpty(on, text) end
+function obj:Relayout() lastCols = nil relayout() end
 function obj:Set(t)
 if type(t) ~= "table" then return end
 if t.Name ~= nil then title.Text = tostring(t.Name) end
@@ -14227,7 +14189,7 @@ local fill = fr({ Size = U2(0, 0, 1, 0), BackgroundColor3 = acc, Parent = track 
 R(track, "BackgroundTransparency", 0.88) R(fill, "BackgroundTransparency", 0)
 M(track, 0.45)
 local ver = lb({ AnchorPoint = V2(0.5, 1), Position = U2(0.5, 0, 1, -18), Size = U2(0, 200, 0, 16), TextSize = 13, TextColor3 = subc,
-TextTransparency = 0.6, Text = "v" .. tostring(Library.Version) .. ((type(Library.Stage) == "string" and Library.Stage ~= "") and (" " .. Library.Stage) or ""), Parent = bg })
+TextTransparency = 0.35, Text = "v" .. tostring(Library.Version) .. ((type(Library.Stage) == "string" and Library.Stage ~= "") and (" " .. Library.Stage) or ""), Parent = bg })
 R(ver, "TextTransparency", 0.6)
 local bd = tonumber(opt("Backdrop")) or 1
 if bd < 1 then R(bg, "BackgroundTransparency", 0, "bg") fades[#fades].base = bd end
@@ -14916,8 +14878,11 @@ if cover and cover.Visible then cover.Visible = false end
 return
 end
 cover = ensureCover(win)
-cover.Sub.Text = tostring(focus.Name) .. " is locked"
-cover.Reason.Text = focus.LockReason or "This tab is locked."
+local LTx = Library.LockText or {}
+local okSub, subTxt = pcall(string.format, LTx.CoverSub or "%s is locked", tostring(focus.Name))
+cover.Title.Text = LTx.CoverTitle or "LOCKED"
+cover.Sub.Text = okSub and subTxt or (tostring(focus.Name) .. " is locked")
+cover.Reason.Text = focus.LockReason or LTx.Default or "This tab is locked."
 cover.Visible = true
 end
 local startPicker
@@ -14963,7 +14928,7 @@ BackgroundColor3 = T.SubText, BorderSizePixel = 0, Visible = false, ZIndex = 3, 
 }, { corner(3) })
 p.Pill = new("TextLabel", {
 Name = "LockPill", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -32, 0.5, 0), Size = UDim2.fromOffset(50, 16),
-BackgroundColor3 = T.Text, BackgroundTransparency = 0.92, Text = "LOCKED", Font = T.FontBold, TextSize = 9,
+BackgroundColor3 = T.Text, BackgroundTransparency = 0.92, Text = "LOCKED", Font = T.FontBold, TextSize = 10,
 TextColor3 = T.SubText, Visible = false, ZIndex = 3, Parent = btn,
 }, { corner(8) })
 btn:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() K.pill(tab) end)
@@ -15056,8 +15021,202 @@ K.Sync = syncCover
 return K
 end)()
 ;(function()
+local LT = {
+Title = "Tab locked",
+Content = "Enter the password to unlock \"%s\".",
+Placeholder = "Password",
+Unlock = "Unlock",
+Cancel = "Cancel",
+Reason = "Password required. Click the tab to enter it.",
+Wrong = "Incorrect password.",
+WrongLeft = "Incorrect password. %d attempt(s) left.",
+LockedOut = "Too many attempts. Try again in %d seconds.",
+Unlocked = "Unlocked",
+UnlockedText = "\"%s\" is now unlocked.",
+CoverTitle = "LOCKED",
+CoverSub = "\"%s\" is locked",
+Default = "This tab is locked.",
+ToastTitle = "\"%s\" is locked",
+}
+Library.LockText = Library.LockText or {}
+for k, v in pairs(LT) do
+if Library.LockText[k] == nil then Library.LockText[k] = v end
+end
+local function fmt(key, ...)
+local s = Library.LockText[key] or LT[key] or key
+local ok, r = pcall(string.format, s, ...)
+return ok and r or s
+end
+local function find(win, x)
+return type(x) == "string" and win:GetTab(x) or x
+end
+local function match(tab, input)
+local p = tab._pw
+if p == nil then return false end
+if type(p) == "function" then
+local ok, r = pcall(p, input)
+return ok and r == true
+end
+return tostring(input or "") == p
+end
+function Tab:SetPassword(pw, reason)
+if pw == nil or pw == false or pw == "" then
+self._pw = nil
+self._pwTries = 0
+self._pwUntil = nil
+return self
+end
+self._pw = type(pw) == "function" and pw or tostring(pw)
+self._pwTries = 0
+self._pwUntil = nil
+if reason == nil and self.LockReason == nil then reason = fmt("Reason") end
+self:SetLocked(true, reason)
+return self
+end
+function Tab:ClearPassword() return self:SetPassword(nil) end
+function Tab:HasPassword() return self._pw ~= nil end
+function Tab:CheckPassword(input) return match(self, input) end
+function Tab:Relock()
+if self._pw ~= nil then self:SetLocked(true) end
+return self
+end
+function Tab:TryUnlock(input)
+if self._pw == nil then return false, "nopassword" end
+local now = os.clock()
+if (self._pwUntil or 0) > now then return false, "lockout", math.ceil(self._pwUntil - now) end
+local cfg = self.Cfg or {}
+if match(self, input) then
+self._pwTries = 0
+self._pwUntil = nil
+self:SetLocked(false)
+local win = self.Window
+if win and win.Active ~= self then win:SelectTab(self) end
+safe(cfg.OnUnlock, self)
+return true
+end
+self._pwTries = (self._pwTries or 0) + 1
+safe(cfg.OnWrongPassword, self, self._pwTries)
+local max = cfg.MaxAttempts
+if type(max) == "number" and max > 0 and self._pwTries >= max then
+local secs = type(cfg.LockoutTime) == "number" and cfg.LockoutTime or 30
+self._pwTries = 0
+self._pwUntil = now + secs
+return false, "lockout", math.ceil(secs)
+end
+return false, "wrong"
+end
+function Tab:PromptUnlock(errText) return self.Window:PromptUnlockTab(self, errText) end
+function Window:PromptUnlockTab(nameOrTab, errText)
+local tab = find(self, nameOrTab)
+if type(tab) ~= "table" or not tab._locked or tab._pw == nil or tab._pwDlg then return false end
+local cfg = tab.Cfg or {}
+local now = os.clock()
+if (tab._pwUntil or 0) > now then
+pcall(function()
+self:Warning(tab.Name, fmt("LockedOut", math.ceil(tab._pwUntil - now)), 2.5)
+end)
+return false
+end
+local mine = {}
+tab._pwDlg = mine
+local ok, err = pcall(function()
+self:Prompt({
+Title = cfg.PasswordTitle or fmt("Title"),
+Content = cfg.PasswordContent or fmt("Content", tostring(tab.Name)),
+Placeholder = cfg.PasswordPlaceholder or fmt("Placeholder"),
+Icon = "lucide:lock",
+Build = errText and function(holder, T)
+local red = (T and T.Danger) or Color3.fromRGB(248, 113, 113)
+new("TextLabel", {
+Name = "PasswordError", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
+Text = errText, Font = (T and T.Font) or Enum.Font.GothamMedium, TextSize = 13, TextColor3 = red,
+TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, ZIndex = 4, Parent = holder,
+})
+end or nil,
+Password = true,
+EnterSubmits = true,
+Yes = fmt("Unlock"),
+No = fmt("Cancel"),
+OnSubmit = function(input)
+tab._pwDlg = nil
+local okU, why, secs = tab:TryUnlock(input)
+if okU then
+pcall(function() self:Success(fmt("Unlocked"), fmt("UnlockedText", tostring(tab.Name)), 2) end)
+elseif why == "lockout" then
+pcall(function() self:Error(tostring(tab.Name), fmt("LockedOut", secs or 30), 3) end)
+else
+local max = cfg.MaxAttempts
+local msg = (type(max) == "number" and max > 0) and fmt("WrongLeft", math.max(max - (tab._pwTries or 0), 0)) or fmt("Wrong")
+if cfg.RetryPrompt == false then
+pcall(function() self:Error(tostring(tab.Name), msg, 2.5) end)
+else
+task.defer(function() self:PromptUnlockTab(tab, msg) end)
+end
+end
+end,
+OnClose = function()
+if tab._pwDlg == mine then tab._pwDlg = nil end
+end,
+})
+end)
+if not ok then
+tab._pwDlg = nil
+warn("[SpectreUI] password prompt failed: " .. tostring(err))
+return false
+end
+return true
+end
+function Window:LockTabWithPassword(nameOrTab, password, reason)
+local t = find(self, nameOrTab)
+if t then t:SetPassword(password, reason) end
+return t
+end
+function Window:TryUnlockTab(nameOrTab, password)
+local t = find(self, nameOrTab)
+if not t then return false end
+return t:TryUnlock(password)
+end
+function Window:HasTabPassword(nameOrTab)
+local t = find(self, nameOrTab)
+return t ~= nil and t._pw ~= nil
+end
+local prevFB = Window._LockedFeedback
+function Window:_LockedFeedback(tab)
+if type(tab) == "table" and tab._pw ~= nil then
+local c = tab.Cfg
+local old = c and c.LockedNotify
+if c then c.LockedNotify = false end
+local ok, err = pcall(prevFB, self, tab)
+if c then c.LockedNotify = old end
+if not ok then warn("[SpectreUI] lock feedback failed: " .. tostring(err)) end
+self:PromptUnlockTab(tab)
+return
+end
+return prevFB(self, tab)
+end
+local prevCreate = Window.CreateTab
+function Window:CreateTab(cfg, build)
+local pw = type(cfg) == "table" and cfg.Password or nil
+if pw == nil or pw == false or pw == "" then
+return prevCreate(self, cfg, build)
+end
+local origNotify = cfg.LockedNotify
+local c = table.clone(cfg)
+c.Locked = true
+c.LockedNotify = false
+if c.LockReason == nil then c.LockReason = fmt("Reason") end
+local tab = prevCreate(self, c, build)
+if type(tab) == "table" then
+tab._pw = type(pw) == "function" and pw or tostring(pw)
+tab._pwTries = 0
+if tab.Cfg then tab.Cfg.LockedNotify = origNotify end
+end
+return tab
+end
+end)()
+;(function()
 local TOP, SW = (Library.Mobile and 50 or 58), (Library.Mobile and 34 or 40)
-local CURATED = { "Clean", "Nova", "Rose", "Violet", "Cyber", "Crimson", "Matrix", "Midnight", "Ocean", "Sunset", "Aurora", "Dracula", "Nord", "TokyoNight", "Mocha", "Synthwave", "Mono", "Minimal", "Ember", "Glacier", "Jade", "Orchid", "Royal" }
+local CURATED = { "Spectre", "Clean", "Obsidian", "Sapphire", "Emerald", "Teal", "Rosewood", "Amethyst", "Amber", "Graphite" }
 local function glyph(parent, name, fallback, size, color)
 local d = Library:IsIconName(name) and Library:ResolveIcon(name) or nil
 local o
@@ -15127,7 +15286,7 @@ Name = "Collapse", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 
 BackgroundColor3 = T.Background, BackgroundTransparency = 0.35, Text = "", AutoButtonColor = false, BorderSizePixel = 0, Parent = bar,
 }, {
 new("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
-new("UIStroke", { Color = T.Border, Thickness = 1, Transparency = 0.35, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
+new("UIStroke", { Color = T.Border, Thickness = 1, Transparency = 0.1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
 })
 addRipple(cbtn, win)
 local icClose = glyph(cbtn, "lucide:panel-left-close", "<", 18, T.SubText)
@@ -15399,7 +15558,7 @@ g.ZIndex = 5
 local function apply()
 local pinned = Library._pins[tab.Name] == true
 btn.LayoutOrder = pinned and (order - 1000) or order
-pin.Visible = not (win.Compact == true) and (pinned or win.Active == tab)
+pin.Visible = not (win.Compact == true) and (pinned or tab._uxHover == true)
 recolor(g, pinned and win.Theme.Accent or win.Theme.SubText)
 local tr = pinned and 0 or 0.55
 if g:IsA("ImageLabel") then g.ImageTransparency = tr else g.TextTransparency = tr end
@@ -15408,6 +15567,10 @@ if tab._FitLabel then tab:_FitLabel() end
 end
 tab._uxStar = pin
 tab._uxPinApply = apply
+if not Library.Mobile then
+btn.MouseEnter:Connect(function() tab._uxHover = true apply() end)
+btn.MouseLeave:Connect(function() tab._uxHover = false apply() end)
+end
 pin.MouseButton1Click:Connect(function()
 Library._pins[tab.Name] = not Library._pins[tab.Name] or nil
 apply()
@@ -16402,6 +16565,7 @@ local last
 local conn = UIS.InputChanged:Connect(function(input)
 local t = input.UserInputType
 if (t ~= Enum.UserInputType.MouseMovement and t ~= Enum.UserInputType.Touch) or not shown(win) or not on("Trail") then return end
+if win._drag and win._drag.Dragging then return end -- no trail dots while the window is being dragged
 local main = win.Main
 local mp = t == Enum.UserInputType.Touch and (Vector2.new(input.Position.X, input.Position.Y) + GS:GetGuiInset()) or UIS:GetMouseLocation()
 local p0, sz = main.AbsolutePosition, main.AbsoluteSize
@@ -16481,7 +16645,7 @@ s.glitching = true
 local function layer(color)
 return mk("TextLabel", {
 Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = lbl.Text, Font = lbl.Font, TextSize = lbl.TextSize,
-TextColor3 = color, TextTransparency = 0.35, TextXAlignment = lbl.TextXAlignment, ZIndex = (lbl.ZIndex or 1) + 1, Active = false,
+TextColor3 = color, TextTransparency = 0.15, TextXAlignment = lbl.TextXAlignment, ZIndex = (lbl.ZIndex or 1) + 1, Active = false,
 }, lbl)
 end
 local red, cyan = layer(Color3.fromRGB(255, 45, 95)), layer(Color3.fromRGB(45, 230, 255))
@@ -16977,7 +17141,7 @@ function Section:CreatePerformance(cfg)
 		})
 		new("TextLabel", {
 			Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1, Text = cap,
-			Font = T.Font, TextSize = 11, TextColor3 = T.SubText, Parent = cell,
+			Font = T.Font, TextSize = 12, TextColor3 = T.SubText, Parent = cell,
 		})
 	end
 
@@ -17613,7 +17777,9 @@ end
 --   OnUpdate    function(newSource) -> return false to skip this update
 -- A new version is compiled first; a broken upload never tears down the working UI.
 -- Returns a handle { Check(), Stop() }.
-local function fingerprint(s) local h = 5381 for i = 1, #s do h = (h * 33 + s:byte(i)) % 4294967296 end return #s .. ":" .. h end
+-- Luau interns strings, so comparing the old body with the new one is a pointer compare: exact and free.
+-- (the old byte-by-byte hash ran ~660k iterations on the main thread every check = a visible freeze on phones)
+local function fingerprint(s) return s end
 function Library:AutoUpdate(o)
 	if type(o) == "string" then o = { Url = o } end
 	o = o or {}
@@ -17737,5 +17903,22 @@ Library.SourceUrl = "https://raw.githubusercontent.com/SpectreWareZ/SpectreWare/
 if Library.Perf.LowPower == nil then Library:SetQuality("high") end
 function Window:SetLanguage(code, save) return Library:SetLanguage(code, save) end
 Library:_loadSavedLanguage()
-Library.Version = "3.27"
+-- Theme switch fix: SetTheme only remaps known colours, so the active tab (sidebar button + page) kept stale ones.
+-- Re-run the same repaint a manual tab switch does, once right away and once after in-flight tweens settle.
+Library._hook(Window, "SetTheme", "after", function(self)
+local function repaint()
+if self._destroyed or not self.Gui or not self.Gui.Parent then return end
+local active = self.Active
+for _, tab in ipairs(self.Tabs or {}) do
+if tab.Button and tab._SetSelected then pcall(tab._SetSelected, tab, tab == active) end
+end
+if not active or active._locked or active._slLoaded == false then return end
+self.Active = nil
+pcall(self.SelectTab, self, active)
+if self.Active == nil then self.Active = active end
+end
+task.defer(repaint)
+task.delay(0.4, repaint)
+end)
+Library.Version = "3.28"
 return Library
