@@ -5909,7 +5909,7 @@ end))
 else
 bag:Add(box:GetPropertyChangedSignal("Text"):Connect(function()
 local t = box.Text
-if ic.Numeric then t = t:gsub("[^%d%.%-]", "") end
+if ic.Numeric then t = t:gsub(ic.Integer and "[^%d]" or "[^%d%.%-]", "") end
 if utf8.len(t) and utf8.len(t) > maxLen then t = Util.Truncate(t, maxLen, "") end
 if t ~= box.Text then box.Text = t end
 end))
@@ -6122,7 +6122,14 @@ card.Visible = true
 card.GroupTransparency = 0
 end
 if box and not touch and (type(cfg.Input) ~= "table" or cfg.Input.AutoFocus ~= false) then
-bag:Add(task.delay(0.25, function() if dlg.open and box.Parent then box:CaptureFocus() end end))
+bag:Add(task.delay(0.25, function()
+if dlg.open and box.Parent then
+box:CaptureFocus()
+if type(cfg.Input) == "table" and cfg.Input.SelectAll then
+pcall(function() box.SelectionStart = 1 box.CursorPosition = #box.Text + 1 end)
+end
+end
+end))
 end
 return handle
 end
@@ -13201,7 +13208,7 @@ Name = tostring(item.Name), AutoButtonColor = false, Text = "", BackgroundColor3
 BorderSizePixel = 0, Parent = grid,
 }, { corner(12), stroke(T.Border, 1, 0.4) })
 local box = new("Frame", {
-Position = UDim2.fromOffset(5, 5), Size = UDim2.new(1, -10, 0, 50), BackgroundColor3 = T.Panel, BackgroundTransparency = 0.3,
+Name = "ImgBox", Position = UDim2.fromOffset(5, 5), Size = UDim2.new(1, -10, 0, 50), BackgroundColor3 = T.Panel, BackgroundTransparency = 0.3,
 BorderSizePixel = 0, Parent = card,
 }, { corner(9) })
 makeImage(box, item.Image)
@@ -13218,7 +13225,14 @@ Font = T.FontMedium or T.Font, TextSize = 13, TextColor3 = T.Text, TextWrapped =
 })
 feedback(card, card, "BackgroundColor3", T.Control, T.Lift, T.AccentSoft, true)
 strokeFeedback(card, card:FindFirstChildOfClass("UIStroke"), 0.4, 0.05)
+-- a scroll-drag that ends on a card, or a double tap, must not fire the callback (it opens a dialog)
+local press = dragSafePress(card, function() end, function() end, 10)
+local lastTap = 0
 card.MouseButton1Click:Connect(function()
+if press.moved then return end
+local now = os.clock()
+if now - lastTap < 0.3 then return end
+lastTap = now
 local it = data[item.Name]
 if it then safe(cfg.Callback, it) end
 end)
@@ -13236,8 +13250,20 @@ local seen, n = {}, 0
 for i, it in ipairs(list_ or {}) do
 local key = it.Name
 seen[key] = true
+local prev = data[key]
 data[key] = { Name = key, Amount = it.Amount, Image = it.Image, Id = it.Id }
-if not cards[key] then cards[key] = build(data[key]) end
+if not cards[key] then
+cards[key] = build(data[key])
+elseif prev and prev.Image ~= it.Image then
+-- image changed on an existing card: swap it instead of keeping the stale one
+local ibox = cards[key]:FindFirstChild("ImgBox")
+if ibox then
+for _, c in ipairs(ibox:GetChildren()) do
+if c.Name ~= "Badge" and c:IsA("GuiObject") then c:Destroy() end
+end
+makeImage(ibox, it.Image)
+end
+end
 cards[key].LayoutOrder = i
 paint(key)
 n += 1
@@ -13272,24 +13298,56 @@ return obj
 end
 function Window:AskAmount(cfg)
 cfg = cfg or {}
+-- one amount dialog at a time: extra taps while it is open are ignored (self-heals, no flag to get stuck)
+local cur = self._askAmountDlg
+if cur and type(cur.IsOpen) == "function" and cur:IsOpen() then return nil end
 local max = tonumber(cfg.Max)
+if max then
+max = math.floor(max)
+if max < 1 then return nil end
+end
 local content = cfg.Content
 if not content and max then content = "มีทั้งหมด: " .. max end
-local buttons = { { Text = cfg.Confirm or "ยืนยัน", Value = "ok", Style = "Primary" } }
-if max then buttons[#buttons + 1] = { Text = (cfg.MaxText or "ทั้งหมด") .. " (" .. max .. ")", Value = "max", Style = "Secondary" } end
-buttons[#buttons + 1] = { Text = cfg.Cancel or "ยกเลิก", Value = "cancel", Style = "Secondary" }
-local dlg = self:Dialog({
-Title = cfg.Title or "ใส่จำนวน", Content = content or "", Kind = cfg.Kind or "Info", Icon = cfg.Icon,
-Input = { Placeholder = "จำนวน", Default = tostring(cfg.Default or 1), Numeric = true, MaxLength = 9, AutoFocus = true },
-Buttons = buttons,
-})
-local value, text = dlg:Wait()
-if value == "max" and max then return math.floor(max) end
-if value ~= "ok" then return nil end
+local def = math.floor(tonumber(cfg.Default) or 1)
+def = max and math.clamp(def, 1, max) or math.max(def, 1)
+local function parse(text)
 local n = math.floor(tonumber(text) or 0)
 if n <= 0 then return nil end
-if max and n > max then n = math.floor(max) end
+if max and n > max then n = max end
 return n
+end
+local range = max and ("1-" .. max) or "1+"
+local buttons = {
+{ Text = cfg.Confirm or "ยืนยัน", Value = "ok", Style = "Primary", Close = false, Callback = function(h, text)
+-- invalid input keeps the dialog open and says why, instead of closing silently
+if parse(text) then
+h:Close("ok")
+else
+h:Update({ Content = "กรุณาใส่ตัวเลขที่ถูกต้อง (" .. range .. ")" })
+end
+end },
+}
+if max then buttons[#buttons + 1] = { Text = (cfg.MaxText or "ทั้งหมด") .. " (" .. max .. ")", Value = "max", Style = "Secondary" } end
+buttons[#buttons + 1] = { Text = cfg.Cancel or "ยกเลิก", Value = "cancel", Style = "Secondary" }
+local ok, value, text = pcall(function()
+local dlg = self:Dialog({
+Title = cfg.Title or "ใส่จำนวน", Content = content or "", Kind = cfg.Kind or "Info", Icon = cfg.Icon,
+Input = { Placeholder = "จำนวน", Default = tostring(def), Numeric = true, Integer = true, MaxLength = 9, AutoFocus = true, SelectAll = true },
+Buttons = buttons,
+})
+-- a failed dialog hands back a dead handle with no Wait(): bail out instead of erroring in the caller
+if type(dlg) ~= "table" or type(dlg.Wait) ~= "function" or type(dlg.IsOpen) ~= "function" then return nil end
+self._askAmountDlg = dlg
+return dlg:Wait()
+end)
+self._askAmountDlg = nil
+if not ok then
+warn("[SpectreUI] AskAmount failed: " .. tostring(value))
+return nil
+end
+if value == "max" and max then return max end
+if value ~= "ok" then return nil end
+return parse(text)
 end
 end
 do
@@ -14021,12 +14079,15 @@ Position = UDim2.fromOffset(0, PAD), Size = UDim2.new(1, 0, 0, 20), BackgroundTr
 Font = T.FontBold, TextSize = 16, TextColor3 = T.Text, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = ATEND,
 TextWrapped = false, Parent = body,
 })
+-- fixed-height single lines: the auto text-fit pass must not wrap them (a wrapped title grew over the bars)
+title:SetAttribute("SGSkip", true)
 local pillLimit = new("UISizeConstraint", { MaxSize = Vector2.new(140, 20) })
 local pill = new("TextLabel", {
 AnchorPoint = V2(1, 0), Position = UDim2.new(1, 0, 0, PAD), Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X,
 BackgroundColor3 = T.SubText, BackgroundTransparency = 0.8, BorderSizePixel = 0, Text = "", Font = T.FontBold, TextSize = 13,
 TextColor3 = T.SubText, TextWrapped = false, TextTruncate = ATEND, Visible = false, Parent = body,
 }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }), pillLimit })
+pill:SetAttribute("SGSkip", true)
 local bars = type(cfg.Bars) == "table" and cfg.Bars or {}
 local n = math.clamp(#bars, 1, 4)
 local cols = new("Frame", {
@@ -14045,6 +14106,7 @@ local lab = new("TextLabel", {
 Size = UDim2.new(1, -36, 0, 16), BackgroundTransparency = 1, Text = tostring(b.Label or ""), Font = T.Font, TextSize = 13,
 TextColor3 = T.SubText, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = ATEND, TextWrapped = false, Parent = cell,
 })
+lab:SetAttribute("SGSkip", true)
 local val = new("TextLabel", {
 AnchorPoint = V2(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(0, 16), AutomaticSize = Enum.AutomaticSize.X,
 BackgroundTransparency = 1, Text = "--", Font = T.FontBold, TextSize = n == 1 and 15 or 14, TextColor3 = col,
