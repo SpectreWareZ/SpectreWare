@@ -30,10 +30,12 @@ local CONFIG = {
     Deny = { soundId = "rbxasset://sounds/button.wav", volume = 0.8, pitch = 0.55 },
 
     Candy = {
-        hardLock = false, -- true = ล็อคทุกคน (รวม whitelist) | false = เปิดเฉพาะ allowed
-        allowed  = { [8514985969] = true }, -- UserId ที่ได้สิทธิ์
+        hardLock = false, -- true = ล็อคตาย ใส่รหัสก็เข้าไม่ได้ | false = ใส่รหัสเพื่อปลดล็อค
+        password = "2552", -- รหัสเข้าแท็บ Candy Farm (เปลี่ยนตรงนี้) | ใส่ function(input) return true/false end ก็ได้
+        maxAttempts = 5,   -- ใส่ผิดได้กี่ครั้งก่อนโดนหน่วง
+        lockoutTime = 30,  -- วินาทีที่ต้องรอหลังใส่ผิดครบ
         lockText          = "แท็บนี้ปิดปรับปรุงชั่วคราว (กำลังแก้บัก) ฟีเจอร์อื่นใช้งานได้ตามปกติ",
-        lockTextWhitelist = "แท็บนี้ปิดปรับปรุงชั่วคราว (กำลังแก้บัก) เปิดให้เฉพาะผู้ที่ได้รับสิทธิ์ ส่วนฟีเจอร์อื่นใช้งานได้ตามปกติ",
+        lockTextPassword  = "แท็บนี้ล็อคอยู่ ต้องใส่รหัสก่อนถึงจะใช้งานได้ ส่วนฟีเจอร์อื่นใช้งานได้ตามปกติ",
     },
 }
 -- Services: เรียก Svc.Players / Svc.RunService ... ได้เลย (cache ให้เอง)
@@ -615,6 +617,8 @@ SW.NotifyKinds = {
     ["alert-triangle"] = "Error",
     ["check-circle"] = "Success",
 }
+-- lucide เปลี่ยนชื่อไอคอนในแพ็กใหม่ (x-circle -> circle-x) แปลงให้ก่อนส่งเข้า UI จะได้ไม่ขึ้น "icon not found"
+SW.IconAlias = { ["x-circle"] = "circle-x" }
 function SW.Notify(cfg)
     pcall(function()
         Window:Notify({
@@ -622,7 +626,7 @@ function SW.Notify(cfg)
             Content = cfg.Content,
             Duration = cfg.Duration,
             Kind = SW.NotifyKinds[cfg.Icon] or "Info",
-            Icon = cfg.Icon and ("lucide:" .. cfg.Icon) or nil,
+            Icon = cfg.Icon and ("lucide:" .. (SW.IconAlias[cfg.Icon] or cfg.Icon)) or nil,
             -- lock notices use the UI theme colour instead of the amber warning colour
             Color = cfg.Color or (cfg.Icon == "lock" and Window.Theme and Window.Theme.Accent) or nil,
         })
@@ -768,21 +772,29 @@ SW.FishTab = Window:CreateTab({ Name = "Fishing", Icon = "lucide:fish" })
 SW.EatTab = Window:CreateTab({ Name = "Auto Eat", Icon = "lucide:utensils" })
 SW.CandyHardLock = CONFIG.Candy.hardLock
 SW.CandyLockText = CONFIG.Candy.lockText
-SW.CandyAllowed = CONFIG.Candy.allowed
-SW.CandyLockNotify = function()
-    SW.Notify({
-        Title = "Candy Farm ถูกล็อคอยู่",
-        Content = SW.CandyHardLock and CONFIG.Candy.lockText or CONFIG.Candy.lockTextWhitelist,
-        Icon = "lock",
-        Duration = 6,
-    })
+SW.CandyLoaded = false
+SW.CandyLoadOnce = function()
+    if SW.CandyLoaded or SW.CandyHardLock then return end
+    SW.CandyLoaded = true
+    SW.safeLoad("SW.LoadCandy", SW.LoadCandy)
 end
 SW.CandyTab = Window:CreateTab({
     Name = "Candy Farm", Icon = "lucide:candy",
-    Locked = SW.CandyHardLock, LockReason = SW.CandyLockText,   -- SpectreUI tab lock API
-    LockedNotify = false,                                       -- we show our own notify below
-    OnLockedClick = function() if SW.CandyLockNotify then SW.CandyLockNotify() end end,
+    -- ล็อคด้วยรหัสผ่าน (SpectreUI Tab Password Lock): กดแท็บแล้วมีกล่องให้ใส่รหัส
+    Password = (not SW.CandyHardLock) and CONFIG.Candy.password or nil,
+    MaxAttempts = CONFIG.Candy.maxAttempts, LockoutTime = CONFIG.Candy.lockoutTime,
+    Locked = SW.CandyHardLock,
+    LockReason = CONFIG.Candy.lockTextPassword,
+    PasswordTitle = "Candy Farm ถูกล็อคอยู่",
+    PasswordContent = CONFIG.Candy.lockTextPassword,
+    PasswordPlaceholder = "ใส่รหัสผ่าน",
+    OnUnlock = function() -- โหลดระบบ Candy เฉพาะหลังใส่รหัสถูก
+        pcall(function() SW.CandyTab:SetBadge(nil) end) -- ปลดแล้วเอาป้าย LOCKED ออก
+        SW.CandyLoadOnce()
+    end,
 })
+-- ป้าย LOCKED ที่ปุ่มแท็บ ให้เห็นชัดว่าล็อคอยู่ (เผื่อไอคอนล็อคของไลบรารีเล็ก/จางบนมือถือ)
+pcall(function() SW.CandyTab:SetBadge("LOCKED") end)
 local TeleportTab = Window:CreateTab({ Name = "Teleport", Icon = "lucide:map-pin" })
 SW.SafeTab = Window:CreateTab({ Name = "SAFE", Icon = "lucide:package" })
 SW.ServerTab = Window:CreateTab({ Name = "Server", Icon = "lucide:server" })
@@ -847,11 +859,11 @@ SW.Changelog = {
     {
         title = "อัปเดตล่าสุด • 2026-10-22",
         added = {
-            "แท็บ Candy Farm ล็อคชั่วคราว เปิดให้เฉพาะผู้ที่ได้รับสิทธิ์ระหว่างที่แก้บัก",
-            "แจ้งเตือนสวยๆ เมื่อแท็บถูกล็อค พร้อมปุ่ม \"ทำไมถึงใช้ไม่ได้?\" กดดูเหตุผลซ้ำได้",
+            "แท็บ Candy Farm เปลี่ยนเป็นล็อคด้วยรหัสผ่าน ใส่รหัสถูกก็เข้าใช้ได้ ไม่ต้องอยู่ใน whitelist แล้ว",
+            "กดแท็บที่ล็อคแล้วมีกล่องให้ใส่รหัส ใส่ผิดเกินกำหนดจะโดนหน่วงชั่วคราว",
         },
         fixed = {
-            "ผู้ที่ไม่ได้รับสิทธิ์จะไม่โหลดระบบออโต้ปลูกแคนดี้เลย ไม่ไปรบกวนฟีเจอร์อื่น แท็บอื่นใช้งานได้ปกติ",
+            "ระบบออโต้ปลูกแคนดี้จะไม่โหลดจนกว่าจะใส่รหัสถูก ไม่ไปรบกวนฟีเจอร์อื่น แท็บอื่นใช้งานได้ปกติ",
             "แผงสถานะ Candy แบบลอยในแท็บ Menu ยังใช้งานได้ตามเดิม",
         },
     },
@@ -1006,7 +1018,7 @@ local function LoadFarmTab()
         return titles, itemMap
     end
     local PLACEHOLDER = "Reload"
-    local FarmItemTitles = { PLACEHOLDER }
+    local FarmItemTitles = {} -- ไม่ใส่ตัวเลือก "Reload" ใน Dropdown แล้ว (มีปุ่ม Reload Items อยู่แล้ว)
     local FarmItemMap = { [PLACEHOLDER] = { Title = PLACEHOLDER, value = "", max = 60 } }
     local SelectedItem = FarmItemMap[PLACEHOLDER]
     local CustomMax = 60
@@ -1015,7 +1027,8 @@ local function LoadFarmTab()
     local ItemDropdown = nil
     local suppressItemCallback = false
     local FarmSection = FarmTab:CreateSection({ Name = "Deposit Settings", Icon = "lucide:package" })
-    local AutoFarmToggle
+    local AutoFarmToggle, depositUnlocked
+    local refreshDepositLock
     local function setInSafe(text)
         if SafeDescLabel and SafeDescLabel.Parent then pcall(function() SafeDescLabel.Text = tostring(text) end) end
     end
@@ -1025,6 +1038,7 @@ local function LoadFarmTab()
         if not SelectedItem or SelectedItem.value == "" or not UserSelectedItem then
             setInSafe("ยังไม่ได้เลือกไอเทม")
             if card then card.Visible = false end
+            if refreshDepositLock then refreshDepositLock() end
             return
         end
         local qty = getSafeQty(SelectedItem.value)
@@ -1034,6 +1048,7 @@ local function LoadFarmTab()
         if safeHudName then safeHudName.Text = SelectedItem.value end
         if safeHudCount then safeHudCount.Text = "×" .. SW.fmt(qty) .. ' <font size="11" color="rgb(150,141,190)">ในตู้</font>' end
         if card then card.Visible = true end
+        if refreshDepositLock then refreshDepositLock() end
     end
     local function createItemDropdown(titles, itemMap)
         local options = {}
@@ -1097,7 +1112,7 @@ local function LoadFarmTab()
     task.wait()
     FarmSection:CreateTextbox({
         Name = "Deposit Amount",
-        Placeholder = "ใส่ตัวเลข เช่น 30 / 60 / 500 (ค่าเริ่มต้น " .. tostring(CustomMax) .. ")",
+        Placeholder = "(ไม่บังคับ) ใส่ตัวเลข เช่น 30 / 60 / 500 (ค่าเริ่มต้น " .. tostring(CustomMax) .. ")",
         Callback = function(v)
             local n = tonumber(v)
             if n and n > 0 then
@@ -1179,31 +1194,19 @@ local function LoadFarmTab()
     task.wait()
     AutoFarmToggle = FarmSection:CreateToggle({
         Name = "Auto Deposit",
-        Tooltip = "เปิดแล้วเริ่มเก็บใส่ตู้ ปิดแล้วหยุด",
+        Tooltip = "🔒 ล็อคอยู่จนกว่าจะเลือกของใน Select Item | เลือกแล้วเปิดได้ เปิดแล้วเก็บใส่ตู้ ปิดแล้วหยุด",
         Default = false,
         Callback = function(state)
             depositRunId = depositRunId + 1
             local myDepId = depositRunId
             if state then
-                local noItem = not UserSelectedItem
-                local noAmt = not CustomMaxSet
-                if noItem or noAmt then
+                -- ล็อค: ต้องเลือกของใน Dropdown ก่อน ถึงเปิดได้ (เลือกแล้วปลดให้เอง)
+                if not UserSelectedItem or not SelectedItem or SelectedItem.value == "" then
                     FarmRunning = false
                     task.spawn(function()
                         pcall(function() AutoFarmToggle:Set(false) end)
                     end)
-                    local msg
-                    if noItem and noAmt then
-                        msg =
-                            "เลือกของกับใส่จำนวนก่อนเปิด Auto Deposit"
-                    elseif noItem then
-                        msg = "เลือกของที่จะเก็บก่อนเปิด Auto Deposit"
-                    else
-                        msg =
-                            "ใส่จำนวนของที่จะเก็บก่อนเปิด Auto Deposit"
-                    end
-                    SW.denySound()
-                    SW.Notify({ Title = "เปิดไม่ได้", Icon = "lock", Content = msg, Duration = 4 })
+                    SW.Notify({ Title = "🔒 ล็อคอยู่", Icon = "lock", Content = "เลือกของที่จะเก็บใน Select Item ก่อน ถึงจะเปิด Auto Deposit ได้", Duration = 4 })
                     return
                 end
             end
@@ -1241,14 +1244,36 @@ local function LoadFarmTab()
                     local cur = getSlotCount(slot)
                     if cur >= CustomMax and SelectedItem.value ~= "" then DepositRemote:FireServer(SelectedItem.value, cur) end
                 end
-                while FarmRunning and SW.alive and depositRunId == myDepId do
+                while FarmRunning and SW.alive and depositRunId == myDepId and UserSelectedItem do
                     SW.pauseWait()
                     SW.try("Deposit", depositTick)
                     task.wait(1)
                 end
+                if FarmRunning and depositRunId == myDepId and not UserSelectedItem then
+                    -- ยกเลิกการเลือกของระหว่างทำงาน: ล็อคกลับและปิดให้
+                    FarmRunning = false
+                    pcall(function() AutoFarmToggle:Set(false) end)
+                    SW.Notify({ Title = "🔒 ล็อคอยู่", Icon = "lock", Content = "ยกเลิกการเลือกของ Auto Deposit จึงหยุดให้", Duration = 4 })
+                end
             end)
         end,
     })
+    -- ล็อคปุ่ม Auto Deposit จนกว่าจะเลือกของใน Select Item (ใช้ Lock/Unlock ของ UI)
+    refreshDepositLock = function()
+        local want = (UserSelectedItem and SelectedItem and SelectedItem.value ~= "") and true or false
+        if want == depositUnlocked then return end
+        depositUnlocked = want
+        if not AutoFarmToggle then return end
+        if want then
+            pcall(function() AutoFarmToggle:Unlock() end)
+        else
+            FarmRunning = false
+            depositRunId = depositRunId + 1
+            pcall(function() AutoFarmToggle:Set(false) end)
+            pcall(function() AutoFarmToggle:Lock() end)
+        end
+    end
+    refreshDepositLock()
     task.wait()
     local WaterSection = FarmTab:CreateSection({ Name = "Candy Tree - Auto Water", Icon = "lucide:droplet" })
     local autoWaterEnabled, selectedWaterFolders, waterPickDropdown, waterFolderMap = false, {}, nil, {}
@@ -2231,10 +2256,30 @@ local function LoadTeleportTab()
             local d = (root and part) and math.floor((part.Position - root.Position).Magnitude) or 0
             return string.format("%s #%d  [%dm]", obj.Name, id, d)
         end
+        local NPC_FOLDER_NAME = "[Server] Npc_Seal"
+        local function hasSpawnModels(container)
+            for _, model in ipairs(container:GetChildren()) do
+                if model:IsA("Model") and model:GetAttribute("Active") ~= nil then
+                    return true
+                end
+            end
+            return false
+        end
+        local function findNpcFolder(sys)
+            local named = sys:FindFirstChild(NPC_FOLDER_NAME)
+            if named then return named end
+            for _, root in ipairs({ sys, workspace }) do
+                for _, child in ipairs(root:GetChildren()) do
+                    if child:IsA("Folder") and hasSpawnModels(child) then
+                        return child
+                    end
+                end
+            end
+        end
         local function scanNpc()
             if not (npcFolder and npcFolder.Parent) then
                 local sys = workspace:FindFirstChild("System")
-                npcFolder = sys and sys:FindFirstChild("[Server] Npc_Seal")
+                npcFolder = sys and findNpcFolder(sys)
                 if not npcFolder and not npcMissingReported then
                     npcMissingReported = true
                     local kids = {}
@@ -5183,6 +5228,7 @@ SW.LoadCandy = function()
         return false
     end
     local function collectTree(tree)
+        if S.capBlocked() then return end
         if os.clock() - (S.lastCollect[tree] or 0) < 6 then return end
         S.lastCollect[tree] = os.clock()
         local tk = treeKey(tree)
@@ -5191,6 +5237,141 @@ SW.LoadCandy = function()
         local ok, err = pcall(S.collectInner, tree)
         S.collecting = false
         if not ok then SW.report("CollectTree", err) end
+    end
+    -- สแนปช็อตของในกระเป๋า (LP.Item / LP.Data.Item) ไว้เทียบก่อน-หลังเก็บ = นับจำนวนที่ได้จริงโดยไม่ต้องรู้ชื่อไอเทม
+    S.itemSnap = function()
+        local snap = {}
+        local d = LP:FindFirstChild("Data")
+        for _, folder in ipairs({ LP:FindFirstChild("Item"), d and d:FindFirstChild("Item") }) do
+            if folder then
+                for _, v in ipairs(folder:GetChildren()) do
+                    if v:IsA("ValueBase") then
+                        local n = tonumber(v.Value)
+                        if n then snap[v.Name] = n end
+                    end
+                end
+            end
+        end
+        return snap
+    end
+    S.stat.items = S.stat.items or {}
+    -- เพดานเก็บของต่อไอเทม = Items[ชื่อ].MaxValue (เกมโชว์เป็น "มี|เพดาน" ในกระเป๋า, Candy = 50) เต็มแล้วเก็บผลเพิ่มไม่ได้
+    S.capOn = true
+    S.itemCap = function(name)
+        if not name then return nil end
+        if S.itemsMod == nil then
+            local ok, mod = pcall(function()
+                return require(RS:WaitForChild("Game_Modules", 3):WaitForChild("Items", 3))
+            end)
+            S.itemsMod = (ok and type(mod) == "table") and mod or false
+        end
+        local def = S.itemsMod and S.itemsMod[name]
+        return def and tonumber(def.MaxValue) or nil
+    end
+    -- จำนวนผลต่อต้นเรียนรู้จากของที่เข้ากระเป๋าจริงตอนเก็บ (เกมฝั่ง client ไม่มีตัวเลขนี้ให้ดูล่วงหน้า) เก็บลงไฟล์
+    -- แยกสถิติตามจำนวนปุ๋ยที่ใส่ เผื่อผลขึ้นกับปุ๋ย | yieldLB = ขอบล่างที่เรียนรู้จากตอนเกมปฏิเสธเก็บ (ไม่เก็บลงไฟล์)
+    S.yieldKey = "yield_" .. LP.UserId
+    S.yieldItem, S.maxYield, S.sumYield, S.nYield = "Candy", 0, 0, 0
+    S.yieldBy, S.yieldLB = {}, 0
+    do
+        local d = ENV.SpectreNT_Store.get(S.yieldKey)
+        if type(d) == "table" then
+            S.yieldItem = type(d.item) == "string" and d.item or S.yieldItem
+            S.maxYield, S.sumYield, S.nYield = tonumber(d.max) or 0, tonumber(d.sum) or 0, tonumber(d.n) or 0
+            if type(d.by) == "table" then S.yieldBy = d.by end
+        end
+    end
+    S.yieldSave = function()
+        pcall(ENV.SpectreNT_Store.set, S.yieldKey, { item = S.yieldItem, max = S.maxYield, sum = S.sumYield, n = S.nYield, by = S.yieldBy })
+    end
+    S.learnYield = function(name, diff, fert)
+        local cap = S.itemCap(name)
+        if cap and getCount(name) >= cap then return end -- เต็มเพดาน: ที่ได้อาจถูกตัดทิ้ง ไม่เอามาเฉลี่ย
+        if name ~= S.yieldItem then S.maxYield, S.sumYield, S.nYield, S.yieldBy = 0, 0, 0, {} end
+        S.yieldItem = name
+        S.maxYield = m_max(S.maxYield, diff)
+        S.sumYield, S.nYield = S.sumYield + diff, S.nYield + 1
+        local k = tostring(fert or 0)
+        local g = S.yieldBy[k] or { max = 0, sum = 0, n = 0 }
+        g.max, g.sum, g.n = m_max(g.max, diff), g.sum + diff, g.n + 1
+        S.yieldBy[k] = g
+        S.yieldLB = 0 -- ได้ค่าจริงแล้ว ขอบล่างที่เดาไว้หมดความหมาย
+        S.yieldSave()
+    end
+    S.readyCount = function()
+        local n = 0
+        for _, t in ipairs(ownTrees()) do
+            if t.Parent and statOf(t, "Growth") >= 100 and (S.collectTries[treeKey(t)] or 0) < 3 then n = n + 1 end
+        end
+        return n
+    end
+    -- ต้องเว้นที่ว่างเท่าไรสำหรับต้นนี้: กลุ่มปุ๋ยเดียวกันเก็บมาแล้ว >= 3 ครั้ง ใช้สูงสุดของกลุ่มนั้น ไม่งั้นใช้สูงสุดรวม (ปลอดภัยกว่า)
+    -- ไม่ต่ำกว่าขอบล่างที่เกมเคยปฏิเสธ และอย่างน้อย 1
+    S.needFor = function(tree)
+        local need = S.maxYield
+        if tree then
+            local g = S.yieldBy[tostring(fertOf(tree))]
+            if g and g.n >= 3 then need = g.max end
+        end
+        return m_max(need, S.yieldLB, 1)
+    end
+    -- เว้นที่ว่างในกระเป๋าให้พอสำหรับต้นนี้ก่อนยิงเก็บ: ฝากเข้าตู้เซฟแล้วรอจนที่ว่างเพิ่มจริง (ตรวจจากค่าในกระเป๋า ไม่ใช่เดาจากเวลา)
+    S.makeRoom = function(need)
+        local item = S.yieldItem
+        local cap = S.itemCap(item)
+        if not cap then return true end
+        local have = getCount(item)
+        if have + need <= cap then return true end
+        if not (S.depositRemote and S.depositRemote.Parent) then
+            S.depositRemote = resolveRemotePath(RS, { "Game_Modules", "RemoteEventSafe", "DepositItem" }, 3)
+        end
+        local r = S.depositRemote
+        if not r then
+            S.log("ไม่เจอ remote ฝากตู้เซฟ (Game_Modules.RemoteEventSafe.DepositItem)")
+            return false
+        end
+        setStatus(("ฝาก %s เข้าตู้เซฟ เพื่อเว้นที่ %d (มี %d/%d)"):format(item, need, have, cap))
+        pcall(r.FireServer, r, item, have)
+        local t0 = os.clock()
+        while live() and os.clock() - t0 < 4 do
+            local now = getCount(item)
+            if now + need <= cap then
+                S.log(("ฝาก %s ×%d เข้าตู้เซฟแล้ว ที่ว่าง %d/%d (ต้องการ %d)"):format(item, have - now, cap - now, cap, need))
+                return true
+            end
+            task.wait(0.1)
+        end
+        S.log(("ฝาก %s แล้วที่ว่างไม่เพิ่ม (มี %d/%d ต้องการ %d) ตู้เซฟอาจเต็ม"):format(item, getCount(item), cap, need))
+        return false
+    end
+    -- ใช้เป็นช่วงพักหลังเว้นที่ไม่สำเร็จเท่านั้น (ปกติ makeRoom จัดการตอนเก็บแต่ละต้นเอง)
+    S.capBlocked = function()
+        if not S.capOn then return false end
+        local left = (S.roomFailUntil or 0) - os.clock()
+        if left <= 0 then return false end
+        setStatus(("เว้นที่ในกระเป๋าไม่สำเร็จ (ตู้เซฟเต็ม/ไม่มี remote?) รอลองใหม่อีก %d วิ"):format(math.ceil(left)))
+        return true
+    end
+    -- บรรทัดสรุปสำหรับ HUD: มี/เพดาน | ต่อต้น | ต้นที่พร้อมเก็บคาดว่าได้เท่าไร | เกินเพดานไหม
+    S.capLine = function()
+        local item = S.yieldItem
+        local cap = S.itemCap(item)
+        local have = getCount(item)
+        local out = item .. " " .. have .. (cap and ("/" .. cap) or "")
+        if cap then out = out .. ("  ว่าง %d ต้องการ %d"):format(cap - have, S.needFor(nil)) end
+        if S.nYield > 0 then
+            local avg = S.sumYield / S.nYield
+            out = out .. ("  ต้นละ ~%.1f (สูงสุด %d)"):format(avg, S.maxYield)
+            local ready = S.readyCount()
+            if ready > 0 then
+                local est = m_floor(ready * avg + 0.5)
+                out = out .. ("  พร้อมเก็บ %d ต้น ≈ +%d"):format(ready, est)
+                if cap and have + est > cap then out = out .. ("  ⚠ เกิน %d"):format(have + est - cap) end
+            end
+        else
+            out = out .. "  (ยังไม่เคยเก็บ ยังไม่รู้ต่อต้น)"
+        end
+        return out
     end
     S.collectInner = function(tree)
         if not standBy(tree, 15) then return end
@@ -5226,6 +5407,25 @@ SW.LoadCandy = function()
         pauseGate()
         setStatus("เก็บ " .. tree.Name)
         local ck = treeKey(tree)
+        local needNow = S.needFor(tree)
+        if S.capOn and not S.makeRoom(needNow) then
+            S.roomFailUntil = os.clock() + 20
+            S.log("เว้นที่ในกระเป๋าไม่สำเร็จ พักเก็บ 20 วิ")
+            return
+        end
+        local haveBefore = getCount(S.yieldItem)
+        local fertAtCollect = fertOf(tree)
+        local before = S.itemSnap()
+        do
+            -- ค่าใน Stats ของต้น ณ ตอนเก็บ (เผื่อเกมมีช่องบอกจำนวนผล) ดูได้ใน log
+            local st, parts = tree:FindFirstChild("Stats"), {}
+            if st then
+                for _, v in ipairs(st:GetChildren()) do
+                    if v:IsA("ValueBase") then t_insert(parts, v.Name .. "=" .. tostring(v.Value)) end
+                end
+            end
+            if #parts > 0 then S.log("Stats: " .. table.concat(parts, " ")) end
+        end
         pcall(fireproximityprompt, prompt)
         S.stat.collected = S.stat.collected + 1
         S.log("เก็บผล " .. tree.Name)
@@ -5236,6 +5436,42 @@ SW.LoadCandy = function()
         local b0 = os.clock()
         while live() and tree.Parent and tree:GetAttribute("BeingCollected") and os.clock() - b0 < 8 do
             task.wait(0.2)
+        end
+        -- รอของเข้ากระเป๋าสูงสุด 1.5 วิ แล้วเทียบ: ไอเทมไหนเพิ่มขึ้นเท่าไร = ที่ได้จากต้นนี้
+        do
+            local gained, w1 = {}, os.clock()
+            repeat
+                task.wait(0.15)
+                gained = {}
+                for name, n in pairs(S.itemSnap()) do
+                    local diff = n - (before[name] or 0)
+                    if diff > 0 and name ~= BAG then gained[name] = diff end
+                end
+            until next(gained) ~= nil or os.clock() - w1 > 1.5
+            local out = {}
+            local bestName, bestDiff
+            for name, diff in pairs(gained) do
+                if not bestDiff or diff > bestDiff then bestName, bestDiff = name, diff end
+            end
+            if bestName then S.learnYield(bestName, bestDiff, fertAtCollect) end
+            -- ยิงเก็บแล้วไม่ได้อะไรและต้นยังโตเต็มอยู่ + กระเป๋าไม่เต็ม = เกมปฏิเสธเพราะที่ไม่พอ -> ต่อต้นต้องมากกว่าที่ว่างตอนนั้น
+            if not bestName and S.capOn and tree.Parent and statOf(tree, "Growth") >= 100 then
+                local cap = S.itemCap(S.yieldItem)
+                if cap and haveBefore < cap then
+                    S.yieldLB = m_max(S.yieldLB, cap - haveBefore + 1)
+                    S.log(("เก็บไม่ติด ทั้งที่ว่าง %d: ต่อต้นต้องมากกว่านี้ ตั้งขอบล่าง %d"):format(cap - haveBefore, S.yieldLB))
+                end
+            end
+            for name, diff in pairs(gained) do
+                S.stat.items[name] = (S.stat.items[name] or 0) + diff
+                t_insert(out, name .. " ×" .. diff)
+            end
+            if #out > 0 then
+                table.sort(out)
+                S.log("ได้จากต้นนี้: " .. table.concat(out, ", "))
+            else
+                S.log("เก็บแล้วแต่ไม่เห็นของเพิ่มในกระเป๋า")
+            end
         end
         S.collectTries[ck] = nil
         S.noPlantUntil = os.clock() + 2
@@ -5835,7 +6071,157 @@ SW.LoadCandy = function()
         end
         return nil
     end
+    -- ===== Layout Memory: จำตำแหน่งแคนดี้ที่วางไว้ (วางเอง/บอทวาง) รอบหน้าปลูกซ้ำตำแหน่งเดิมก่อนเสมอ =====
+    -- เก็บลงไฟล์ ย้ายเซิร์ฟ/รีจอยแล้วยังอยู่ | เก็บพิกัดต้นจริง (ไม่ใช่พิกัดที่ยืน)
+    S.layoutKey = "layout_" .. LP.UserId .. "_" .. game.PlaceId
+    S.layoutOn, S.layoutRec = true, true
+    S.layout = {}
+    do
+        local d = ENV.SpectreNT_Store.get(S.layoutKey)
+        if type(d) == "table" then
+            for _, e in ipairs(d) do
+                if type(e) == "table" and tonumber(e[1]) and tonumber(e[2]) and tonumber(e[3]) then
+                    t_insert(S.layout, { pos = v3_new(e[1], e[2], e[3]) })
+                end
+            end
+        end
+        if #S.layout > S.target then S.target = #S.layout end
+    end
+    S.layoutSave = function()
+        local d = {}
+        for _, sl in ipairs(S.layout) do
+            d[#d + 1] = { m_floor(sl.pos.X * 10) / 10, m_floor(sl.pos.Y * 10) / 10, m_floor(sl.pos.Z * 10) / 10 }
+        end
+        pcall(ENV.SpectreNT_Store.set, S.layoutKey, d)
+    end
+    S.layoutAdd = function(pos)
+        if not (pos and S.layoutRec) then return false end
+        for _, sl in ipairs(S.layout) do
+            if flat(sl.pos, pos) < 1.2 then return false end
+        end
+        t_insert(S.layout, { pos = pos })
+        if #S.layout > 60 then table.remove(S.layout, 1) end
+        if #S.layout > S.target then S.target = #S.layout end
+        S.layoutSave()
+        S.log(("จำตำแหน่งแคนดี้ #%d (%.0f, %.0f)"):format(#S.layout, pos.X, pos.Z))
+        return true
+    end
+    -- แทนที่เลย์เอาต์ทั้งหมดด้วยต้นที่ปลูกอยู่ตอนนี้
+    S.layoutFromTrees = function(trees)
+        local list = {}
+        for _, t in ipairs(trees) do
+            local tp = treePos(t)
+            if tp then t_insert(list, { pos = tp }) end
+        end
+        S.layout = list
+        S.bad = {}
+        if #list > S.target then S.target = #list end
+        S.layoutSave()
+        return #list
+    end
+    S.layoutClear = function()
+        S.layout = {}
+        S.bad = {}
+        S.layoutSave()
+    end
+    -- ยืนที่จุดแล้ว ตรวจชิ้นส่วนจริงว่าว่าง ค่อยล้างความจำเก่า (mem/taken/known) ที่ค้างตรงจุดนี้หลังเก็บเกี่ยว
+    -- ไม่ล้าง = ด่านกันซ้อนมองว่ามีต้นเดิมอยู่ แล้วไม่ยอมปลูกที่เดิม
+    S.layoutPurge = function(pos)
+        if S.occupied(pos) then return false end
+        for i = #S.mem, 1, -1 do
+            if flat(S.mem[i].pos, pos) < 1.5 then table.remove(S.mem, i) end
+        end
+        for i = #S.taken, 1, -1 do
+            if flat(S.taken[i].pos, pos) < 1.5 then table.remove(S.taken, i) end
+        end
+        for k, info in pairs(S.known) do
+            if info.pos and flat(info.pos, pos) < 1.5 then S.known[k] = nil end
+        end
+        S.memAt = 0
+        S.memSave()
+        return true
+    end
+    -- เลือกช่องที่จำไว้ที่ยังว่าง ใกล้ตัวที่สุดก่อน
+    S.layoutSpot = function(trees)
+        if not S.layoutOn or #S.layout == 0 then return nil end
+        local _, hrp = getChar()
+        local me = hrp and hrp.Position
+        local taken, now = {}, os.clock()
+        for _, t in ipairs(trees) do
+            local tp = treePos(t)
+            if tp then t_insert(taken, tp) end
+        end
+        for _, pl in ipairs(S.placed or {}) do
+            if now - pl.t <= 25 then t_insert(taken, pl.pos) end
+        end
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        local ignore = { LP.Character }
+        local apt = workspace:FindFirstChild("AllPlantedTrees")
+        if apt then t_insert(ignore, apt) end
+        params.FilterDescendantsInstances = ignore
+        local cand = {}
+        for i, sl in ipairs(S.layout) do
+            local key = "LY" .. i
+            if not S.bad[key] then
+                local free = true
+                for _, tp in ipairs(taken) do
+                    if flat(tp, sl.pos) < 2 then free = false break end
+                end
+                if free then t_insert(cand, { pos = sl.pos, key = key, d = me and flat(me, sl.pos) or 0 }) end
+            end
+        end
+        t_sort(cand, function(a, b) return a.d < b.d end)
+        for i = 1, math.min(#cand, 12) do
+            local c = cand[i]
+            local ray = S.groundAt(c.pos.X, c.pos.Z, c.pos.Y, params)
+            if ray then
+                if ray.Normal.Y >= S.scanCfg.groundMinY and not S.isBadPt(ray.Position) and not S.occupied(ray.Position) then
+                    return { pos = ray.Position, key = c.key }
+                end
+                S.bad[c.key] = true
+            elseif me and flat(me, c.pos) > 50 then
+                return { pos = c.pos, key = c.key } -- ไกลจนพื้นยังไม่สตรีม: เดินไปก่อน แล้วตรวจจริงตอนถึง
+            else
+                S.bad[c.key] = true
+            end
+        end
+        return nil
+    end
+    S.layoutTreePos = function(m)
+        local prop = m:FindFirstChild("PROP")
+        local part = prop and prop:FindFirstChild("Part")
+        if not (part and part:IsA("BasePart")) then part = SW.treePart(m) end
+        return part and part.Position or nil
+    end
+    -- ดักต้นใหม่ในโฟลเดอร์เรา (วางเองหรือบอทวางก็จำ) ต้นที่โตแล้วไม่จำ กันต้นที่ stream เข้ามาทีหลังมั่ว
+    task.spawn(function()
+        local conn, folder
+        while SW.alive do
+            local f = ownFolder()
+            if f and f ~= folder then
+                if conn then conn:Disconnect() end
+                folder = f
+                conn = f.ChildAdded:Connect(function(ch)
+                    if not (S.layoutRec and ch:IsA("Model")) then return end
+                    task.spawn(function()
+                        local t0, pos = os.clock(), nil
+                        while SW.alive and ch.Parent and os.clock() - t0 < 4 do
+                            if ch:FindFirstChild("Stats") then pos = S.layoutTreePos(ch) end
+                            if pos then break end
+                            task.wait(0.15)
+                        end
+                        if pos and ch.Parent and statOf(ch, "Growth") < 100 then S.layoutAdd(pos) end
+                    end)
+                end)
+            end
+            task.wait(2)
+        end
+        if conn then conn:Disconnect() end
+    end)
     local function pickSpot(trees)
+        local ly = S.layoutSpot(trees)
+        if ly then return ly.pos, ly.key end
         local near = S.nearSpot(trees)
         if near then return near.pos, near.key end
         local lat = S.latSpot(trees)
@@ -6197,7 +6583,7 @@ SW.LoadCandy = function()
         local _, hrp = getChar()
         if not hrp then return true, "nochar" end
         local pred = S.predictTree(hrp)
-        local gap = S.minGap() - 0.15
+        local gap = S.curGap or (S.minGap() - 0.15)
         -- ต้นจริงใน AllPlantedTrees (ทุกคน) ตรวจสดทุกครั้ง ไม่พึ่งแคช
         local apt = workspace:FindFirstChild("AllPlantedTrees")
         if apt then
@@ -6215,7 +6601,7 @@ SW.LoadCandy = function()
                 if not skip then return true, "pt" end
             end
         end
-        if S.occupied(pred, 4.5, math.max(S.occHalf, S.minGap() * 0.3)) then
+        if S.occupied(pred, 4.5, S.curGap and S.occHalf or math.max(S.occHalf, S.minGap() * 0.3)) then
             S.memAdd(pred, "seen")
             return true, "phys"
         end
@@ -6331,7 +6717,9 @@ SW.LoadCandy = function()
             end
             return
         end
-        setStatus("เดินไปจุดปลูก")
+        local isLY = type(key) == "string" and key:sub(1, 2) == "LY"
+        S.curGap = isLY and 1.5 or nil -- ช่องที่จำไว้เคยวางได้จริงแล้ว: กันแค่ซ้อนทับ ไม่ใช้ระยะ spacing ทั่วไป
+        setStatus(isLY and "เดินไปจุดที่จำไว้" or "เดินไปจุดปลูก")
         local stand = S.standFor(spot)
         if not walkNear(stand, 1.5, 8) then
             S.bad[key] = true
@@ -6339,7 +6727,12 @@ SW.LoadCandy = function()
             S.log("เดินไปจุดปลูกไม่ถึง ข้ามจุด " .. key)
             return
         end
-        if #trees > 0 then
+        if isLY and not S.layoutPurge(spot) then
+            S.bad[key] = true
+            S.log("จุดที่จำไว้มีต้นอยู่แล้ว ข้ามจุด " .. key)
+            return
+        end
+        if #trees > 0 and not isLY then
             local _, hr = getChar()
             local near = false
             if hr then
@@ -6418,7 +6811,7 @@ SW.LoadCandy = function()
         end
         do
             local tooClose = false
-            local minGap = S.minGap() - 0.15
+            local minGap = S.curGap or (S.minGap() - 0.15)
             for _, o in ipairs(S.allPts()) do
                 if flat(predicted, o) < minGap then tooClose = true break end
             end
@@ -6582,6 +6975,7 @@ SW.LoadCandy = function()
             end
             local mark = real or predicted
             t_insert(S.placed, { pos = mark, t = os.clock() })
+            if real then S.layoutAdd(real) end
             S.memAdd(mark, "own")
             if real and flat(real, predicted) > 1.2 then S.memAdd(predicted, "own") end
             -- วัดว่าต้นโผล่คลาดจากที่คาดเท่าไร: คลาดมาก = เซิร์ฟเวอร์ยังเห็นเราที่เก่า -> เพิ่มเวลารอซิงค์ / นิ่งแล้วค่อยลด
@@ -6605,7 +6999,7 @@ SW.LoadCandy = function()
                     local d = flat(real, o)
                     if d > 0.4 and d < nearest then nearest = d end
                 end
-                if nearest < S.minGap() - 0.3 then
+                if nearest < S.minGap() - 0.3 and not isLY then
                     S.stat.overlap = (S.stat.overlap or 0) + 1
                     t_insert(S.badPts, { pos = real, t = os.clock() })
                     t_insert(S.badPts, { pos = predicted, t = os.clock() })
@@ -6630,10 +7024,12 @@ SW.LoadCandy = function()
                     SW.Notify({ Title = "Candy Farm", Icon = "alert-triangle", Content = "เกมแจ้ง: " .. rej.text, Duration = 6 })
                 end
                 if S.hasWord(rej.text, { "ใกล้", "ชิด", "ซ้อน", "ทับ", "ระยะ", "close", "near", "space", "overlap", "distance" }) then
-                    S.markTaken(predicted, 600) -- เกมบอกชิด/ทับ = มีต้นอยู่ตรงนี้จริง
-                    t_insert(S.badPts, { pos = spot, t = os.clock() })
-                    if S.spacing < 10 then S.spacing = S.spacing + 0.5 end
-                    S.bad = {}
+                    if not isLY then
+                        S.markTaken(predicted, 600) -- เกมบอกชิด/ทับ = มีต้นอยู่ตรงนี้จริง
+                        t_insert(S.badPts, { pos = spot, t = os.clock() })
+                        if S.spacing < 10 then S.spacing = S.spacing + 0.5 end
+                        S.bad = {}
+                    end
                 elseif S.hasWord(rej.text, { "เต็ม", "โควตา", "ครบ", "สูงสุด", "limit", "max", "full", "quota" }) then
                     S.coolUntil = os.clock() + 30
                     S.quotaUntil = S.coolUntil -- ปลูกเพิ่มไม่ได้จริง: ปล่อยให้รดน้ำ/ปุ๋ย/เก็บทำงานได้ ไม่ต้องรอ
@@ -6646,7 +7042,7 @@ SW.LoadCandy = function()
             end
             S.fails = S.fails + 1
             S.spaceFails = S.spaceFails + 1
-            if S.spaceFails >= 2 and S.spacing < 10 then
+            if S.spaceFails >= 2 and S.spacing < 10 and not isLY then
                 S.spaceFails = 0
                 S.spacing = S.spacing + 1
                 S.log("ถ่างระยะห่างเป็น " .. S.spacing)
@@ -6717,6 +7113,7 @@ SW.LoadCandy = function()
     local function harvestAll()
         local list = grownList()
         if #list == 0 then return false end
+        if S.capBlocked() then return false end -- เต็ม: ไม่ล็อกลูปรอเก็บ ให้รดน้ำ/ใส่ปุ๋ยต้นอื่นต่อได้
         S.harvesting = true
         S.release("seed")
         for _, tree in ipairs(list) do
@@ -6819,6 +7216,7 @@ SW.LoadCandy = function()
             S.lockJump(true)
             local okP, did = pcall(plantOne, trees)
             S.planting = false
+            S.curGap = nil
             S.lockJump(false)
             if not okP then error(did, 0) end
             setStatus(("ปลูก %d/%d | %s ×%d | %s"):format(#ownTrees(), S.target, S.seed, getCount(S.seed), S.AI.summary()))
@@ -6930,6 +7328,10 @@ SW.LoadCandy = function()
                     local name, card = it[1], candyCards[i]
                     local n = getCount(name)
                     local full = n >= CANDY_MAX
+                    -- ฝากตู้ตอน "ที่เหลือไม่พอเก็บต้นถัดไป" ไม่ใช่รอครบ 50 พอดี (มี 49 + ต้นละหลายชิ้น เกมเก็บให้ไม่ได้)
+                    local cap = S.itemCap(name) or CANDY_MAX
+                    local need = 0
+                    local noRoom = n >= cap
                     local sig = n .. (full and "F" or "")
                     if candySig[name] ~= sig then
                         candySig[name] = sig
@@ -6937,14 +7339,14 @@ SW.LoadCandy = function()
                         pcall(card.SetBadge, card, full and "เต็ม" or ("×" .. n), full and C_BAD or (n > 0 and C_OK or C_DIM))
                         pcall(card.SetBar, card, 1, m_clamp(m_floor(n / CANDY_MAX * 100), 0, 100), n .. "/" .. CANDY_MAX, full and C_BAD or nil)
                     end
-                    if full and S.on and (candyWait[name] or 0) < os.clock() then
+                    if noRoom and S.on and (candyWait[name] or 0) < os.clock() then
                         if not candyRemote or not candyRemote.Parent then
                             candyRemote = resolveRemotePath(RS, { "Game_Modules", "RemoteEventSafe", "DepositItem" }, 2)
                         end
                         if candyRemote then
                             candyWait[name] = os.clock() + 3
                             pcall(candyRemote.FireServer, candyRemote, name, n)
-                            S.log("เก็บใส่ตู้ " .. name .. " ×" .. n)
+                            S.log(("เก็บใส่ตู้เซฟ %s ×%d (เต็ม %d/%d)"):format(name, n, n, cap))
                         end
                     end
                 end
@@ -7084,15 +7486,8 @@ SW.LoadCandy = function()
             S.log("วาร์ปไปที่แคนดี้")
         end,
     })
-    run:CreateToggle({
-        Name = "Auto Set Slot",
-        Tooltip = "ถ้าเมล็ดแคนดี้ยังไม่อยู่ในสล็อตไหน จะเซ็ตลงสล็อตว่างช่องแรกให้เอง",
-        Default = true,
-        Callback = function(state)
-            S.autoSlot = state
-            if state then task.spawn(S.ensureSlot, S.seed, true) end
-        end,
-    })
+    -- Auto Set Slot / Check Storage Limit / Remember Layout / Save+Clear Layout: ทำงานอัตโนมัติตลอด ไม่มีปุ่มให้กด
+    S.autoSlot, S.capOn, S.layoutOn, S.layoutRec = true, true, true, true
     do
         local view, HUD, viewLoop = { n = 0 }, { on = true }, false
         local hudGui, hudFrame, hudLbl
@@ -7108,7 +7503,7 @@ SW.LoadCandy = function()
         local function buildHud()
             hudGui = SW.new("ScreenGui", { Name = "SW_CandyHUD", ResetOnSpawn = false, IgnoreGuiInset = true, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 39 }, LP.PlayerGui)
             hudFrame = SW.new("Frame", {
-                Size = UDim2.fromOffset(300, 78), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+                Size = UDim2.fromOffset(380, 98), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
                 BackgroundColor3 = SW.Bg, BackgroundTransparency = 0.35, BorderSizePixel = 0, Active = false, Visible = false,
             }, hudGui)
             SW.round(hudFrame, 12)
@@ -7123,7 +7518,7 @@ SW.LoadCandy = function()
                     TextSize = sz, TextColor3 = col, TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = i, Text = "",
                 }, hudFrame)
             end
-            hudLbl = { lbl(1, 18, SW.Good), lbl(2, 17, SW.Text), lbl(3, 14, SW.Sub) }
+            hudLbl = { lbl(1, 18, SW.Good), lbl(2, 17, SW.Text), lbl(3, 14, SW.Sub), lbl(4, 14, SW.Good) }
         end
         local function paintHud()
             if not (hudGui and hudGui.Parent) then buildHud() end
@@ -7132,7 +7527,12 @@ SW.LoadCandy = function()
             local st = S.stat
             hudLbl[1].Text = "● CANDY FARM"
             hudLbl[2].Text = tostring(S.phase)
+            local got = {}
+            for name, n in pairs(st.items or {}) do t_insert(got, name .. " ×" .. n) end
+            table.sort(got)
+            hudLbl[4].Text = S.capOn and S.capLine() or ""
             hudLbl[3].Text = ("ต้น %d/%d  ปลูก %d/%d  น้ำ %d  ปุ๋ย %d  เก็บ %d"):format(view.n, S.target, st.planted, st.failed, st.watered, st.fert, st.collected)
+                .. (#got > 0 and ("  |  ได้ " .. table.concat(got, ", ")) or "")
         end
         local function startView()
             if viewLoop then return end
@@ -7185,6 +7585,10 @@ SW.LoadCandy = function()
                 return
             end
             autoAnchor()
+            if S.layoutOn and #S.layout == 0 then
+                local own = ownTrees()
+                if #own > 0 then S.layoutFromTrees(own) end -- ยังไม่เคยจำ แต่มีต้นอยู่แล้ว: จำจากต้นที่มี
+            end
             if S.seed then task.spawn(S.ensureSlot, S.seed, true) end
             S.coolUntil, S.fails, S.bad, S.recovered = 0, 0, {}, false
             S.quotaUntil, S.holdPlantSince, S.noSpotResetAt, S.taken = 0, nil, 0, {}
@@ -7219,18 +7623,10 @@ SW.LoadCandy = function()
     end)
 end
 SW.LoadCandyGate = function()
-    if SW.CandyAllowed[LP.UserId] and not SW.CandyHardLock then
-        SW.safeLoad("SW.LoadCandy", SW.LoadCandy)
-        return
-    end
-    if SW.CandyHardLock then return end -- ล็อคเต็ม: Locked = true ตั้งไว้ตอน CreateTab แล้ว
-    SW.CandyTab:Lock(SW.CandyLockText)  -- ไม่อยู่ใน whitelist: ล็อคด้วย API ของ SpectreUI
-    task.spawn(function()
-        local t0 = os.clock()
-        while SW.alive and not SW.revealed and os.clock() - t0 < 50 do task.wait(0.5) end
-        task.wait(1.2)
-        if SW.alive then SW.CandyLockNotify() end
-    end)
+    -- ไม่โหลดระบบ Candy ตอนเริ่ม: รอให้ใส่รหัสถูกก่อน (OnUnlock) · ถ้าปลดแล้วค่อยโหลดเลย
+    if SW.CandyHardLock then return end
+    local okL, locked = pcall(function() return SW.CandyTab:IsLocked() end)
+    if okL and not locked then SW.CandyLoadOnce() end
 end
 HomeTab:Load(function()
     SW.safeLoad("SW.LoadHome", SW.LoadHome)
