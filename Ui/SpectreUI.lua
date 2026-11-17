@@ -5,7 +5,7 @@ local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
-local Library = { Flags = {}, Objects = {}, Windows = {}, ConfigFolder = "SpectreUI/configs", Version = "3.28", _flagCbs = {} }
+local Library = { Flags = {}, Objects = {}, Windows = {}, ConfigFolder = "SpectreUI/configs", Version = "3.29", _flagCbs = {} }
 Library.DiskWrites = false
 -- shared design tokens: one status palette + one mono font for the whole library
 Library.Status = { Success = Color3.fromRGB(52, 211, 153), Warn = Color3.fromRGB(251, 191, 36), Danger = Color3.fromRGB(248, 113, 113) }
@@ -8310,15 +8310,33 @@ hit.InputBegan:Connect(function(i)
 if not isPress(i) then return end
 local isTouch = i.UserInputType == Enum.UserInputType.Touch
 onMove(i.Position)
+-- input only records the latest point; the picker updates once per frame
+-- (no callback flood on high-rate mice / touch); the final point is flushed on release
+local pending
 local mc = UserInputService.InputChanged:Connect(function(m)
 if isTouch then
 if m ~= i then return end
 elseif m.UserInputType ~= Enum.UserInputType.MouseMovement then
 return
 end
-onMove(m.Position)
+pending = m.Position
 end)
-onEnd(i, function() mc:Disconnect() end)
+local rc = RunService.RenderStepped:Connect(function()
+local p = pending
+if p then
+pending = nil
+onMove(p)
+end
+end)
+onEnd(i, function()
+mc:Disconnect()
+rc:Disconnect()
+local p = pending
+if p then
+pending = nil
+onMove(p)
+end
+end)
 end)
 end
 local function build()
@@ -18093,7 +18111,7 @@ end
 task.defer(repaint)
 task.delay(0.4, repaint)
 end)
-Library.Version = "3.28"
+Library.Version = "3.29"
 Library._BackdropB64 = {
 "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",
